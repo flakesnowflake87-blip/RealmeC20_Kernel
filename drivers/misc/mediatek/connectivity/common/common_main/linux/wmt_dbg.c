@@ -30,7 +30,10 @@
 #include "stp_core.h"
 #include "stp_dbg.h"
 #include "connsys_debug_utility.h"
-#include "wmt_alarm.h"
+#include "wmt_step.h"
+#ifdef CONFIG_MTK_ENG_BUILD
+#include "wmt_step_test.h"
+#endif
 
 #ifdef DFT_TAG
 #undef DFT_TAG
@@ -46,13 +49,6 @@
 #else
 #define WMT_EMI_DEBUG_BUF_SIZE (32*1024)
 #endif
-
-struct wmt_dbg_work {
-	struct work_struct work;
-	INT32 x;
-	INT32 y;
-	INT32 z;
-};
 
 static struct proc_dir_entry *gWmtDbgEntry;
 COEX_BUF gCoexBuf;
@@ -115,17 +111,21 @@ static INT32 wmt_dbg_stp_sdio_reg_read(INT32 par1, INT32 address, INT32 value);
 static INT32 wmt_dbg_stp_sdio_reg_write(INT32 par1, INT32 address, INT32 value);
 static INT32 wmt_dbg_show_thread_debug_info(INT32 par1, INT32 address, INT32 value);
 static INT32 wmt_dbg_met_ctrl(INT32 par1, INT32 met_ctrl, INT32 log_ctrl);
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+static INT32 wmt_dbg_set_fw_log_mode(INT32 par1, INT32 par2, INT32 par3);
+static INT32 wmt_dbg_emi_dump(INT32 par1, INT32 offset, INT32 size);
+#endif
 static INT32 wmt_dbg_suspend_debug(INT32 par1, INT32 offset, INT32 size);
 static INT32 wmt_dbg_fw_log_ctrl(INT32 par1, INT32 onoff, INT32 level);
 static INT32 wmt_dbg_pre_pwr_on_ctrl(INT32 par1, INT32 enable, INT32 par3);
-
-static INT32 wmt_dbg_alarm_ctrl(INT32 par1, INT32 offset, INT32 size);
+#ifdef CONFIG_MTK_ENG_BUILD
+static INT32 wmt_dbg_step_test(INT32 par1, INT32 address, INT32 value);
+#endif
+static INT32 wmt_dbg_patch_info_prepare(INT32 par1, INT32 address, INT32 value);
 
 static INT32 wmt_dbg_thermal_query(INT32 par1, INT32 count, INT32 interval);
 static INT32 wmt_dbg_thermal_ctrl(INT32 par1, INT32 par2, INT32 par3);
-
-static INT32 wmt_dbg_gps_suspend(INT32 par1, INT32 par2, INT32 par3);
-static INT32 wmt_dbg_set_bt_link_status(INT32 par1, INT32 par2, INT32 par3);
+static INT32 wmt_dbg_step_ctrl(INT32 par1, INT32 par2, INT32 par3);
 
 static const WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] = {
 	[0x0] = wmt_dbg_psm_ctrl,
@@ -177,11 +177,17 @@ static const WMT_DEV_DBG_FUNC wmt_dev_dbg_func[] = {
 	[0x28] = wmt_dbg_pre_pwr_on_ctrl,
 	[0x29] = wmt_dbg_thermal_query,
 	[0x2a] = wmt_dbg_thermal_ctrl,
+	[0x2b] = wmt_dbg_step_ctrl,
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+	[0x2c] = wmt_dbg_set_fw_log_mode,
+	[0x2d] = wmt_dbg_emi_dump,
+#endif
 	[0x2e] = wmt_dbg_suspend_debug,
-	[0x2f] = wmt_dbg_set_bt_link_status,
 	[0x30] = wmt_dbg_show_thread_debug_info,
-	[0x31] = wmt_dbg_gps_suspend,
-	[0x32] = wmt_dbg_alarm_ctrl,
+#ifdef CONFIG_MTK_ENG_BUILD
+	[0xa0] = wmt_dbg_step_test,
+#endif
+	[0xa1] = wmt_dbg_patch_info_prepare,
 };
 
 static VOID wmt_dbg_fwinfor_print_buff(UINT32 len)
@@ -257,7 +263,7 @@ INT32 wmt_dbg_dsns_ctrl(INT32 par1, INT32 par2, INT32 par3)
 INT32 wmt_dbg_hwver_get(INT32 par1, INT32 par2, INT32 par3)
 {
 	WMT_INFO_FUNC("query chip version\n");
-	wmt_lib_get_icinfo(WMTCHIN_HWVER);
+	mtk_wcn_wmt_hwver_get();
 	return 0;
 }
 
@@ -357,7 +363,7 @@ INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd)
 		pOp->op.au4OpData[3] = osal_sizeof(gCoexBuf.buffer);
 		break;
 	}
-	WMT_INFO_FUNC("CMD_TEST, opid(%d), par(%zu, %zu)\n", pOp->op.opId, pOp->op.au4OpData[0],
+	WMT_INFO_FUNC("CMD_TEST, opid(%d), par(%lu, %lu)\n", pOp->op.opId, pOp->op.au4OpData[0],
 		      pOp->op.au4OpData[1]);
 	/*wake up chip first */
 	if (DISABLE_PSM_MONITOR()) {
@@ -380,7 +386,7 @@ INT32 wmt_dbg_cmd_test_api(ENUM_WMTDRV_CMD_T cmd)
 		}
 	}
 	/* wmt_lib_host_awake_put(); */
-	WMT_INFO_FUNC("CMD_TEST, opid (%d), par(%zu, %zu), ret(%d), result(%s)\n",
+	WMT_INFO_FUNC("CMD_TEST, opid (%d), par(%lu, %lu), ret(%d), result(%s)\n",
 		      pOp->op.opId,
 		      pOp->op.au4OpData[0],
 		      pOp->op.au4OpData[1],
@@ -427,17 +433,14 @@ INT32 wmt_dbg_chip_rst(INT32 par1, INT32 par2, INT32 par3)
 
 INT32 wmt_dbg_func_ctrl(INT32 par1, INT32 par2, INT32 par3)
 {
-	MTK_WCN_BOOL ret = MTK_WCN_BOOL_FALSE;
-
-	if (par2 < WMTDRV_TYPE_WMT || par2 == WMTDRV_TYPE_LPBK || par2 == WMTDRV_TYPE_GPSL5) {
+	if (par2 < WMTDRV_TYPE_WMT || par2 == WMTDRV_TYPE_LPBK) {
 		if (par3 == 0) {
 			WMT_INFO_FUNC("function off test, type(%d)\n", par2);
-			ret = mtk_wcn_wmt_func_off(par2);
+			mtk_wcn_wmt_func_off(par2);
 		} else {
 			WMT_INFO_FUNC("function on test, type(%d)\n", par2);
-			ret = mtk_wcn_wmt_func_on(par2);
+			mtk_wcn_wmt_func_on(par2);
 		}
-		WMT_INFO_FUNC("function test return %d\n", ret);
 	} else
 		WMT_INFO_FUNC("function ctrl test, invalid type(%d)\n", par2);
 
@@ -446,7 +449,7 @@ INT32 wmt_dbg_func_ctrl(INT32 par1, INT32 par2, INT32 par3)
 
 INT32 wmt_dbg_raed_chipid(INT32 par1, INT32 par2, INT32 par3)
 {
-	WMT_INFO_FUNC("chip id = %d\n", wmt_lib_get_icinfo(WMTCHIN_CHIPID));
+	WMT_INFO_FUNC("chip version = %d\n", wmt_lib_get_icinfo(WMTCHIN_MAPPINGHWVER));
 
 	return 0;
 }
@@ -673,7 +676,7 @@ static INT32 wmt_dbg_ap_reg_read(INT32 par1, INT32 par2, INT32 par3)
 	PUINT8 ap_reg_base = NULL;
 
 	WMT_INFO_FUNC("AP register read, reg address:0x%x\n", par2);
-	ap_reg_base = ioremap(par2, 0x4);
+	ap_reg_base = ioremap_nocache(par2, 0x4);
 	if (ap_reg_base) {
 		value = readl(ap_reg_base);
 		WMT_INFO_FUNC("AP register read, reg address:0x%x, value:0x%x\n", par2, value);
@@ -691,7 +694,7 @@ static INT32 wmt_dbg_ap_reg_write(INT32 par1, INT32 par2, INT32 par3)
 
 	WMT_INFO_FUNC("AP register write, reg address:0x%x, value:0x%x\n", par2, par3);
 
-	ap_reg_base = ioremap(par2, 0x4);
+	ap_reg_base = ioremap_nocache(par2, 0x4);
 	if (ap_reg_base) {
 		writel(par3, ap_reg_base);
 		value = readl(ap_reg_base);
@@ -702,6 +705,20 @@ static INT32 wmt_dbg_ap_reg_write(INT32 par1, INT32 par2, INT32 par3)
 
 	return 0;
 }
+
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+static INT32 wmt_dbg_set_fw_log_mode(INT32 par1, INT32 par2, INT32 par3)
+{
+	connsys_dedicated_log_set_log_mode(par2);
+	return 0;
+}
+
+static INT32 wmt_dbg_emi_dump(INT32 par1, INT32 offset, INT32 size)
+{
+	connsys_dedicated_log_dump_emi(offset, size);
+	return 0;
+}
+#endif
 
 /********************************************************/
 /* par2:       */
@@ -714,24 +731,6 @@ static INT32 wmt_dbg_suspend_debug(INT32 par1, INT32 par2, INT32 par3)
 		connsys_log_alarm_enable(par2);
 	else
 		connsys_log_alarm_disable();
-	return 0;
-}
-
-static INT32 wmt_dbg_alarm_ctrl(INT32 par1, INT32 par2, INT32 par3)
-{
-	if (par2 > 0)
-		wmt_alarm_start(par2);
-	else
-		wmt_alarm_cancel();
-	return 0;
-}
-
-static INT32 wmt_dbg_set_bt_link_status(INT32 par1, INT32 par2, INT32 par3)
-{
-	if (par2 != 0 && par2 != 1)
-		return 0;
-
-	wmt_lib_set_bt_link_status(par2, par3);
 	return 0;
 }
 
@@ -881,15 +880,12 @@ static INT32 wmt_dbg_fw_log_ctrl(INT32 par1, INT32 onoff, INT32 level)
 
 INT32 wmt_dbg_pre_pwr_on_ctrl(INT32 par1, INT32 enable, INT32 par3)
 {
-	MTK_WCN_BOOL ret = MTK_WCN_BOOL_FALSE;
 
 	WMT_INFO_FUNC("%s pre power on function\n", enable ? "enable" : "disable");
 
 	if (enable) {
 		/* Turn LPBK off and set always power on flag to 1 */
-		ret = mtk_wcn_wmt_func_off(WMTDRV_TYPE_LPBK);
-		if (!ret)
-			WMT_WARN_FUNC("mtk_wcn_wmt_func_off(WMTDRV_TYPE_LPBK) return %d\n", ret);
+		mtk_wcn_wmt_func_off(WMTDRV_TYPE_LPBK);
 		wmt_dev_apo_ctrl(1);
 	} else {
 		/* Just set always power on flag to 0 */
@@ -897,6 +893,27 @@ INT32 wmt_dbg_pre_pwr_on_ctrl(INT32 par1, INT32 enable, INT32 par3)
 	}
 
 	return 0;
+}
+
+#ifdef CONFIG_MTK_ENG_BUILD
+INT32 wmt_dbg_step_test(INT32 par1, INT32 par2, INT32 par3)
+{
+	wmt_step_test_all();
+
+	return 0;
+}
+#endif
+
+INT32 wmt_dbg_patch_info_prepare(INT32 par1, INT32 par2, INT32 par3)
+{
+	INT32 iRet = -1;
+	WMT_CTRL_DATA ctrlData;
+
+	WMT_INFO_FUNC("wmt_dbg_patch_info_prepare\n");
+	ctrlData.ctrlId = WMT_CTRL_PATCH_SEARCH;
+	iRet = wmt_ctrl(&ctrlData);
+
+	return iRet;
 }
 
 INT32 wmt_dbg_thermal_query(INT32 par1, INT32 count, INT32 interval)
@@ -934,6 +951,20 @@ INT32 wmt_dbg_thermal_ctrl(INT32 par1, INT32 par2, INT32 par3)
 	return 0;
 }
 
+static INT32 wmt_dbg_step_ctrl(INT32 par1, INT32 par2, INT32 par3)
+{
+	if (par2 == 0)
+		wmt_step_print_version();
+	else if (par2 == 1) {
+		WMT_INFO_FUNC("STEP show: Start to change config\n");
+		wmt_step_deinit();
+		wmt_step_init();
+		WMT_INFO_FUNC("STEP show: End to change config\n");
+	}
+
+	return 0;
+}
+
 INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3)
 {
 	INT32 i = 0;
@@ -951,10 +982,6 @@ INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3)
 				break;
 			WMT_INFO_FUNC("#### GPS On .... (%d, %d)\n", i, j);
 			iRet = mtk_wcn_wmt_func_on(WMTDRV_TYPE_GPS);
-			if (iRet == MTK_WCN_BOOL_FALSE)
-				break;
-			WMT_INFO_FUNC("#### GPSL5 On .... (%d, %d)\n", i, j);
-			iRet = mtk_wcn_wmt_func_on(WMTDRV_TYPE_GPSL5);
 			if (iRet == MTK_WCN_BOOL_FALSE)
 				break;
 			WMT_INFO_FUNC("#### FM  On .... (%d, %d)\n", i, j);
@@ -977,11 +1004,6 @@ INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3)
 
 			WMT_INFO_FUNC("#### GPS  Off ....(%d, %d)\n", i, j);
 			iRet = mtk_wcn_wmt_func_off(WMTDRV_TYPE_GPS);
-			if (iRet == MTK_WCN_BOOL_FALSE)
-				break;
-
-			WMT_INFO_FUNC("#### GPSL5  Off ....(%d, %d)\n", i, j);
-			iRet = mtk_wcn_wmt_func_off(WMTDRV_TYPE_GPSL5);
 			if (iRet == MTK_WCN_BOOL_FALSE)
 				break;
 
@@ -1012,7 +1034,7 @@ INT32 wmt_dbg_ut_test(INT32 par1, INT32 par2, INT32 par3)
 
 #if CFG_CORE_INTERNAL_TXRX
 struct lpbk_package {
-	UINT32 payload_length;
+	LONG payload_length;
 	UINT8 out_payload[2048];
 	UINT8 in_payload[2048];
 };
@@ -1046,9 +1068,9 @@ static INT32 wmt_internal_loopback(INT32 count, INT32 max)
 		pOp->op.au4OpData[0] = lpbk_buffer.payload_length;	/* packet length */
 		pOp->op.au4OpData[1] = (UINT32) &gLpbkBuf[0];
 		pSignal->timeoutValue = MAX_EACH_WMT_CMD;
-		WMT_INFO_FUNC("OPID(%d) type(%zu) start\n", pOp->op.opId, pOp->op.au4OpData[0]);
+		WMT_INFO_FUNC("OPID(%d) type(%d) start\n", pOp->op.opId, pOp->op.au4OpData[0]);
 		if (DISABLE_PSM_MONITOR()) {
-			WMT_ERR_FUNC("wake up failed,OPID(%d) type(%zu) abort\n", pOp->op.opId,
+			WMT_ERR_FUNC("wake up failed,OPID(%d) type(%d) abort\n", pOp->op.opId,
 					pOp->op.au4OpData[0]);
 			wmt_lib_put_op_to_free_queue(pOp);
 			ret = -2;
@@ -1057,12 +1079,11 @@ static INT32 wmt_internal_loopback(INT32 count, INT32 max)
 		ret = wmt_lib_put_act_op(pOp);
 		ENABLE_PSM_MONITOR();
 		if (ret == MTK_WCN_BOOL_FALSE) {
-			WMT_WARN_FUNC("OPID(%d) type(%zu)fail\n",
-					pOp->op.opId, pOp->op.au4OpData[0]);
+			WMT_WARN_FUNC("OPID(%d) type(%d)fail\n", pOp->op.opId, pOp->op.au4OpData[0]);
 			ret = -3;
 			break;
 		}
-		WMT_INFO_FUNC("OPID(%d) length(%zu) ok\n", pOp->op.opId, pOp->op.au4OpData[0]);
+		WMT_INFO_FUNC("OPID(%d) length(%d) ok\n", pOp->op.opId, pOp->op.au4OpData[0]);
 
 		memcpy(&lpbk_buffer.in_payload[0], &gLpbkBuf[0], max);
 
@@ -1123,10 +1144,9 @@ static INT32 wmt_dbg_set_mcu_clock(INT32 par1, INT32 par2, INT32 par3)
 	pOp->op.au4OpData[1] = version;
 	pSignal->timeoutValue = MAX_EACH_WMT_CMD;
 
-	WMT_INFO_FUNC("OPID(%d) kind(%zu) start\n", pOp->op.opId, pOp->op.au4OpData[0]);
+	WMT_INFO_FUNC("OPID(%d) kind(%d) start\n", pOp->op.opId, pOp->op.au4OpData[0]);
 	if (DISABLE_PSM_MONITOR()) {
-		WMT_ERR_FUNC("wake up failed,OPID(%d) kind(%zu) abort\n",
-				pOp->op.opId, pOp->op.au4OpData[0]);
+		WMT_ERR_FUNC("wake up failed,OPID(%d) kind(%d) abort\n", pOp->op.opId, pOp->op.au4OpData[0]);
 		wmt_lib_put_op_to_free_queue(pOp);
 		return -2;
 	}
@@ -1134,11 +1154,10 @@ static INT32 wmt_dbg_set_mcu_clock(INT32 par1, INT32 par2, INT32 par3)
 	ret = wmt_lib_put_act_op(pOp);
 	ENABLE_PSM_MONITOR();
 	if (ret == MTK_WCN_BOOL_FALSE) {
-		WMT_WARN_FUNC("OPID(%d) kind(%zu)fail(%d)\n",
-				pOp->op.opId, pOp->op.au4OpData[0], ret);
+		WMT_WARN_FUNC("OPID(%d) kind(%d)fail(%d)\n", pOp->op.opId, pOp->op.au4OpData[0], ret);
 		return -3;
 	}
-	WMT_INFO_FUNC("OPID(%d) kind(%zu) ok\n", pOp->op.opId, pOp->op.au4OpData[0]);
+	WMT_INFO_FUNC("OPID(%d) kind(%d) ok\n", pOp->op.opId, pOp->op.au4OpData[0]);
 
 	return ret;
 }
@@ -1183,7 +1202,7 @@ static INT32 wmt_dbg_jtag_flag_ctrl(INT32 par1, INT32 par2, INT32 par3)
 static INT32 wmt_dbg_lte_to_wmt_test(UINT32 opcode, UINT32 msg_len)
 {
 	conn_md_ipc_ilm_t ilm;
-	struct local_para *p_buf_str = NULL;
+	struct local_para *p_buf_str;
 	INT32 i = 0;
 	INT32 iRet = -1;
 
@@ -1392,39 +1411,6 @@ err_exit:
 	return retval;
 }
 
-static VOID delay_work_func(struct work_struct *work)
-{
-	struct wmt_dbg_work *dbgWork = container_of(work, struct wmt_dbg_work, work);
-
-	if (!dbgWork) {
-		WMT_ERR_FUNC("fail to get dbgWork");
-		return;
-	}
-
-	if ((dbgWork->x >= 0) && (dbgWork->x < 0x33))
-		(*wmt_dev_dbg_func[dbgWork->x]) (dbgWork->x, dbgWork->y, dbgWork->z);
-
-	kvfree(dbgWork);
-}
-
-static VOID wmt_dbg_delay_work(INT32 x, INT32 y, INT32 z)
-{
-	struct wmt_dbg_work *dbgWork;
-
-	dbgWork = kmalloc(sizeof(struct wmt_dbg_work), GFP_KERNEL);
-	if (!dbgWork) {
-		WMT_ERR_FUNC("fail to allocate memory");
-		return;
-	}
-
-	dbgWork->x = x;
-	dbgWork->y = y;
-	dbgWork->z = z;
-
-	INIT_WORK(&dbgWork->work, delay_work_func);
-	schedule_work(&dbgWork->work);
-}
-
 ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count, loff_t *f_pos)
 {
 	ULONG len = count;
@@ -1433,7 +1419,7 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 	INT32 x = 0, y = 0, z = 0;
 	PINT8 pToken = NULL;
 	PINT8 pDelimiter = " \t";
-	LONG res = 0;
+	LONG res;
 	static INT8 dbgEnabled;
 
 	WMT_INFO_FUNC("write parameter len = %d\n\r", (INT32) len);
@@ -1472,12 +1458,8 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 
 	pToken = osal_strsep(&pBuf, "\t\n ");
 	if (pToken != NULL) {
-		if (0x2f == x)
-			z = osal_strcmp(pToken, "true") ? 0 : 1;
-		else {
-			osal_strtol(pToken, 16, &res);
-			z = (INT32)res;
-		}
+		osal_strtol(pToken, 16, &res);
+		z = (INT32)res;
 	} else {
 		z = 10;
 		/*efuse, register read write default value */
@@ -1496,23 +1478,15 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 		return len;
 	}
 #endif
-	/* Commands allowed to execute in user load
-	 * 0x15: assert control
-	 * 0x2e: enable catch connsys log
-	 * 0x2f: set bt link status
-	 * 0x32: alarm dump control
-	 */
-	if (0 == dbgEnabled && 0x15 != x && 0x2e != x && 0x2f != x &&
-		0x7 != x && x != 0x32) {
+	/* For user load, only 0x15 is allowed to execute */
+	/* allow command 0x2e to enable catch connsys log on userload  */
+	if (0 == dbgEnabled && 0x15 != x && 0x2e != x && 0xa1 != x) {
 		WMT_INFO_FUNC("please enable WMT debug first\n\r");
 		return len;
 	}
 
 	if (osal_array_size(wmt_dev_dbg_func) > x && NULL != wmt_dev_dbg_func[x])
-		if (x == 0x7)
-			wmt_dbg_delay_work(x, y, z);
-		else
-			(*wmt_dev_dbg_func[x]) (x, y, z);
+		(*wmt_dev_dbg_func[x]) (x, y, z);
 	else
 		WMT_WARN_FUNC("no handler defined for command id(0x%08x)\n\r", x);
 
@@ -1521,18 +1495,11 @@ ssize_t wmt_dbg_write(struct file *filp, const char __user *buffer, size_t count
 
 INT32 wmt_dev_dbg_setup(VOID)
 {
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 	static const struct file_operations wmt_dbg_fops = {
 		.owner = THIS_MODULE,
 		.read = wmt_dbg_read,
 		.write = wmt_dbg_write,
 	};
-#else
-	static const struct proc_ops wmt_dbg_fops = {
-		.proc_read = wmt_dbg_read,
-		.proc_write = wmt_dbg_write,
-	};
-#endif
 	INT32 i_ret = 0;
 
 	gWmtDbgEntry = proc_create(WMT_DBG_PROCNAME, 0664, NULL, &wmt_dbg_fops);
@@ -1555,23 +1522,5 @@ INT32 wmt_dev_dbg_remove(VOID)
 #if CFG_WMT_PS_SUPPORT
 	wmt_lib_ps_deinit();
 #endif
-	return 0;
-}
-
-INT32 wmt_dbg_gps_suspend(INT32 par1, INT32 par2, INT32 par3)
-{
-	MTK_WCN_BOOL suspend = (par2 != 0) ? MTK_WCN_BOOL_TRUE : MTK_WCN_BOOL_FALSE;
-
-	WMT_INFO_FUNC("GPS %s mode test, type(%d, %s)\n",
-		(par2 != 0) ? "suspend" : "resume",
-		par3, (par3 == 0) ? "L1+L5" : ((par3 == 1) ? "L1" : "L5"));
-
-	if (par3 == 0)
-		mtk_wmt_gps_suspend_ctrl(suspend);
-	else if (par3 == 1)
-		mtk_wmt_gps_l1_suspend_ctrl(suspend);
-	else
-		mtk_wmt_gps_l5_suspend_ctrl(suspend);
-
 	return 0;
 }

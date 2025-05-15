@@ -75,8 +75,7 @@
  *                              C O N S T A N T S
  *******************************************************************************
  */
-/* 0: unicast, 1-3: GTK, 4-5: IGTK*/
-#define MAX_KEY_NUM                             6
+#define MAX_KEY_NUM                             4
 #define WEP_40_LEN                              5
 #define WEP_104_LEN                             13
 #define WEP_128_LEN                             16
@@ -95,7 +94,6 @@
 #define IS_UNICAST_KEY        BIT(30)
 #define IS_AUTHENTICATOR      BIT(28)
 
-/* WTBL cipher selector, sync with HAL RX from hal_hw_def_rom.h */
 #define CIPHER_SUITE_NONE               0
 #define CIPHER_SUITE_WEP40              1
 #define CIPHER_SUITE_TKIP               2
@@ -105,11 +103,8 @@
 #define CIPHER_SUITE_BIP                6
 #define CIPHER_SUITE_WEP128             7
 #define CIPHER_SUITE_WPI                8
-#define CIPHER_SUITE_CCMP_W_CCX         9 /* CCMP-128 for DFP or CCX MFP */
-#define CIPHER_SUITE_CCMP_256           10
-#define CIPHER_SUITE_GCMP_128           11
-#define CIPHER_SUITE_GCMP_256           12
-#define CIPHER_SUITE_GCM_WPI_128        13
+#define CIPHER_SUITE_CCMP_W_CCX         9
+#define CIPHER_SUITE_GCMP               10
 
 /* Todo:: Move to register */
 #if defined(MT6630)
@@ -204,12 +199,13 @@ u_int8_t secRxPortControlCheck(IN struct ADAPTER *prAdapter,
 			       IN struct SW_RFB *prSWRfb);
 
 void secSetCipherSuite(IN struct ADAPTER *prAdapter,
-		       IN uint32_t u4CipherSuitesFlags,
-		       IN uint8_t ucBssIndex);
+		       IN uint32_t u4CipherSuitesFlags);
 
 u_int8_t secIsProtectedFrame(IN struct ADAPTER *prAdapter,
 			     IN struct MSDU_INFO *prMsdu,
 			     IN struct STA_RECORD *prStaRec);
+
+void secClearPmkid(IN struct ADAPTER *prAdapter);
 
 u_int8_t secRsnKeyHandshakeEnabled(IN struct ADAPTER
 				   *prAdapter);
@@ -221,8 +217,7 @@ uint8_t secGetBmcWlanIndex(IN struct ADAPTER *prAdapter,
 u_int8_t secTransmitKeyExist(IN struct ADAPTER *prAdapter,
 			     IN struct STA_RECORD *prSta);
 
-u_int8_t secEnabledInAis(IN struct ADAPTER *prAdapter,
-		IN uint8_t ucBssIndex);
+u_int8_t secEnabledInAis(IN struct ADAPTER *prAdapter);
 
 u_int8_t secPrivacySeekForEntry(IN struct ADAPTER
 				*prAdapter, IN struct STA_RECORD *prSta);
@@ -248,9 +243,6 @@ uint8_t secGetStaIdxByWlanIdx(IN struct ADAPTER *prAdapter,
 uint8_t secGetBssIdxByWlanIdx(IN struct ADAPTER *prAdapter,
 			      IN uint8_t ucWlanIdx);
 
-uint8_t secGetBssIdxByRfb(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-
 uint8_t secLookupStaRecIndexFromTA(struct ADAPTER
 				   *prAdapter, uint8_t *pucMacAddress);
 
@@ -263,12 +255,6 @@ u_int8_t secIsProtected1xFrame(IN struct ADAPTER *prAdapter,
 
 u_int8_t secIsProtectedBss(IN struct ADAPTER *prAdapter,
 			   IN struct BSS_INFO *prBssInfo);
-
-u_int8_t secIsRobustActionFrame(IN struct ADAPTER *prAdapter,
-			   IN void *prPacket);
-
-u_int8_t secIsRobustMgmtFrame(IN struct ADAPTER *prAdapter,
-			IN void *prPacket);
 
 u_int8_t secIsWepBss(IN struct ADAPTER *prAdapter,
 			IN struct BSS_INFO *prBssInfo);
@@ -285,15 +271,7 @@ void secPostUpdateAddr(IN struct ADAPTER *prAdapter,
 enum ENUM_EAPOL_KEY_TYPE_T secGetEapolKeyType(
 	uint8_t *pucPacket);
 
-enum ENUM_EAPOL_KEY_TYPE_T secGetEapolKeyTypeBySwRfb(
-	struct SW_RFB *prSwRfb);
-
-void secHandleNoWtbl(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-
-void secCheckRxEapolPacketEncryption(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prRetSwRfb,
-	IN struct STA_RECORD *prStaRec);
+uint8_t secGetDHCPType(uint8_t *pucPkt);
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************

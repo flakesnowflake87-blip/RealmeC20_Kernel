@@ -75,109 +75,6 @@
  */
 #define PS_SYNC_WITH_FW		BIT(31)
 
-#define NIC_BSS_MCC_MODE_TOKEN_CNT	64
-#define NIC_BSS_LOW_RATE_TOKEN_CNT	256
-
-#define NIC_IS_BSS_11B(prBssInfo) \
-	(prBssInfo->ucPhyTypeSet == PHY_TYPE_SET_802_11B)
-
-#define NIC_IS_BSS_BELOW_11AC(prBssInfo) \
-	((prBssInfo->ucPhyTypeSet >> PHY_TYPE_VHT_INDEX) == 0)
-
-#define NIC_DUMP_ICV_RXD(prAdapter, prRxStatus) \
-	do { \
-		u_int8_t fgRxIcvErrDbg = \
-			IS_FEATURE_ENABLED(prAdapter->rWifiVar.fgRxIcvErrDbg); \
-		if (fgRxIcvErrDbg) { \
-			struct mt66xx_chip_info *prChipInfo; \
-			\
-			prChipInfo = prAdapter->chip_info; \
-			DBGLOG(NIC, INFO, "Dump RXD:\n"); \
-			DBGLOG_MEM8(NIC, INFO, prRxStatus, \
-				prChipInfo->rxd_size); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_ICV_RXP(pvPayload, u4PayloadLen) \
-	do { \
-		u_int8_t fgRxIcvErrDbg = \
-			IS_FEATURE_ENABLED(prAdapter->rWifiVar.fgRxIcvErrDbg); \
-		if (fgRxIcvErrDbg) { \
-			DBGLOG(NIC, INFO, "Dump RXP:\n"); \
-			DBGLOG_MEM8(NIC, INFO, pvPayload, u4PayloadLen); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_TXD_HEADER(prAdapter, header) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxD) \
-			DBGLOG(TX, TRACE, header); \
-	} while (0)
-
-#define NIC_DUMP_TXD(prAdapter, addr, size) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxD) { \
-			DBGLOG(TX, TRACE, "Dump TXD:\n"); \
-			DBGLOG_MEM8(TX, TRACE, addr, size); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_TXDMAD_HEADER(prAdapter, header) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxDmad) \
-			DBGLOG(TX, TRACE, header); \
-	} while (0)
-
-#define NIC_DUMP_TXDMAD(prAdapter, addr, size) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxDmad) { \
-			DBGLOG(TX, TRACE, "Dump TXDMAD:\n"); \
-			DBGLOG_MEM8(TX, TRACE, addr, size); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_TXP_HEADER(prAdapter, header) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxP) \
-			DBGLOG(TX, TRACE, header); \
-	} while (0)
-
-#define NIC_DUMP_TXP(prAdapter, addr, size) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpTxP) { \
-			DBGLOG(TX, TRACE, "Dump TXP:\n"); \
-			DBGLOG_MEM8(TX, TRACE, addr, size); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_RXD_HEADER(prAdapter, header) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpRxD) \
-			DBGLOG(RX, TRACE, header); \
-	} while (0)
-
-#define NIC_DUMP_RXD(prAdapter, addr, size) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpRxD) { \
-			DBGLOG(RX, TRACE, "Dump RXD:\n"); \
-			DBGLOG_MEM8(RX, TRACE, addr, size); \
-		} \
-	} while (0)
-
-#define NIC_DUMP_RXDMAD_HEADER(prAdapter, header) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpRxDmad) \
-			DBGLOG(RX, TRACE, header); \
-	} while (0)
-
-#define NIC_DUMP_RXDMAD(prAdapter, addr, size) \
-	do { \
-		if (prAdapter->rWifiVar.fgDumpRxDmad) { \
-			DBGLOG(RX, TRACE, "Dump RXDMAD:\n"); \
-			DBGLOG_MEM8(RX, TRACE, addr, size); \
-		} \
-	} while (0)
-
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -215,11 +112,12 @@ enum ENUM_INT_EVENT_T {
 };
 
 enum ENUM_IE_UPD_METHOD {
-	IE_UPD_METHOD_UPDATE_RANDOM = 0,
-	IE_UPD_METHOD_UPDATE_ALL = 1,
-	IE_UPD_METHOD_DELETE_ALL = 2,
-	IE_UPD_METHOD_UPDATE_PROBE_RSP = 3,
-	IE_UPD_METHOD_UNSOL_PROBE_RSP = 4,
+	IE_UPD_METHOD_UPDATE_RANDOM,
+	IE_UPD_METHOD_UPDATE_ALL,
+	IE_UPD_METHOD_DELETE_ALL,
+#if CFG_SUPPORT_P2P_GO_OFFLOAD_PROBE_RSP
+	IE_UPD_METHOD_UPDATE_PROBE_RSP,
+#endif
 };
 
 enum ENUM_SER_STATE {
@@ -245,39 +143,6 @@ enum POWER_SAVE_CALLER {
 	PS_CALLER_MAX_NUM = 24
 };
 
-enum ENUM_ECO_VER {
-	ECO_VER_1 = 1,
-	ECO_VER_2,
-	ECO_VER_3
-};
-
-enum ENUM_REMOVE_BY_MSDU_TPYE {
-	MSDU_REMOVE_BY_WLAN_INDEX = 0,
-	MSDU_REMOVE_BY_BSS_INDEX,
-	MSDU_REMOVE_BY_ALL,
-	ENUM_REMOVE_BY_MSDU_TPYE_NUM
-};
-
-/* fos_change begin */
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-enum WAKEUP_TYPE {
-	ABNORMAL_INT,
-	SOFTWARE_INT,
-	TX_INT,
-	RX_DATA_INT,
-	RX_EVENT_INT,
-	RX_MGMT_INT,
-	RX_OTHERS_INT,
-	WAKEUP_TYPE_NUM
-};
-struct WAKEUP_STATISTIC {
-	uint16_t u2Count;
-	uint16_t u2TimePerHundred;
-	OS_SYSTIME rStartTime;
-};
-#endif /* fos_change end */
-
-
 /* Test mode bitmask of disable flag */
 #define TEST_MODE_DISABLE_ONLINE_SCAN  BIT(0)
 #define TEST_MODE_DISABLE_ROAMING      BIT(1)
@@ -299,9 +164,6 @@ struct WAKEUP_STATISTIC {
  *                            P U B L I C   D A T A
  *******************************************************************************
  */
-#if (CFG_TWT_SMART_STA == 1)
-extern struct _TWT_SMART_STA_T g_TwtSmartStaCtrl;
-#endif
 
 /*******************************************************************************
  *                           P R I V A T E   D A T A
@@ -374,8 +236,8 @@ struct MSDU_INFO *nicGetPendingTxMsduInfo(
 	IN struct ADAPTER *prAdapter, IN uint8_t ucWlanIndex,
 	IN uint8_t ucSeqNum);
 
-void nicFreePendingTxMsduInfo(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucIndex, IN enum ENUM_REMOVE_BY_MSDU_TPYE ucFreeType);
+void nicFreePendingTxMsduInfoByBssIdx(IN struct ADAPTER
+				      *prAdapter, IN uint8_t ucBssIndex);
 
 uint8_t nicIncreaseCmdSeqNum(IN struct ADAPTER *prAdapter);
 
@@ -391,51 +253,25 @@ uint32_t nicMediaJoinFailure(IN struct ADAPTER *prAdapter,
 			     IN uint8_t ucBssIndex, IN uint32_t rStatus);
 
 /* Utility function for channel number conversion */
-uint32_t nicChannelNum2Freq(uint32_t u4ChannelNum, enum ENUM_BAND eBand);
+uint32_t nicChannelNum2Freq(IN uint32_t u4ChannelNum);
 
 uint32_t nicFreq2ChannelNum(IN uint32_t u4FreqInKHz);
 
-uint32_t nicGetS1Freq(IN enum ENUM_BAND eBand,
-			IN uint8_t ucPrimaryChannel,
-			IN uint8_t ucBandwidth);
-
-/* Utility to get S1, S2 */
-uint8_t nicGetS1(IN enum ENUM_BAND eBand,
-		IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-uint8_t nicGetS2(IN enum ENUM_BAND eBand,
-		IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth,
-		IN uint8_t ucS1);
 uint8_t nicGetVhtS1(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-#if (CFG_SUPPORT_WIFI_6G == 1)
-uint8_t nicGetHe6gS1(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth);
-uint8_t nicGetHe6gS2(IN uint8_t ucPrimaryChannel,
-		IN uint8_t ucBandwidth,
-		IN uint8_t ucS1);
-#endif
+		    IN uint8_t ucBandwidth);
 
 /* firmware command wrapper */
 /* NETWORK (WIFISYS) */
 uint32_t nicActivateNetwork(IN struct ADAPTER *prAdapter,
 			    IN uint8_t ucBssIndex);
-uint32_t nicActivateNetworkEx(IN struct ADAPTER *prAdapter,
-			    IN uint8_t ucBssIndex,
-			    IN uint8_t fgReset40mBw);
+
 uint32_t nicDeactivateNetwork(IN struct ADAPTER *prAdapter,
-				IN uint8_t ucBssIndex);
-uint32_t nicDeactivateNetworkEx(IN struct ADAPTER *prAdapter,
-				IN uint8_t ucBssIndex,
-				IN uint8_t fgClearStaRec);
+			      IN uint8_t ucBssIndex);
 
 /* BSS-INFO */
 uint32_t nicUpdateBss(IN struct ADAPTER *prAdapter,
-			IN uint8_t ucBssIndex);
-uint32_t nicUpdateBssEx(IN struct ADAPTER *prAdapter,
-			IN uint8_t ucBssIndex,
-			IN uint8_t fgClearStaRec);
+		      IN uint8_t ucBssIndex);
+
 /* BSS-INFO Indication (PM) */
 uint32_t nicPmIndicateBssCreated(IN struct ADAPTER
 				 *prAdapter, IN uint8_t ucBssIndex);
@@ -456,19 +292,8 @@ nicUpdateBeaconIETemplate(IN struct ADAPTER *prAdapter,
 uint32_t nicQmUpdateWmmParms(IN struct ADAPTER *prAdapter,
 			     IN uint8_t ucBssIndex);
 
-#if (CFG_SUPPORT_802_11AX == 1)
-uint32_t nicQmUpdateMUEdcaParams(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-uint32_t nicRlmUpdateSRParams(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-#endif
-
 uint32_t nicSetAutoTxPower(IN struct ADAPTER *prAdapter,
 			   IN struct CMD_AUTO_POWER_PARAM *prAutoPwrParam);
-
-/* RXD relative */
-void nicRxdChNumTranslate(
-	IN enum ENUM_BAND eBand, IN uint8_t *pucHwChannelNum);
 
 /*----------------------------------------------------------------------------*/
 /* Calibration Control                                                        */
@@ -491,8 +316,7 @@ void nicSetAvailablePhyTypeSet(IN struct ADAPTER
 /*----------------------------------------------------------------------------*/
 /* MGMT and System Service Control                                            */
 /*----------------------------------------------------------------------------*/
-void nicInitSystemService(IN struct ADAPTER *prAdapter,
-				   IN const u_int8_t bAtResetFlow);
+void nicInitSystemService(IN struct ADAPTER *prAdapter);
 
 void nicResetSystemService(IN struct ADAPTER *prAdapter);
 
@@ -515,7 +339,7 @@ nicConfigPowerSaveProfile(IN struct ADAPTER *prAdapter,
 
 uint32_t
 nicConfigProcSetCamCfgWrite(IN struct ADAPTER *prAdapter,
-		IN u_int8_t enabled, IN uint8_t ucBssIndex);
+		IN u_int8_t enabled);
 
 uint32_t nicEnterCtiaMode(IN struct ADAPTER *prAdapter,
 		u_int8_t fgEnterCtia, u_int8_t fgEnCmdEvent);
@@ -543,7 +367,7 @@ uint32_t nicEnterCtiaModeOfFIFOFullNoAck(IN struct ADAPTER
 /*----------------------------------------------------------------------------*/
 /* Scan Result Processing                                                     */
 /*----------------------------------------------------------------------------*/
-void
+uint32_t
 nicAddScanResult(IN struct ADAPTER *prAdapter,
 		 IN uint8_t rMacAddr[PARAM_MAC_ADDR_LEN],
 		 IN struct PARAM_SSID *prSsid,
@@ -586,12 +410,18 @@ nicRlmArUpdateParms(IN struct ADAPTER *prAdapter,
 		    IN uint32_t u4ArSysParam3);
 
 /*----------------------------------------------------------------------------*/
+/* Enable/Disable Roaming                                                     */
+/*----------------------------------------------------------------------------*/
+uint32_t nicRoamingUpdateParams(IN struct ADAPTER
+				*prAdapter, IN uint32_t u4EnableRoaming);
+
+/*----------------------------------------------------------------------------*/
 /* Link Quality Updating                                                      */
 /*----------------------------------------------------------------------------*/
 void
 nicUpdateLinkQuality(IN struct ADAPTER *prAdapter,
 		     IN uint8_t ucBssIndex,
-		     IN struct EVENT_LINK_QUALITY *prEventLinkQuality);
+		     IN struct EVENT_LINK_QUALITY_V2 *prEventLinkQuality);
 
 void nicUpdateRSSI(IN struct ADAPTER *prAdapter,
 		   IN uint8_t ucBssIndex, IN int8_t cRssi,
@@ -630,13 +460,10 @@ u_int8_t nicSerIsWaitingReset(IN struct ADAPTER *prAdapter);
 u_int8_t nicSerIsTxStop(IN struct ADAPTER *prAdapter);
 u_int8_t nicSerIsRxStop(IN struct ADAPTER *prAdapter);
 void nicSerReInitBeaconFrame(IN struct ADAPTER *prAdapter);
-void nicSerInit(IN struct ADAPTER *prAdapter);
-void nicSerDeInit(IN struct ADAPTER *prAdapter);
 
-/* fos_change begin */
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-void nicUpdateWakeupStatistics(IN struct ADAPTER *prAdapter,
-	IN enum WAKEUP_TYPE intType);
-#endif /* fos_change end */
+void nicIndicateConnectionRxFrame(IN struct ADAPTER *prAdapter,
+	IN struct SW_RFB *prRetSwRfb);
+void nicIndicateConnectionTxFrame(IN struct ADAPTER *prAdapter,
+	IN struct MSDU_INFO *prMsduInfo);
 
 #endif /* _NIC_H */

@@ -1,6 +1,14 @@
-/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2019 MediaTek Inc.
+ * Copyright (C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  */
 
 #ifndef CONNECTIVITY_BUILD_IN_ADAPTER_H
@@ -10,10 +18,6 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
-#include <linux/sched/clock.h>
-#include <linux/regmap.h>
-#include <linux/regulator/consumer.h>
-#include <mtk-clkbuf-bridge.h>
 
 /*******************************************************************************
  * Clock Buffer Control
@@ -47,20 +51,12 @@
 	defined(CONFIG_MACH_MT6797) || \
 	defined(CONFIG_MACH_MT6799) || \
 	defined(CONFIG_MACH_MT6580) || \
-	defined(CONFIG_MACH_MT6761) || \
 	defined(CONFIG_MACH_MT6765) || \
-	defined(CONFIG_MACH_MT6781) || \
+	defined(CONFIG_MACH_MT6761) || \
 	defined(CONFIG_MACH_MT3967) || \
-	defined(CONFIG_MACH_MT6771) || \
-	defined(CONFIG_MACH_MT6768) || \
-	defined(CONFIG_MACH_MT6785) || \
+	defined(CONFIG_MACH_MT6779) || \
 	defined(CONFIG_MACH_KIBOPLUS) || \
-	defined(CONFIG_MACH_MT6885) || \
-	defined(CONFIG_MACH_MT6853) || \
-	defined(CONFIG_MACH_MT6873) || \
-	defined(CONFIG_MACH_ELBRUS) || \
-	defined(CONFIG_MACH_MT6893) || \
-	defined(CONFIG_MACH_MT6877)
+	defined(CONFIG_MACH_ELBRUS)
 #define CONNADP_HAS_CLOCK_BUF_CTRL
 #define KERNEL_CLK_BUF_CHIP_NOT_SUPPORT -7788
 #define KERNEL_clk_buf_ctrl connectivity_export_clk_buf_ctrl
@@ -72,14 +68,34 @@ enum clk_buf_id;
 void connectivity_export_clk_buf_ctrl(enum clk_buf_id id, bool onoff);
 void connectivity_export_clk_buf_show_status_info(void);
 int connectivity_export_clk_buf_get_xo_en_sta(/*enum xo_id id*/ int id);
+#define KERNEL_is_clk_buf_from_pmic connectivity_export_is_clk_buf_from_pmic
+bool connectivity_export_is_clk_buf_from_pmic(void);
 #endif
 
 /*******************************************************************************
  * PMIC
  * Caller please be sure to #include:
- *	drivers/misc/mediatek/pmic/include/mt6359/mtk_pmic_api_buck.h
+ *      drivers/misc/mediatek/pmic/include/mt6359/mtk_pmic_api_buck.h
  *	drivers/misc/mediatek/include/mt-plat/upmu_common.h
  ******************************************************************************/
+#if defined(CONFIG_MACH_MT8163)
+#define CONNADP_HAS_UPMU_VCN_CTRL
+#define KERNEL_upmu_set_vcn_1v8_lp_mode_set \
+	connectivity_export_upmu_set_vcn_1v8_lp_mode_set
+#define KERNEL_upmu_set_vcn28_on_ctrl \
+	connectivity_export_upmu_set_vcn28_on_ctrl
+#define KERNEL_upmu_set_vcn33_on_ctrl_bt \
+	connectivity_export_upmu_set_vcn33_on_ctrl_bt
+#define KERNEL_upmu_set_vcn33_on_ctrl_wifi \
+	connectivity_export_upmu_set_vcn33_on_ctrl_wifi
+void connectivity_export_upmu_set_vcn_1v8_lp_mode_set(unsigned int val);
+void connectivity_export_upmu_set_vcn28_on_ctrl(unsigned int val);
+void connectivity_export_upmu_set_vcn33_on_ctrl_bt(unsigned int val);
+void connectivity_export_upmu_set_vcn33_on_ctrl_wifi(unsigned int val);
+#elif defined(CONFIG_MACH_MT8173)
+/* MT8173 will not use PMIC interface */
+#else
+#define CONNADP_HAS_PMIC_API
 #define KERNEL_pmic_config_interface \
 	connectivity_export_pmic_config_interface
 #define KERNEL_pmic_read_interface \
@@ -90,14 +106,11 @@ int connectivity_export_clk_buf_get_xo_en_sta(/*enum xo_id id*/ int id);
 	connectivity_export_pmic_get_register_value
 #define KERNEL_upmu_set_reg_value \
 	connectivity_export_upmu_set_reg_value
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359) || \
-	defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
+#if defined(CONFIG_MTK_PMIC_CHIP_MT6359)
 #define KERNEL_pmic_ldo_vcn13_lp \
 	connectivity_export_pmic_ldo_vcn13_lp
 #define KERNEL_pmic_ldo_vcn18_lp \
 	connectivity_export_pmic_ldo_vcn18_lp
-#define KERNEL_pmic_ldo_vfe28_lp \
-	connectivity_export_pmic_ldo_vfe28_lp
 #define KERNEL_pmic_ldo_vcn33_1_lp \
 	connectivity_export_pmic_ldo_vcn33_1_lp
 #define KERNEL_pmic_ldo_vcn33_2_lp \
@@ -116,18 +129,16 @@ void connectivity_export_pmic_set_register_value(int flagname,
 unsigned short connectivity_export_pmic_get_register_value(int flagname);
 void connectivity_export_upmu_set_reg_value(unsigned int reg,
 						unsigned int reg_val);
-#if defined(CONFIG_MTK_PMIC_CHIP_MT6359) || \
-	defined(CONFIG_MTK_PMIC_CHIP_MT6359P)
+#if defined(CONFIG_MTK_PMIC_CHIP_MT6359)
 int connectivity_export_pmic_ldo_vcn13_lp(int user,
 		int op_mode, unsigned char op_en, unsigned char op_cfg);
 int connectivity_export_pmic_ldo_vcn18_lp(int user,
-		int op_mode, unsigned char op_en, unsigned char op_cfg);
-void connectivity_export_pmic_ldo_vfe28_lp(unsigned int user,
 		int op_mode, unsigned char op_en, unsigned char op_cfg);
 int connectivity_export_pmic_ldo_vcn33_1_lp(int user,
 		int op_mode, unsigned char op_en, unsigned char op_cfg);
 int connectivity_export_pmic_ldo_vcn33_2_lp(int user,
 		int op_mode, unsigned char op_en, unsigned char op_cfg);
+#endif
 #endif
 
 /*******************************************************************************
@@ -175,14 +186,16 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin,
 #ifdef CONFIG_MACH_MT6799
 #define CPU_BOOST y
 #endif
-#ifdef CONFIG_MACH_MT6739
-#define CPU_BOOST y
-#endif
+
 #ifdef CPU_BOOST
 #include "mtk_ppm_api.h"
 #include "mtk_spm_resource_req.h"
 #endif
 
+#define KERNEL_slp_get_wake_reason \
+		connectivity_export_slp_get_wake_reason
+#define KERNEL_spm_get_last_wakeup_src \
+		connectivity_export_spm_get_last_wakeup_src
 #define KERNEL_show_stack connectivity_export_show_stack
 #define KERNEL_tracing_record_cmdline connectivity_export_tracing_record_cmdline
 #define KERNEL_dump_thread_state connectivity_export_dump_thread_state
@@ -202,6 +215,9 @@ void connectivity_export_mt6306_set_gpio_dir(unsigned long pin,
 #define KERNEL_mt_ppm_sysboost_set_freq_limit
 #define KERNEL_spm_resource_req
 #endif
+
+unsigned int connectivity_export_slp_get_wake_reason(void);
+unsigned int connectivity_export_spm_get_last_wakeup_src(void);
 extern void tracing_record_cmdline(struct task_struct *tsk);
 extern void show_stack(struct task_struct *tsk, unsigned long *sp);
 #ifdef CPU_BOOST
@@ -227,17 +243,6 @@ extern void v7_flush_kern_dcache_area(void *addr, size_t len);
 void connectivity_export_show_stack(struct task_struct *tsk, unsigned long *sp);
 void connectivity_export_dump_thread_state(const char *name);
 void connectivity_export_tracing_record_cmdline(struct task_struct *tsk);
-
-
-struct connsys_state_info {
-	unsigned int chip_info;
-	phys_addr_t emi_phy_addr;
-};
-void connectivity_export_conap_scp_init(unsigned int chip_info, phys_addr_t emi_phy_addr);
-void connectivity_export_conap_scp_deinit(void);
-void connectivity_register_state_notifier(struct notifier_block *nb);
-void connectivity_unregister_state_notifier(struct notifier_block *nb);
-
 #ifdef CPU_BOOST
 void connectivity_export_mt_ppm_sysboost_freq(enum ppm_sysboost_user user,
 					      unsigned int freq);
@@ -254,6 +259,9 @@ void connectivity_export_mt_ppm_sysboost_set_freq_limit(
 bool connectivity_export_spm_resource_req(unsigned int user,
 				unsigned int req_mask);
 #endif
+void connectivity_flush_dcache_area(void *addr, size_t len);
+void connectivity_arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
+				     struct iommu_ops *iommu, bool coherent);
 
 /*********************************************
  * copy from
@@ -262,7 +270,7 @@ bool connectivity_export_spm_resource_req(unsigned int user,
  *
  * event_trace_printk()
  *********************************************/
-#ifndef CONFIG_MACH_MT6739
+
 #define KERNEL_event_trace_printk(ip, fmt, args...)               \
 do {                                                              \
 	__trace_printk_check_format(fmt, ##args);                 \
@@ -275,7 +283,7 @@ do {                                                              \
 	} else                                                    \
 		__trace_printk(ip, fmt, ##args);                  \
 } while (0)
-#endif
+
 /******************************************************************************
  * GPIO dump information
  ******************************************************************************/

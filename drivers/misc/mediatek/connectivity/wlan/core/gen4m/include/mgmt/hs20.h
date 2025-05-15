@@ -84,7 +84,7 @@
 /*For GTK Frame Filter*/
 struct IPV4_NETWORK_ADDRESS_LIST {
 	uint8_t ucAddrCount;
-	struct CMD_IPV4_NETWORK_ADDRESS arNetAddr[1];
+	struct IPV4_NETWORK_ADDRESS arNetAddr[1];
 };
 #endif
 
@@ -116,9 +116,6 @@ struct HS20_INFO {
 	struct BSSID_ENTRY arBssidPool[BSSID_POOL_MAX_SIZE];
 	uint8_t ucNumBssidPoolEntry;
 	u_int8_t fgIsHS2SigmaMode;
-
-	u_int8_t fgConnectHS20AP;
-
 };
 
 /******************************************************************************
@@ -144,7 +141,7 @@ struct HS20_INFO {
 				 OFFSET_OF(struct IPV4_NETWORK_ADDRESS_LIST,  \
 				 arNetAddr) +  \
 				 (((_prAddrList)->ucAddrCount) *  \
-				 sizeof(struct CMD_IPV4_NETWORK_ADDRESS));  \
+				 sizeof(struct IPV4_NETWORK_ADDRESS));  \
 		kalMemFree((_prAddrList), VIR_MEM_TYPE, u4Size);    \
 		(_prAddrList) = NULL;   \
 	}
@@ -160,6 +157,15 @@ struct HS20_INFO {
  *                              F U N C T I O N S
  ******************************************************************************
  */
+
+void hs20GenerateInterworkingIE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo);
+
+void hs20GenerateRoamingConsortiumIE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo);
+
+void hs20GenerateHS20IE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo);
 
 void hs20FillExtCapIE(struct ADAPTER *prAdapter,
 		struct BSS_INFO *prBssInfo, struct MSDU_INFO *prMsduInfo);
@@ -193,7 +199,7 @@ u_int8_t hs20IsFrameFilterEnabled(IN struct ADAPTER *prAdapter,
 
 uint32_t hs20SetBssidPool(IN struct ADAPTER *prAdapter,
 		IN void *pvBuffer,
-		IN uint8_t ucBssIndex);
+		IN enum ENUM_KAL_NETWORK_TYPE_INDEX eNetTypeIdx);
 
 #endif /* CFG_SUPPORT_PASSPOINT */
 #endif

@@ -57,7 +57,6 @@ typedef enum _ENUM_WMTRSTRET_TYPE_T {
 	WMTRSTRET_SUCCESS = 0x0,
 	WMTRSTRET_FAIL = 0x1,
 	WMTRSTRET_ONGOING = 0x2,
-	WMTRSTRET_RETRY = 0x3,
 	WMTRSTRET_MAX
 } ENUM_WMTRSTRET_TYPE_T, *P_ENUM_WMTRSTRET_TYPE_T;
 
@@ -93,20 +92,13 @@ typedef enum _ENUM_WMTRSTRET_TYPE_T {
 /*1000->WMT_LIB_RX_TIMEOUT + 1000, logical judgement */
 #define MAX_EACH_WMT_CMD (WMT_LIB_RX_TIMEOUT + 1000)
 
-/* For WMT OP who will have trouble if timeout really happens */
-#define MAX_WMT_OP_TIMEOUT (30000)
-
 #define MAX_GPIO_CTRL_TIME (2000)	/* [FixMe][GeorgeKuo] a temp value */
 
+#define MAX_PATCH_NUM 10
 #define UTC_SYNC_TIME (60 * 60 * 1000)
 
 #define WMT_IDC_MSG_BUFFER 2048
 #define WMT_IDC_MSG_MAX_SIZE (WMT_IDC_MSG_BUFFER - 7) /* Subtract STP payload cmd size */
-
-#define MAX_PATCH_NUM (10)
-
-#define WMT_FIRMWARE_VERSION_LENGTH       (14)
-#define WMT_FIRMWARE_MAX_FILE_NAME_LENGTH (50)
 
 /*******************************************************************************
 *                    E X T E R N A L   R E F E R E N C E S
@@ -178,40 +170,11 @@ struct wmt_rom_patch_info {
 	UINT8 patchName[256];
 };
 
-struct wmt_vendor_patch {
-	union {
-		INT32 id;
-		INT32 type;
-	};
-	UINT8 file_name[WMT_FIRMWARE_MAX_FILE_NAME_LENGTH + 1];
-	UINT8 version[WMT_FIRMWARE_VERSION_LENGTH + 1];
-};
-
-struct vendor_patch_table {
-	UINT32  capacity;
-	UINT32  num;
-	INT8    status;
-	INT8    need_update;
-	PUINT8 *active_version;
-	struct wmt_vendor_patch *patch;
-};
-
-enum wmt_patch_type {
-	WMT_PATCH_TYPE_ROM = 0,
-	WMT_PATCH_TYPE_RAM,
-	WMT_PATCH_TYPE_WIFI
-};
-
-enum wmt_cp_status {
-	WMT_CP_INIT = 0,
-	WMT_CP_READY_TO_CHECK,
-	WMT_CP_CHECK_DONE
-};
-
-#define WMT_LIB_DMP_SLOT 2
-struct consys_state_dmp_req {
-	struct consys_state_dmp_op consys_ops[WMT_LIB_DMP_SLOT];
-	atomic_t version;
+struct wmt_fdb_ctrl {
+	UINT32 is_write;
+	enum CONSYS_BASE_ADDRESS_INDEX base_index;
+	UINT32 offset;
+	UINT32 value;
 };
 
 /* OS independent wrapper for WMT_OP */
@@ -221,8 +184,6 @@ typedef struct _DEV_WMT_ {
 	OSAL_SLEEPABLE_LOCK idc_lock;
 	OSAL_SLEEPABLE_LOCK wlan_lock;
 	OSAL_SLEEPABLE_LOCK assert_lock;
-	OSAL_SLEEPABLE_LOCK mpu_lock;
-	OSAL_SLEEPABLE_LOCK power_lock;
 	/* WMTd thread information */
 	/* struct task_struct *pWmtd;   *//* main thread (wmtd) handle */
 	OSAL_THREAD thread;
@@ -281,6 +242,9 @@ typedef struct _DEV_WMT_ {
 	UINT32 hw_ver;
 	UINT32 fw_ver;
 	UINT32 ip_ver;
+	/* TODO:  [FixMe][GeorgeKuo] remove this translated version code in the */
+	/* future. Just return the above 3 info to querist */
+	ENUM_WMTHWVER_TYPE_T eWmtHwVer;
 
 	UINT32 ext_ldo_flag;
 	P_WMT_PATCH_INFO pWmtPatchInfo;
@@ -297,10 +261,6 @@ typedef struct _DEV_WMT_ {
 	struct osal_op_history wmtd_op_history;
 	struct osal_op_history worker_op_history;
 	UINT8 msg_local_buffer[WMT_IDC_MSG_BUFFER];
-	struct vendor_patch_table patch_table;
-
-	struct consys_state_dmp_req state_dmp_req;
-
 } DEV_WMT, *P_DEV_WMT;
 
 
@@ -350,7 +310,6 @@ extern VOID wmt_lib_sdio_deep_sleep_flag_set_cb_reg(PF_WMT_SDIO_DEEP_SLEEP flag_
 #endif
 extern VOID wmt_lib_sdio_reg_rw_cb(PF_WMT_SDIO_DEBUG reg_rw_cb);
 extern INT32 wmt_lib_register_thermal_ctrl_cb(thermal_query_ctrl_cb thermal_ctrl);
-extern INT32 wmt_lib_register_trigger_assert_cb(trigger_assert_cb trigger_assert);
 
 /* LXOP functions: */
 extern P_OSAL_OP wmt_lib_get_free_op(VOID);
@@ -360,9 +319,6 @@ extern MTK_WCN_BOOL wmt_lib_put_worker_op(P_OSAL_OP pOp);
 
 /* extern ENUM_WMTHWVER_TYPE_T wmt_lib_get_hwver (VOID); */
 extern UINT32 wmt_lib_get_icinfo(ENUM_WMT_CHIPINFO_TYPE_T type);
-
-extern UINT32 wmt_lib_get_adie_workable(VOID);
-extern VOID wmt_lib_set_adie_workable(UINT32 workable);
 
 extern MTK_WCN_BOOL wmt_lib_is_therm_ctrl_support(ENUM_WMTTHERM_TYPE_T eType);
 extern MTK_WCN_BOOL wmt_lib_is_dsns_ctrl_support(VOID);
@@ -396,6 +352,7 @@ INT32 wmt_lib_reg_rw(UINT32 isWrite, UINT32 offset, PUINT32 pvalue, UINT32 mask)
 INT32 wmt_lib_efuse_rw(UINT32 isWrite, UINT32 offset, PUINT32 pvalue, UINT32 mask);
 INT32 wmt_lib_sdio_ctrl(UINT32 on);
 INT32 wmt_lib_met_ctrl(INT32 met_ctrl, INT32 log_ctrl);
+INT32 wmt_lib_fdb_ctrl(struct wmt_fdb_ctrl *fdb_ctrl);
 INT32 wmt_lib_gps_mcu_ctrl(PUINT8 p_tx_data_buf, UINT32 tx_data_len, PUINT8 p_rx_data_buf,
 			   UINT32 rx_data_buf_len, PUINT32 p_rx_data_len);
 VOID wmt_lib_set_ext_ldo(UINT32 flag);
@@ -413,7 +370,6 @@ extern VOID ENABLE_PSM_MONITOR(VOID);
 extern INT32 wmt_lib_notify_stp_sleep(VOID);
 extern VOID wmt_lib_psm_lock_release(VOID);
 extern INT32 wmt_lib_psm_lock_aquire(VOID);
-extern INT32 wmt_lib_psm_lock_trylock(VOID);
 extern VOID wmt_lib_idc_lock_release(VOID);
 extern INT32 wmt_lib_idc_lock_aquire(VOID);
 extern VOID wmt_lib_wlan_lock_release(VOID);
@@ -422,11 +378,6 @@ extern INT32 wmt_lib_wlan_lock_aquire(VOID);
 extern VOID wmt_lib_assert_lock_release(VOID);
 extern INT32 wmt_lib_assert_lock_trylock(VOID);
 extern INT32 wmt_lib_assert_lock_aquire(VOID);
-extern VOID wmt_lib_mpu_lock_release(VOID);
-extern INT32 wmt_lib_mpu_lock_aquire(VOID);
-extern VOID wmt_lib_power_lock_release(VOID);
-extern INT32 wmt_lib_power_lock_trylock(VOID);
-extern INT32 wmt_lib_power_lock_aquire(VOID);
 extern INT32 wmt_lib_set_stp_wmt_last_close(UINT32 value);
 
 extern VOID wmt_lib_set_patch_num(UINT32 num);
@@ -443,8 +394,6 @@ extern INT32 wmt_lib_merge_if_flag_ctrl(UINT32 enable);
 extern INT32 wmt_lib_merge_if_flag_get(UINT32 enable);
 
 extern PUINT8 wmt_lib_get_cpupcr_xml_format(PUINT32 len);
-extern PUINT8 wmt_lib_get_cpupcr_reg_info(PUINT32 len, PUINT32 consys_reg);
-extern INT32 wmt_lib_get_host_assert_info(PUINT32 type, PUINT32 reason, PUINT32 en);
 extern UINT32 wmt_lib_set_host_assert_info(UINT32 type, UINT32 reason, UINT32 en);
 extern INT8 wmt_lib_co_clock_get(VOID);
 extern UINT32 wmt_lib_soc_set_wifiver(UINT32 wifiver);
@@ -458,12 +407,10 @@ extern INT32 wmt_lib_tm_temp_query(VOID);
 extern INT32 wmt_lib_trigger_reset(VOID);
 extern INT32 wmt_lib_trigger_assert(ENUM_WMTDRV_TYPE_T type, UINT32 reason);
 extern INT32 wmt_lib_trigger_assert_keyword(ENUM_WMTDRV_TYPE_T type, UINT32 reason, PUINT8 keyword);
-extern VOID wmt_lib_trigger_assert_keyword_delay(ENUM_WMTDRV_TYPE_T type, UINT32 reason, PUINT8 keyword);
 extern INT32 wmt_lib_wifi_fem_cfg_report(PVOID pvInfoBuf);
 #if CFG_WMT_PS_SUPPORT
 extern UINT32 wmt_lib_quick_sleep_ctrl(UINT32 en);
 #endif
-extern UINT32 wmt_lib_fw_patch_update_rst_ctrl(UINT32 en);
 #if CONSYS_ENALBE_SET_JTAG
 extern UINT32 wmt_lib_jtag_flag_set(UINT32 en);
 #endif
@@ -472,32 +419,6 @@ UINT32 wmt_lib_get_gps_lna_pin_num(VOID);
 extern INT32 wmt_lib_fw_log_ctrl(enum wmt_fw_log_type type, UINT8 onoff, UINT8 level);
 VOID wmt_lib_print_wmtd_op_history(VOID);
 VOID wmt_lib_print_worker_op_history(VOID);
-extern INT32 wmt_lib_get_vendor_patch_num(VOID);
-extern INT32 wmt_lib_set_vendor_patch_version(struct wmt_vendor_patch *p);
-extern INT32 wmt_lib_get_vendor_patch_version(struct wmt_vendor_patch *p);
-extern INT32 wmt_lib_set_check_patch_status(INT32 status);
-extern INT32 wmt_lib_get_check_patch_status(VOID);
-extern INT32 wmt_lib_set_active_patch_version(struct wmt_vendor_patch *p);
-extern INT32 wmt_lib_get_active_patch_version(struct wmt_vendor_patch *p);
-extern INT32 wmt_lib_get_need_update_patch_version(VOID);
-extern INT32 wmt_lib_set_need_update_patch_version(INT32 need);
-extern VOID wmt_lib_set_bt_link_status(INT32 type, INT32 value);
-VOID mtk_lib_set_mcif_mpu_protection(MTK_WCN_BOOL enable);
-INT32 wmt_lib_dmp_consys_state(P_CONSYS_STATE_DMP_INFO dmp_info,
-				UINT32 cpupcr_times, UINT32 slp_ms);
-
-extern INT32 wmt_lib_reg_readable(VOID);
-extern INT32 wmt_lib_reg_readable_by_addr(SIZE_T addr);
-extern INT32 wmt_lib_utc_time_sync(VOID);
-
-extern INT32 wmt_lib_dump_cpupcr(UINT32 times, UINT32 sleep_ms);
-extern INT32 wmt_lib_dump_pc_log(VOID);
-extern INT32 wmt_lib_cmd_tx_timeout_dump(VOID);
-extern INT32 wmt_lib_cmd_rx_timeout_dump(VOID);
-extern INT32 wmt_lib_coredump_timeout_dump(VOID);
-extern INT32 wmt_lib_assert_timeout_dump(VOID);
-extern INT32 wmt_lib_before_chip_reset_dump(VOID);
-
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

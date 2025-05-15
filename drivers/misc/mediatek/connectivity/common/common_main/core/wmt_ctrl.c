@@ -42,6 +42,7 @@
 #include "stp_core.h"
 #include "stp_dbg.h"
 #include "wmt_ic.h"
+#include "wmt_step.h"
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -107,8 +108,6 @@ static INT32 wmt_ctrl_get_patch_name(P_WMT_CTRL_DATA pWmtCtrlData);
 
 static INT32 wmt_ctrl_get_rom_patch_info(P_WMT_CTRL_DATA pWmtCtrlData);
 
-static INT32 wmt_ctrl_update_patch_version(P_WMT_CTRL_DATA);
-
 /* TODO: [FixMe][GeorgeKuo]: remove unused function */
 /*static INT32  wmt_ctrl_hwver_get(P_WMT_CTRL_DATA);*/
 
@@ -160,7 +159,6 @@ static const WMT_CTRL_FUNC wmt_ctrl_func[] = {
 #endif
 	[WMT_CTRL_EVT_PARSER] = wmt_ctrl_evt_parser,
 	[WMT_CTRL_GET_ROM_PATCH_INFO] = wmt_ctrl_get_rom_patch_info,
-	[WMT_CTRL_UPDATE_PATCH_VERSION] = wmt_ctrl_update_patch_version,
 	[WMT_CTRL_MAX] = wmt_ctrl_others,
 };
 
@@ -238,7 +236,6 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData /*UINT8 *pBuff, UINT32 buffLen, U
 	INT32 extended = 0;
 	P_OSAL_THREAD p_rx_thread = NULL;
 	OSAL_THREAD_SCHEDSTATS schedstats;
-	u64 start_time;
 
 	if (readSize)
 		*readSize = 0;
@@ -264,8 +261,6 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData /*UINT8 *pBuff, UINT32 buffLen, U
 	p_rx_thread = mtk_stp_rx_thread_get();
 	osal_thread_sched_mark(p_rx_thread, &schedstats);
 
-	start_time = jiffies;
-
 	while (readLen == 0 && leftCnt > 0) {	/* got nothing, wait for STP's signal */
 		/* if assert happen, do not wait for any signal again */
 		if (mtk_wcn_stp_get_wmt_trg_assert() == 1
@@ -275,17 +270,8 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData /*UINT8 *pBuff, UINT32 buffLen, U
 		waitRet = wmt_dev_rx_timeout(&pDev->rWmtRxWq);
 		if (waitRet == 0) {
 			leftCnt--;
-
-			WMT_INFO_FUNC("RX waiting [%lu] ms ===========", jiffies_to_msecs(jiffies - start_time));
 			/* dump btif_rxd's backtrace to check whether it is blocked or not */
 			osal_dump_thread_state("btif_rxd");
-			if (!mtk_wcn_stp_is_sdio_mode())
-				mtk_wcn_consys_poll_cpucpr_dump(5, 1);
-			else
-				stp_dbg_poll_cpupcr(5, 1, 1);
-			if ((leftCnt == loopCnt - 1) && !mtk_wcn_stp_is_sdio_mode())
-				mtk_wcn_consys_pc_log_dump();
-
 			if (!mtk_wcn_stp_is_sdio_mode())
 				mtk_wcn_consys_stp_btif_logger_ctrl(BTIF_DUMP_BTIF_IRQ);
 
@@ -306,35 +292,25 @@ INT32 wmt_ctrl_rx(P_WMT_CTRL_DATA pWmtCtrlData /*UINT8 *pBuff, UINT32 buffLen, U
 						osal_thread_sched_mark(p_rx_thread, &schedstats);
 						continue;
 					}
-					/* wmt is closed, device is shuting down */
-					if (wmt_dev_is_close() || mtk_wcn_stp_is_wmt_last_close() == 1) {
-						leftCnt = 10;
-						continue;
-					}
 				}
 
 				osal_thread_sched_unmark(p_rx_thread, &schedstats);
 				wmt_ctrl_show_sched_stats_log(p_rx_thread, &schedstats);
-
-				if (!mtk_wcn_stp_is_sdio_mode())
-					mtk_wcn_consys_poll_cpucpr_dump(5, 1);
-				else
-					stp_dbg_poll_cpupcr(5, 1, 1);
+				stp_dbg_poll_cpupcr(5, 1, 1);
 				WMT_ERR_FUNC("wmt_dev_rx_timeout: timeout,jiffies(%lu),timeoutvalue(%d)\n",
 					     jiffies, pDev->rWmtRxWq.timeoutValue);
-				wmt_lib_cmd_rx_timeout_dump();
+				WMT_STEP_COMMAND_TIMEOUT_DO_ACTIONS_FUNC("STP RX timeout");
 
 				/* Reason number 44 means that stp data path still has data,
 				 * possibly a driver problem
 				 */
-				pr_info("stpRxState=[%d]", stpRxState);
 				if (stpRxState != 0)
 					wmt_lib_trigger_assert(WMTDRV_TYPE_WMT, 44);
 				return -1;
 			}
 		} else if (waitRet < 0) {
 			WMT_WARN_FUNC("wmt_dev_rx_timeout: interrupted by signal (%d)\n", waitRet);
-			wmt_lib_cmd_rx_timeout_dump();
+			WMT_STEP_COMMAND_TIMEOUT_DO_ACTIONS_FUNC("STP RX timeout");
 			return waitRet;
 		}
 		readLen = mtk_wcn_stp_receive_data(pBuff, buffLen, WMT_TASK_INDX);
@@ -566,7 +542,7 @@ INT32 wmt_ctrl_stp_open(P_WMT_CTRL_DATA pWmtCtrlData)
 		}
 
 		/*register stp rx call back to btif */
-		iRet = mtk_wcn_stp_rxcb_register((MTK_WCN_BTIF_RX_CB)mtk_wcn_stp_parser_data);
+		iRet = mtk_wcn_stp_rxcb_register((MTK_WCN_BTIF_RX_CB) mtk_wcn_stp_parser_data);
 		if (iRet) {
 			WMT_WARN_FUNC("mtk_wcn_stp_rxcb_register fail(%d)\n", iRet);
 			return -2;
@@ -622,12 +598,7 @@ INT32 wmt_ctrl_get_patch_info(P_WMT_CTRL_DATA pWmtCtrlData)
 	PUINT8 pNbuf = NULL;
 	PUINT8 pAbuf = NULL;
 
-	if (pDev->pWmtPatchInfo == NULL) {
-		WMT_ERR_FUNC("pWmtPatchInfo is NULL\n");
-		return -1;
-	}
-
-	downLoadSeq = (UINT32)pWmtCtrlData->au4CtrlData[0];
+	downLoadSeq = pWmtCtrlData->au4CtrlData[0];
 	WMT_DBG_FUNC("download seq is %d\n", downLoadSeq);
 
 	pPatchinfo = pDev->pWmtPatchInfo + downLoadSeq - 1;
@@ -654,11 +625,10 @@ INT32 wmt_ctrl_get_rom_patch_info(P_WMT_CTRL_DATA pWmtCtrlData)
 	INT32 ret = 0;
 	UINT8 cmdStr[NAME_MAX + 1] = { 0 };
 
-	type = (UINT32)pWmtCtrlData->au4CtrlData[0];
+	type = pWmtCtrlData->au4CtrlData[0];
 	WMT_DBG_FUNC("rom patch type is %d\n", type);
-	pDev->ip_ver = (UINT32)pWmtCtrlData->au4CtrlData[3];
-	pDev->fw_ver = (UINT32)pWmtCtrlData->au4CtrlData[4];
-	WMT_DBG_FUNC("ip version is [%x] [%x]\n", pDev->ip_ver, pDev->fw_ver);
+	pDev->ip_ver = pWmtCtrlData->au4CtrlData[3];
+	WMT_DBG_FUNC("ip version is %x\n", pDev->ip_ver);
 
 	if (!pDev->pWmtRomPatchInfo[WMTDRV_TYPE_WMT]) {
 		osal_snprintf(cmdStr, NAME_MAX, "srh_rom_patch");
@@ -690,26 +660,11 @@ INT32 wmt_ctrl_get_rom_patch_info(P_WMT_CTRL_DATA pWmtCtrlData)
 	return ret;
 }
 
-INT32 wmt_ctrl_update_patch_version(P_WMT_CTRL_DATA pWmtCtrlData)
-{
-	P_DEV_WMT pDev = &gDevWmt;	/* single instance */
-	INT32 iRet;
-	UINT8 cmdStr[NAME_MAX + 1] = { 0 };
-
-	osal_snprintf(cmdStr, NAME_MAX, "update_patch_version");
-	iRet = wmt_ctrl_ul_cmd(pDev, cmdStr);
-	if (iRet) {
-		WMT_WARN_FUNC("wmt_ctrl_ul_cmd fail(%d)\n", iRet);
-		return -1;
-	}
-	return 0;
-}
-
 INT32 wmt_ctrl_soc_paldo_ctrl(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	INT32 iRet = 0;
-	ENUM_PALDO_TYPE ept = (ENUM_PALDO_TYPE)pWmtCtrlData->au4CtrlData[0];
-	ENUM_PALDO_OP epo = (ENUM_PALDO_OP)pWmtCtrlData->au4CtrlData[1];
+	ENUM_PALDO_TYPE ept = pWmtCtrlData->au4CtrlData[0];
+	ENUM_PALDO_OP epo = pWmtCtrlData->au4CtrlData[1];
 
 	WMT_DBG_FUNC("ept(%d),epo(%d)\n", ept, epo);
 	iRet = wmt_plat_soc_paldo_ctrl(ept, epo);
@@ -825,8 +780,8 @@ INT32 wmt_ctrl_stp_conf(P_WMT_CTRL_DATA pWmtCtrlData)
 		return -1;
 	}
 
-	type = (UINT32)pWmtCtrlData->au4CtrlData[0];
-	value = (UINT32)pWmtCtrlData->au4CtrlData[1];
+	type = pWmtCtrlData->au4CtrlData[0];
+	value = pWmtCtrlData->au4CtrlData[1];
 	iRet = wmt_ctrl_stp_conf_ex(type, value);
 
 	if (!iRet) {
@@ -900,7 +855,7 @@ INT32 wmt_ctrl_crystal_triming_get(P_WMT_CTRL_DATA pWmtCtrlData)
 	}
 	if (wmt_dev_patch_get(pFileName, &pNvram) == 0) {
 		*ppBuf = (PUINT8)(pNvram)->data;
-		*pSize = (UINT32)(pNvram)->size;
+		*pSize = (pNvram)->size;
 		gDevWmt.pNvram = pNvram;
 		return 0;
 	}
@@ -975,8 +930,8 @@ INT32 wmt_ctrl_sdio_hw(P_WMT_CTRL_DATA pWmtCtrlData)
 	UINT32 statBit = WMT_STAT_SDIO1_ON;
 	P_DEV_WMT pDev = &gDevWmt;	/* single instance */
 
-	WMT_SDIO_SLOT_NUM sdioSlotNum = (WMT_SDIO_SLOT_NUM)pWmtCtrlData->au4CtrlData[0];
-	ENUM_FUNC_STATE funcState = (ENUM_FUNC_STATE)pWmtCtrlData->au4CtrlData[1];
+	WMT_SDIO_SLOT_NUM sdioSlotNum = pWmtCtrlData->au4CtrlData[0];
+	ENUM_FUNC_STATE funcState = pWmtCtrlData->au4CtrlData[1];
 
 	if ((sdioSlotNum == WMT_SDIO_SLOT_INVALID)
 	    || (sdioSlotNum >= WMT_SDIO_SLOT_MAX)) {
@@ -989,7 +944,7 @@ INT32 wmt_ctrl_sdio_hw(P_WMT_CTRL_DATA pWmtCtrlData)
 	if (sdioSlotNum == WMT_SDIO_SLOT_SDIO2)
 		statBit = WMT_STAT_SDIO2_ON;
 
-	if (funcState != FUNC_ON) {
+	if (funcState) {
 		if (osal_test_and_set_bit(statBit, &pDev->state)) {
 			WMT_WARN_FUNC("CTRL_SDIO_SLOT slotNum(%d) already ON\n", sdioSlotNum);
 			/* still return 0 */
@@ -1015,8 +970,8 @@ INT32 wmt_ctrl_sdio_func(P_WMT_CTRL_DATA pWmtCtrlData)
 	UINT32 statBit = WMT_STAT_SDIO_WIFI_ON;
 	INT32 retry = 10;
 	P_DEV_WMT pDev = &gDevWmt;	/* single instance */
-	WMT_SDIO_FUNC_TYPE sdioFuncType = (WMT_SDIO_FUNC_TYPE)pWmtCtrlData->au4CtrlData[0];
-	UINT32 u4On = (UINT32)pWmtCtrlData->au4CtrlData[1];
+	WMT_SDIO_FUNC_TYPE sdioFuncType = pWmtCtrlData->au4CtrlData[0];
+	UINT32 u4On = pWmtCtrlData->au4CtrlData[1];
 
 	if (sdioFuncType >= WMT_SDIO_FUNC_MAX) {
 		WMT_ERR_FUNC("CTRL_SDIO_FUNC, invalid func type (%d)\n", sdioFuncType);
@@ -1093,6 +1048,9 @@ INT32 wmt_ctrl_hwidver_set(P_WMT_CTRL_DATA pWmtCtrlData)
 	pDev->chip_id = (pWmtCtrlData->au4CtrlData[0] & 0xFFFF0000) >> 16;
 	pDev->hw_ver = pWmtCtrlData->au4CtrlData[0] & 0x0000FFFF;
 	pDev->fw_ver = pWmtCtrlData->au4CtrlData[1] & 0x0000FFFF;
+	/* TODO: [FixMe][GeorgeKuo] remove translated ENUM_WMTHWVER_TYPE_T in the future!!! */
+	/* Only use hw_ver read from hw. */
+	pDev->eWmtHwVer = (ENUM_WMTHWVER_TYPE_T) (pWmtCtrlData->au4CtrlData[1] & 0xFFFF0000) >> 16;
 
 	return 0;
 }
@@ -1181,6 +1139,7 @@ INT32 wmt_ctrl_set_stp_dbg_info(P_WMT_CTRL_DATA pWmtCtrlData)
 static INT32 wmt_ctrl_trg_assert(P_WMT_CTRL_DATA pWmtCtrlData)
 {
 	INT32 iRet = -1;
+
 	ENUM_WMTDRV_TYPE_T drv_type;
 	UINT32 reason = 0;
 	PUINT8 keyword;
@@ -1190,14 +1149,9 @@ static INT32 wmt_ctrl_trg_assert(P_WMT_CTRL_DATA pWmtCtrlData)
 	keyword = (PUINT8) pWmtCtrlData->au4CtrlData[2];
 	WMT_INFO_FUNC("wmt-ctrl:drv_type(%d),reason(%d),keyword(%s)\n", drv_type, reason, keyword);
 
-	if (wmt_dev_is_close())
-		WMT_INFO_FUNC("WMT is closing, don't trigger assert\n");
-	else if (chip_reset_only == 1)
-		WMT_INFO_FUNC("Do chip reset only, don't trigger assert\n");
-	else if (mtk_wcn_stp_get_wmt_trg_assert() == 0) {
+	if (mtk_wcn_stp_get_wmt_trg_assert() == 0) {
 		mtk_wcn_stp_dbg_dump_package();
 		mtk_wcn_stp_set_wmt_trg_assert(1);
-		mtk_wcn_stp_assert_flow_ctrl(1);
 
 		iRet = mtk_wcn_stp_wmt_trg_assert();
 		if (iRet == 0) {

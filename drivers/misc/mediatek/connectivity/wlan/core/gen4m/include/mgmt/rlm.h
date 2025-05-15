@@ -166,6 +166,24 @@ extern uint32_t g_au4IQData[256];
 #define CONFIG_BW_20_40M            0
 #define CONFIG_BW_20M               1	/* 20MHz only */
 
+/* Radio Measurement Request Mode definition */
+#define RM_REQ_MODE_PARALLEL_BIT                    BIT(0)
+#define RM_REQ_MODE_ENABLE_BIT                      BIT(1)
+#define RM_REQ_MODE_REQUEST_BIT                     BIT(2)
+#define RM_REQ_MODE_REPORT_BIT                      BIT(3)
+#define RM_REQ_MODE_DURATION_MANDATORY_BIT          BIT(4)
+#define RM_REP_MODE_LATE                            BIT(0)
+#define RM_REP_MODE_INCAPABLE                       BIT(1)
+#define RM_REP_MODE_REFUSED                         BIT(2)
+
+/* Radio Measurement Report Frame Max Length */
+#define RM_REPORT_FRAME_MAX_LENGTH                  1600
+#define RM_BCN_REPORT_SUB_ELEM_MAX_LENGTH           224
+/* beacon request mode definition */
+#define RM_BCN_REQ_PASSIVE_MODE                     0
+#define RM_BCN_REQ_ACTIVE_MODE                      1
+#define RM_BCN_REQ_TABLE_MODE                       2
+
 #define RLM_INVALID_POWER_LIMIT                     -127 /* dbm */
 
 #define RLM_MAX_TX_PWR		20	/* dbm */
@@ -194,8 +212,6 @@ extern uint32_t g_au4IQData[256];
 		 << VHT_CAP_INFO_MAX_AMPDU_LENGTH_OFFSET))
 
 #define VHT_CAP_INFO_DEFAULT_HIGHEST_DATA_RATE			0
-#define VHT_CAP_INFO_EXT_NSS_BW_CAP				BIT(13)
-
 #endif
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -228,7 +244,7 @@ extern struct RLM_CAL_RESULT_ALL_V2 g_rBackupCalDataAllV2;
 #endif
 
 typedef void (*PFN_OPMODE_NOTIFY_DONE_FUNC)(
-	struct ADAPTER *, uint8_t, bool);
+	struct ADAPTER *, uint8_t, u_int8_t);
 
 enum ENUM_OP_NOTIFY_TYPE_T {
 	OP_NOTIFY_TYPE_VHT_NSS_BW = 0,
@@ -253,17 +269,74 @@ struct SUB_ELEMENT_LIST {
 	struct SUB_ELEMENT rSubIE;
 };
 
-#if CFG_SUPPORT_DFS
-struct SWITCH_CH_AND_BAND_PARAMS {
-	uint8_t ucCsaNewCh;
-	uint8_t ucCsaCount;
-	uint8_t ucVhtS1;
-	uint8_t ucVhtS2;
-	uint8_t ucVhtBw;
-	enum ENUM_CHNL_EXT eSco;
-	uint8_t ucBssIndex;
+enum BCN_RM_STATE {
+	RM_NO_REQUEST,
+	RM_ON_GOING,
+	RM_WAITING, /*waiting normal scan done */
 };
-#endif
+
+enum RM_REQ_PRIORITY {
+	RM_PRI_BROADCAST,
+	RM_PRI_MULTICAST,
+	RM_PRI_UNICAST
+};
+
+struct NORMAL_SCAN_PARAMS {
+	struct PARAM_SCAN_REQUEST_ADV rScanRequest;
+	uint8_t aucScanIEBuf[MAX_IE_LENGTH];
+	u_int8_t fgExist;
+};
+
+/* Beacon RM related parameters */
+struct BCN_RM_PARAMS {
+	u_int8_t fgExistBcnReq;
+	enum BCN_RM_STATE eState;
+	struct NORMAL_SCAN_PARAMS rNormalScan;
+};
+
+struct RM_BEACON_REPORT_PARAMS {
+	uint8_t ucChannel;
+	uint8_t ucRCPI;
+	uint8_t ucRSNI;
+	uint8_t ucAntennaID;
+	uint8_t ucFrameInfo;
+	uint8_t aucBcnFixedField[12];
+};
+
+struct RM_MEASURE_REPORT_ENTRY {
+	struct LINK_ENTRY rLinkEntry;
+	/* should greater than sizeof(struct RM_BCN_REPORT) +
+	 * sizeof(struct IE_MEASUREMENT_REPORT) +
+	 * RM_BCN_REPORT_SUB_ELEM_MAX_LENGTH
+	 */
+	uint8_t aucMeasReport[260];
+};
+
+struct RADIO_MEASUREMENT_REQ_PARAMS {
+	/* Remain Request Elements Length, started at prMeasElem. if it is 0,
+	 * means RM is done
+	 */
+	uint16_t u2RemainReqLen;
+	uint16_t u2ReqIeBufLen;
+	struct IE_MEASUREMENT_REQ *prCurrMeasElem;
+	OS_SYSTIME rStartTime;
+	uint16_t u2Repetitions;
+	uint8_t *pucReqIeBuf;
+	enum RM_REQ_PRIORITY ePriority;
+	u_int8_t fgRmIsOngoing;
+	u_int8_t fgInitialLoop;
+
+	struct BCN_RM_PARAMS rBcnRmParam;
+};
+
+struct RADIO_MEASUREMENT_REPORT_PARAMS {
+	/* the total length of Measurement Report elements */
+	uint16_t u2ReportFrameLen;
+	uint8_t *pucReportFrameBuff;
+	/* Variables to collect report */
+	struct LINK rReportLink; /* a link to save received report entry */
+	struct LINK rFreeReportLink;
+};
 
 /*******************************************************************************
  *                            P U B L I C   D A T A
@@ -280,12 +353,17 @@ struct SWITCH_CH_AND_BAND_PARAMS {
  *******************************************************************************
  */
 
+#define RM_EXIST_REPORT(_prRmReportParam) \
+	(((struct RADIO_MEASUREMENT_REPORT_PARAMS *)_prRmReportParam)          \
+		 ->u2ReportFrameLen ==                                         \
+	OFFSET_OF(struct ACTION_RM_REPORT_FRAME, aucInfoElem))
+
 /* It is used for RLM module to judge if specific network is valid
  * Note: Ad-hoc mode of AIS is not included now. (TBD)
  */
 #define RLM_NET_PARAM_VALID(_prBssInfo) \
 	(IS_BSS_ACTIVE(_prBssInfo) && \
-	 ((_prBssInfo)->eConnectionState == MEDIA_STATE_CONNECTED || \
+	 ((_prBssInfo)->eConnectionState == PARAM_MEDIA_STATE_CONNECTED || \
 	  (_prBssInfo)->eCurrentOPMode == OP_MODE_ACCESS_POINT || \
 	  (_prBssInfo)->eCurrentOPMode == OP_MODE_IBSS || \
 	  IS_BSS_BOW(_prBssInfo)) \
@@ -300,27 +378,17 @@ struct SWITCH_CH_AND_BAND_PARAMS {
 #define RLM_NET_IS_11AC(_prBssInfo) \
 	((_prBssInfo)->ucPhyTypeSet & PHY_TYPE_SET_802_11AC)
 #endif
-#if (CFG_SUPPORT_802_11AX == 1)
-#define RLM_NET_IS_11AX(_prBssInfo) \
-	((_prBssInfo)->ucPhyTypeSet & PHY_TYPE_SET_802_11AX)
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-#define RLM_NET_IS_11BE(_prBssInfo) \
-	((_prBssInfo)->ucPhyTypeSet & PHY_TYPE_SET_802_11BE)
-#endif
 
-#if CFG_SUPPORT_DFS
-#define MAX_CSA_COUNT 255
-#define HAS_CH_SWITCH_PARAMS(prCSAParams) (prCSAParams->ucCsaNewCh > 0)
-#define HAS_SCO_PARAMS(prCSAParams) (prCSAParams->eSco > 0)
-#define HAS_WIDE_BAND_PARAMS(prCSAParams) \
-	(prCSAParams->ucVhtBw > 0 || \
-	 prCSAParams->ucVhtS1 > 0 || \
-	 prCSAParams->ucVhtS2 > 0)
-#define SHOULD_CH_SWITCH(current, prCSAParams) \
-	(HAS_CH_SWITCH_PARAMS(prCSAParams) && \
-	 (current < prCSAParams->ucCsaCount))
-#endif
+/* The bandwidth modes are not used anymore. They represent if AP
+ * can use 20/40 bandwidth, not all modes. (20110411)
+ */
+#define RLM_AP_IS_BW_40_ALLOWED(_prAdapter, _prBssInfo) \
+	(((_prBssInfo)->eBand == BAND_2G4 && \
+	(_prAdapter)->rWifiVar.rConnSettings.uc2G4BandwidthMode \
+	== CONFIG_BW_20_40M) || \
+	((_prBssInfo)->eBand == BAND_5G && \
+	(_prAdapter)->rWifiVar.rConnSettings.uc5GBandwidthMode \
+	== CONFIG_BW_20_40M))
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
@@ -331,12 +399,6 @@ void rlmFsmEventInit(struct ADAPTER *prAdapter);
 void rlmFsmEventUninit(struct ADAPTER *prAdapter);
 
 void rlmReqGenerateHtCapIE(struct ADAPTER *prAdapter,
-			   struct MSDU_INFO *prMsduInfo);
-
-void rlmReqGeneratePowerCapIE(struct ADAPTER *prAdapter,
-			   struct MSDU_INFO *prMsduInfo);
-
-void rlmReqGenerateSupportedChIE(struct ADAPTER *prAdapter,
 			   struct MSDU_INFO *prMsduInfo);
 
 void rlmReqGenerateExtCapIE(struct ADAPTER *prAdapter,
@@ -373,13 +435,6 @@ void rlmProcessAssocRsp(struct ADAPTER *prAdapter,
 
 void rlmProcessHtAction(struct ADAPTER *prAdapter,
 			struct SW_RFB *prSwRfb);
-
-#if CFG_SUPPORT_NAN
-uint32_t rlmFillNANVHTCapIE(struct ADAPTER *prAdapter,
-			   struct BSS_INFO *prBssInfo, uint8_t *pOutBuf);
-uint32_t rlmFillNANHTCapIE(struct ADAPTER *prAdapter,
-		struct BSS_INFO *prBssInfo, uint8_t *pOutBuf);
-#endif
 
 #if CFG_SUPPORT_802_11AC
 void rlmProcessVhtAction(struct ADAPTER *prAdapter,
@@ -431,10 +486,6 @@ void rlmRspGenerateVhtOpIE(struct ADAPTER *prAdapter,
 void rlmFillVhtOpIE(struct ADAPTER *prAdapter,
 		    struct BSS_INFO *prBssInfo, struct MSDU_INFO *prMsduInfo);
 
-void rlmGenerateVhtTPEIE(
-	struct ADAPTER *prAdapter,
-	struct MSDU_INFO *prMsduInfo);
-
 void rlmRspGenerateVhtOpNotificationIE(struct ADAPTER
 			       *prAdapter, struct MSDU_INFO *prMsduInfo);
 void rlmReqGenerateVhtOpNotificationIE(struct ADAPTER
@@ -451,19 +502,14 @@ void rlmGenerateCountryIE(struct ADAPTER *prAdapter,
 #if CFG_SUPPORT_DFS
 void rlmProcessSpecMgtAction(struct ADAPTER *prAdapter,
 			     struct SW_RFB *prSwRfb);
-
-void rlmResetCSAParams(struct BSS_INFO *prBssInfo);
-
-void rlmCsaTimeout(IN struct ADAPTER *prAdapter,
-				unsigned long ulParamPtr);
 #endif
 
-uint32_t
+void
 rlmSendOpModeNotificationFrame(struct ADAPTER *prAdapter,
 			       struct STA_RECORD *prStaRec,
 			       uint8_t ucChannelWidth, uint8_t ucNss);
 
-uint32_t
+void
 rlmSendSmPowerSaveFrame(struct ADAPTER *prAdapter,
 			struct STA_RECORD *prStaRec, uint8_t ucNss);
 
@@ -500,15 +546,13 @@ rlmChangeOperationMode(
 	struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex,
 	uint8_t ucChannelWidth,
-	uint8_t ucOpRxNss,
-	uint8_t ucOpTxNss,
-	uint8_t ucSendAct,
+	uint8_t ucNss,
 	PFN_OPMODE_NOTIFY_DONE_FUNC pfOpChangeHandler
 );
 
 void
 rlmDummyChangeOpHandler(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex, bool fgIsChangeSuccess);
+			uint8_t ucBssIndex, u_int8_t fgIsChangeSuccess);
 
 
 #if CFG_SUPPORT_CAL_RESULT_BACKUP_TO_HOST
@@ -527,23 +571,7 @@ uint32_t rlmTriggerCalBackup(
 
 void rlmModifyVhtBwPara(uint8_t *pucVhtChannelFrequencyS1,
 			uint8_t *pucVhtChannelFrequencyS2,
-			uint8_t ucHtChannelFrequencyS3,
 			uint8_t *pucVhtChannelWidth);
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-void rlmTransferHe6gOpInfor(IN uint8_t ucChannelNum,
-	IN uint8_t ucChannelWidth,
-	OUT uint8_t *pucChannelWidth,
-	OUT uint8_t *pucCenterFreqS1,
-	OUT uint8_t *pucCenterFreqS2,
-	OUT enum ENUM_CHNL_EXT *peSco);
-
-void rlmModifyHE6GBwPara(uint8_t ucHe6gChannelWidth,
-	uint8_t ucHe6gPrimaryChannel,
-	uint8_t *pucHe6gChannelFrequencyS1,
-	uint8_t *pucHe6gChannelFrequencyS2);
-#endif
-
 
 void rlmReviseMaxBw(
 	struct ADAPTER *prAdapter,
@@ -553,22 +581,62 @@ void rlmReviseMaxBw(
 	uint8_t *pucS1,
 	uint8_t *pucPrimaryCh);
 
-enum ENUM_CHNL_EXT rlmReviseSco(
-	IN enum ENUM_CHANNEL_WIDTH eChannelWidth,
-	IN uint8_t ucPrimaryCh,
-	IN uint8_t ucS1,
-	IN enum ENUM_CHNL_EXT eScoOrigin,
-	IN uint8_t ucMaxBandwidth);
+void rlmProcessNeighborReportResonse(struct ADAPTER *prAdapter,
+				     struct WLAN_ACTION_FRAME *prAction,
+				     uint16_t u2PacketLen);
+void rlmTxNeighborReportRequest(struct ADAPTER *prAdapter,
+				struct STA_RECORD *prStaRec,
+				struct SUB_ELEMENT_LIST *prSubIEs);
 
-void rlmRevisePreferBandwidthNss(struct ADAPTER *prAdapter,
-					uint8_t ucBssIndex,
-					struct STA_RECORD *prStaRec);
+void rlmGenerateRRMEnabledCapIE(IN struct ADAPTER *prAdapter,
+				IN struct MSDU_INFO *prMsduInfo);
+
+void rlmGeneratePowerCapIE(IN struct ADAPTER *prAdapter,
+			   IN struct MSDU_INFO *prMsduInfo);
+
+void rlmProcessRadioMeasurementRequest(struct ADAPTER *prAdapter,
+				       struct SW_RFB *prSwRfb);
+
+void rlmProcessLinkMeasurementRequest(struct ADAPTER *prAdapter,
+				      struct WLAN_ACTION_FRAME *prAction);
+
+void rlmProcessNeighborReportResonse(struct ADAPTER *prAdapter,
+				     struct WLAN_ACTION_FRAME *prAction,
+				     uint16_t u2PacketLen);
+
+void rlmFillRrmCapa(uint8_t *pucCapa);
 
 void rlmSetMaxTxPwrLimit(IN struct ADAPTER *prAdapter, int8_t cLimit,
 			 uint8_t ucEnable);
 
-void rlmSyncExtCapIEwithSupplicant(uint8_t *aucCapabilities,
-	const uint8_t *supExtCapIEs, size_t IElen);
+void rlmStartNextMeasurement(struct ADAPTER *prAdapter, u_int8_t fgNewStarted);
+
+u_int8_t rlmBcnRmRunning(struct ADAPTER *prAdapter);
+
+u_int8_t rlmFillScanMsg(struct ADAPTER *prAdapter,
+			struct MSG_SCN_SCAN_REQ_V2 *prMsg);
+
+void rlmDoBeaconMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam);
+
+void rlmTxNeighborReportRequest(struct ADAPTER *prAdapter,
+				struct STA_RECORD *prStaRec,
+				struct SUB_ELEMENT_LIST *prSubIEs);
+
+void rlmTxRadioMeasurementReport(struct ADAPTER *prAdapter);
+
+void rlmFreeMeasurementResources(struct ADAPTER *prAdapter);
+
+enum RM_REQ_PRIORITY rlmGetRmRequestPriority(uint8_t *pucDestAddr);
+
+void rlmRunEventProcessNextRm(struct ADAPTER *prAdapter,
+			      struct MSG_HDR *prMsgHdr);
+
+void rlmScheduleNextRm(struct ADAPTER *prAdapter);
+
+void rlmProcessBeaconAndProbeResp(struct ADAPTER *prAdapter,
+				  IN struct SW_RFB *prSwRfb);
+
+void rlmUpdateBssTimeTsf(struct ADAPTER *prAdapter, struct BSS_DESC *prBssDesc);
 
 /*******************************************************************************
  *                              F U N C T I O N S

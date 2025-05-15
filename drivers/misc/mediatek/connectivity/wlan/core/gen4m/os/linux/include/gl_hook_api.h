@@ -80,67 +80,38 @@
  *                  F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
  */
-
-int32_t MT_ATEStart(struct net_device *prNetDev,
-		    uint8_t *prInBuf);
-int32_t MT_ICAPStart(struct net_device *prNetDev,
-		     uint8_t *prInBuf);
-int32_t MT_ICAPCommand(struct net_device *prNetDev,
-		       uint8_t *prInBuf);
-int32_t MT_ATEStop(struct net_device *prNetDev,
-		   uint8_t *prInBuf);
-int32_t MT_ATEStartTX(struct net_device *prNetDev,
-		      uint8_t *prInBuf);
-int32_t MT_ATEStopTX(struct net_device *prNetDev,
-		     uint8_t *prInBuf);
-int32_t MT_ATEStartRX(struct net_device *prNetDev,
-		      uint8_t *prInBuf);
-int32_t MT_ATEStopRX(struct net_device *prNetDev,
-		     uint8_t *prInBuf);
-int32_t MT_ATESetChannel(struct net_device *prNetDev,
-			 uint32_t u4SXIdx, uint32_t u4SetFreq);
-int32_t MT_ATESetPreamble(struct net_device *prNetDev,
-			  uint32_t u4Mode);
-int32_t MT_ATESetSystemBW(struct net_device *prNetDev,
-			  uint32_t u4BW);
-int32_t MT_ATESetTxLength(struct net_device *prNetDev,
-			  uint32_t u4TxLength);
-int32_t MT_ATESetTxCount(struct net_device *prNetDev,
-			 uint32_t u4TxCount);
-int32_t MT_ATESetTxIPG(struct net_device *prNetDev,
-		       uint32_t u4TxIPG);
-int32_t MT_ATESetTxPath(struct net_device *prNetDev,
-			uint32_t u4Tx_path);
-int32_t MT_ATESetRxPath(struct net_device *prNetDev,
-			uint32_t u4Rx_path);
-int32_t MT_ATESetTxPower0(struct net_device *prNetDev,
-			  uint32_t u4TxPower0);
-int32_t MT_ATESetPerPacketBW(struct net_device *prNetDev,
-			     uint32_t u4BW);
-int32_t MT_ATEPrimarySetting(struct net_device *prNetDev,
-			     uint32_t u4PrimaryCh);
-int32_t MT_ATESetTxGi(struct net_device *prNetDev,
-		      uint32_t u4SetTxGi);
+int32_t MT_ATEStart(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ICAPStart(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ICAPCommand(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATEStop(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATEStartTX(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATEStopTX(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATEStartRX(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATEStopRX(struct net_device *prNetDev, uint8_t *prInBuf);
+int32_t MT_ATESetChannel(struct net_device *prNetDev, uint32_t u4SXIdx,
+			uint32_t u4SetFreq);
+int32_t MT_ATESetPreamble(struct net_device *prNetDev, uint32_t u4Mode);
+int32_t MT_ATESetSystemBW(struct net_device *prNetDev, uint32_t u4BW);
+int32_t MT_ATESetTxLength(struct net_device *prNetDev, uint32_t u4TxLength);
+int32_t MT_ATESetTxCount(struct net_device *prNetDev, uint32_t u4TxCount);
+int32_t MT_ATESetTxIPG(struct net_device *prNetDev, uint32_t u4TxIPG);
+int32_t MT_ATESetTxPower0(struct net_device *prNetDev, uint32_t u4TxPower0);
+int32_t MT_ATESetPerPacketBW(struct net_device *prNetDev, uint32_t u4BW);
+int32_t MT_ATEPrimarySetting(struct net_device *prNetDev, uint32_t u4PrimaryCh);
+int32_t MT_ATESetTxGi(struct net_device *prNetDev, uint32_t u4SetTxGi);
 int32_t MT_ATESetTxPayLoad(struct net_device *prNetDev,
-			   uint32_t u4Gen_payload_rule, uint8_t ucPayload);
-int32_t MT_ATESetTxSTBC(struct net_device *prNetDev,
-			uint32_t u4Stbc);
-int32_t MT_ATESetTxPath(struct net_device *prNetDev,
-			uint32_t u4Tx_path);
-int32_t MT_ATESetTxVhtNss(struct net_device *prNetDev,
-			  uint32_t u4VhtNss);
-int32_t MT_ATESetRate(struct net_device *prNetDev,
-		      uint32_t u4Rate);
-int32_t MT_ATESetEncodeMode(struct net_device *prNetDev,
-			    uint32_t u4Ldpc);
-int32_t MT_ATESetiBFEnable(struct net_device *prNetDev,
-			   uint32_t u4iBF);
-int32_t MT_ATESeteBFEnable(struct net_device *prNetDev,
-			   uint32_t u4eBF);
-int32_t MT_ATESetMACAddress(struct net_device *prNetDev,
-			    uint32_t u4Type, uint8_t ucAddr[]);
-int32_t MT_ATELogOnOff(struct net_device *prNetDev,
-		       uint32_t u4Type, uint32_t u4On_off, uint32_t u4Size);
+			uint32_t u4Gen_payload_rule, uint8_t ucPayload);
+int32_t MT_ATESetTxSTBC(struct net_device *prNetDev, uint32_t u4Stbc);
+int32_t MT_ATESetTxPath(struct net_device *prNetDev, uint32_t u4Tx_path);
+int32_t MT_ATESetTxVhtNss(struct net_device *prNetDev, uint32_t u4VhtNss);
+int32_t MT_ATESetRate(struct net_device *prNetDev, uint32_t u4Rate);
+int32_t MT_ATESetEncodeMode(struct net_device *prNetDev, uint32_t u4Ldpc);
+int32_t MT_ATESetiBFEnable(struct net_device *prNetDev, uint32_t u4iBF);
+int32_t MT_ATESeteBFEnable(struct net_device *prNetDev, uint32_t u4eBF);
+int32_t MT_ATESetMACAddress(struct net_device *prNetDev, uint32_t u4Type,
+			uint8_t ucAddr[]);
+int32_t MT_ATELogOnOff(struct net_device *prNetDev, uint32_t u4Type,
+			uint32_t u4On_off, uint32_t u4Size);
 int32_t MT_ATEGetDumpRXV(struct net_device *prNetDev,
 			 uint8_t *pData, int32_t *pCount);
 int32_t MT_ATEResetTXRXCounter(struct net_device *prNetDev);
@@ -192,24 +163,16 @@ int32_t MT_ATEMPSSetNss(struct net_device *prNetDev,
 			uint32_t u4TestNum, uint32_t *pu4Nss, uint32_t u4Band);
 int32_t MT_ATEMPSSetPerpacketBW(struct net_device *prNetDev, uint32_t u4TestNum,
 			uint32_t *pu4PerPktBW, uint32_t u4Band);
-
-
 int32_t MT_ATEWriteEfuse(struct net_device *prNetDev,
 			 uint16_t u2Offset, uint16_t u2Content);
 int32_t MT_ATESetTxTargetPower(struct net_device *prNetDev,
 			       uint8_t ucTxTargetPower);
-
-#if CFG_SUPPORT_ANT_SWAP
-int32_t MT_ATESetAntSwap(struct net_device *prNetDev, uint32_t u4Ant);
-#endif
-
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 int32_t MT_ATESetRddReport(struct net_device *prNetDev,
 			   uint8_t ucDbdcIdx);
 int32_t MT_ATESetRadarDetectMode(struct net_device
 				 *prNetDev, uint8_t ucRadarDetectMode);
 #endif
-
 
 #if CFG_SUPPORT_TX_BF
 int32_t TxBfProfileTag_InValid(struct net_device *prNetDev,
@@ -341,13 +304,4 @@ int32_t TxBfPseudoTagUpdate(struct net_device *prNetDev,
 
 #endif
 #endif /*CFG_SUPPORT_QA_TOOL */
-#if (CONFIG_WLAN_SERVICE == 1)
-uint32_t ServiceWlanOid(void *prNetDev,
-	 uint32_t oidType,
-	 void *param,
-	 uint32_t paramLen,
-	 uint32_t *u4BufLen,
-	 void *rsp_data);
-#endif /*#if (CONFIG_WLAN_SERVICE == 1)*/
-
 #endif /* _GL_HOOK_API_H */

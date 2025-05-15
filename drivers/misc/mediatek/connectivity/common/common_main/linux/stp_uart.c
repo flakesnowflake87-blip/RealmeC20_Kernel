@@ -57,7 +57,7 @@
 #define MAX_PACKET_ALLOWED                2000
 
 
-static INT32 gDbgLevel = UART_LOG_INFO;
+static UINT32 gDbgLevel = UART_LOG_INFO;
 
 #define UART_PR_DBG(fmt, arg...)	\
 do { if (gDbgLevel >= UART_LOG_DBG)	\
@@ -116,7 +116,7 @@ UINT8 tx_buf[MTKSTP_BUFFER_SIZE] = { 0x0 };
 INT32 rd_idx;
 INT32 wr_idx;
 /* struct semaphore buf_mtx; */
-spinlock_t buf_lock;
+// static spinlock_t buf_lock;
 static INT32 mtk_wcn_uart_tx(const PUINT8 data, const UINT32 size, PUINT32 written_size);
 
 
@@ -347,7 +347,7 @@ static VOID stp_uart_tty_receive(struct tty_struct *tty, const unsigned char *da
 	{
 		struct timeval now;
 
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 		pr_warn("[+STP][  ][R] %4d --> sec = %lu, --> usec --> %lu\n",
 			count, now.tv_sec, now.tv_usec);
 	}
@@ -372,7 +372,7 @@ static VOID stp_uart_tty_receive(struct tty_struct *tty, const unsigned char *da
 	{
 		struct timeval now;
 
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 		pr_warn("[-STP][  ][R] %4d --> sec = %lu, --> usec --> %lu\n",
 			count, now.tv_sec, now.tv_usec);
 	}
@@ -532,7 +532,7 @@ static VOID stp_uart_tty_receive(struct tty_struct *tty, const PUINT8 data, PINT
 	{
 		struct timeval now;
 
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 	}
 #endif
 
@@ -551,7 +551,7 @@ static VOID stp_uart_tty_receive(struct tty_struct *tty, const PUINT8 data, PINT
 	{
 		struct timeval now;
 
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 	}
 #endif
 }
@@ -592,14 +592,8 @@ static INT32 stp_uart_tty_ioctl(struct tty_struct *tty, struct file *file, UINT3
 /*
  * We don't provide read/write/poll interface for user space.
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 21))
 static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
-				unsigned char *buf, size_t nr,
-				void **cookie, unsigned long offset)
-#else
-static ssize_t stp_uart_tty_read(struct tty_struct *tty, struct file *file,
-				unsigned char __user *buf, size_t nr)
-#endif
+				 unsigned char __user *buf, size_t nr)
 {
 	return 0;
 }

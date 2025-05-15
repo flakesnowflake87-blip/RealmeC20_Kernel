@@ -153,52 +153,50 @@ wlanoidSendSetQueryBowCmd(IN struct ADAPTER *prAdapter,
 {
 	struct GLUE_INFO *prGlueInfo;
 	struct CMD_INFO *prCmdInfo;
-	u_int8_t *pWifiCmdBufAddr;
-	struct mt66xx_chip_info *prChipInfo;
-	uint16_t cmd_size;
+	struct WIFI_CMD *prWifiCmd;
+	uint8_t ucCmdSeqNum;
 
 	ASSERT(prAdapter);
 
 	prGlueInfo = prAdapter->prGlueInfo;
-	prChipInfo = prAdapter->chip_info;
 	ASSERT(prGlueInfo);
 
 	DBGLOG(REQ, TRACE, "Command ID = 0x%08X\n", ucCID);
 
-	cmd_size = prChipInfo->u2CmdTxHdrSize + u4SetQueryInfoLen;
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, (CMD_HDR_SIZE + u4SetQueryInfoLen));
 
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
 		return WLAN_STATUS_FAILURE;
 	}
+	/* increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
+	DBGLOG(REQ, TRACE, "ucCmdSeqNum =%d\n", ucCmdSeqNum);
 
 	/* Setup common CMD Info Packet */
 	prCmdInfo->eCmdType = COMMAND_TYPE_NETWORK_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
+	prCmdInfo->u2InfoBufLen = (uint16_t) (CMD_HDR_SIZE + u4SetQueryInfoLen);
 	prCmdInfo->pfCmdDoneHandler = pfCmdDoneHandler;
 	prCmdInfo->pfCmdTimeoutHandler = pfCmdTimeoutHandler;
 	prCmdInfo->fgIsOid = FALSE;
 	prCmdInfo->ucCID = ucCID;
 	prCmdInfo->fgSetQuery = fgSetQuery;
 	prCmdInfo->fgNeedResp = fgNeedResp;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = u4SetQueryInfoLen;
 	prCmdInfo->pvInformationBuffer = NULL;
 	prCmdInfo->u4InformationBufferLength = 0;
 	prCmdInfo->u4PrivateData = (uint32_t) ucSeqNumber;
 
-	/* Setup WIFI_CMD (no payload) */
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen,
-		prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery,
-		&pWifiCmdBufAddr, FALSE, 0, S2D_INDEX_CMD_H2N);
+	/* Setup WIFI_CMD_T (no payload) */
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
 
 	if (u4SetQueryInfoLen > 0 && pucInfoBuffer != NULL)
-		kalMemCopy(pWifiCmdBufAddr, pucInfoBuffer, u4SetQueryInfoLen);
+		kalMemCopy(prWifiCmd->aucBuffer, pucInfoBuffer, u4SetQueryInfoLen);
 	/* insert into prCmdQueue */
 	kalEnqueueCommand(prGlueInfo, (struct QUE_ENTRY *) prCmdInfo);
 
@@ -1295,13 +1293,13 @@ void wlanbowCmdEventSetSetupConnection(IN struct ADAPTER *prAdapter, IN struct C
 /*----------------------------------------------------------------------------*/
 void wlanbowCmdEventReadLinkQuality(IN struct ADAPTER *prAdapter, IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
 {
-	struct LINK_QUALITY *prLinkQuality;
+	struct EVENT_LINK_QUALITY *prLinkQuality;
 	struct BT_OVER_WIFI_EVENT *prEvent;
 	struct BOW_LINK_QUALITY *prBowLinkQuality;
 
 	ASSERT(prAdapter);
 
-	prLinkQuality = (struct LINK_QUALITY *) pucEventBuf;
+	prLinkQuality = (struct EVENT_LINK_QUALITY *) pucEventBuf;
 
 	/* fill event header */
 	prEvent = (struct BT_OVER_WIFI_EVENT *) kalMemAlloc((sizeof(struct BT_OVER_WIFI_EVENT) + sizeof(struct BOW_LINK_QUALITY)), VIR_MEM_TYPE);
@@ -1332,13 +1330,13 @@ void wlanbowCmdEventReadLinkQuality(IN struct ADAPTER *prAdapter, IN struct CMD_
 /*----------------------------------------------------------------------------*/
 void wlanbowCmdEventReadRssi(IN struct ADAPTER *prAdapter, IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf)
 {
-	struct LINK_QUALITY *prLinkQuality;
+	struct EVENT_LINK_QUALITY *prLinkQuality;
 	struct BT_OVER_WIFI_EVENT *prEvent;
 	struct BOW_RSSI *prBowRssi;
 
 	ASSERT(prAdapter);
 
-	prLinkQuality = (struct LINK_QUALITY *) pucEventBuf;
+	prLinkQuality = (struct EVENT_LINK_QUALITY *) pucEventBuf;
 
 	/* fill event header */
 	prEvent = (struct BT_OVER_WIFI_EVENT *) kalMemAlloc((sizeof(struct BT_OVER_WIFI_EVENT) + sizeof(struct BOW_LINK_QUALITY)), VIR_MEM_TYPE);
@@ -1472,7 +1470,7 @@ void bowStopping(IN struct ADAPTER *prAdapter)
 		/* prBowBssInfo->fgIsNetActive = FALSE; */
 		/* prBowBssInfo->fgIsBeaconActivated = FALSE; */
 		nicPmIndicateBssAbort(prAdapter, prBowBssInfo->ucBssIndex);
-		bowChangeMediaState(prBowBssInfo, MEDIA_STATE_DISCONNECTED);
+		bowChangeMediaState(prBowBssInfo, PARAM_MEDIA_STATE_DISCONNECTED);
 		nicUpdateBss(prAdapter, prBowBssInfo->ucBssIndex);
 		/*temp solution for FW hal_pwr_mgt.c#3037 ASSERT */
 		nicDeactivateNetwork(prAdapter, prBowBssInfo->ucBssIndex);
@@ -1889,8 +1887,7 @@ void bowResponderScanDone(IN struct ADAPTER *prAdapter, IN struct MSG_HDR *prMsg
 	ASSERT(prMsgHdr);
 
 	prBowFsmInfo = &(prAdapter->rWifiVar.rBowFsmInfo);
-	prConnSettings =
-		aisGetConnSettings(prAdapter, AIS_DEFAULT_INDEX);
+	prConnSettings = &(prAdapter->rWifiVar.rConnSettings);
 	prScanDoneMsg = (struct MSG_SCN_SCAN_DONE *) prMsgHdr;
 	eFsmState = bowGetBowTableState(prAdapter, prBowFsmInfo->aucPeerAddress);
 
@@ -2035,10 +2032,10 @@ void bowResponderJoin(IN struct ADAPTER *prAdapter, IN struct BSS_DESC *prBssDes
 
 	prBowFsmInfo = &(prAdapter->rWifiVar.rBowFsmInfo);
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prBowFsmInfo->ucBssIndex);
-	prConnSettings = aisGetConnSettings(prAdapter, AIS_DEFAULT_INDEX);
+	prConnSettings = &(prAdapter->rWifiVar.rConnSettings);
 
 	/* 4 <1> We are going to connect to this BSS. */
-	prBssDesc->fgIsConnecting |= BIT(prBowFsmInfo->ucBssIndex);
+	prBssDesc->fgIsConnecting = TRUE;
 	bowSetBowTableState(prAdapter, prBowFsmInfo->aucPeerAddress, BOW_DEVICE_STATE_CONNECTING);
 
 	/* 4 <2> Setup corresponding STA_RECORD_T */
@@ -2169,8 +2166,7 @@ void bowFsmRunEventJoinComplete(IN struct ADAPTER *prAdapter, IN struct MSG_HDR 
 #endif
 
 			/* 4 <1.1> Change FW's Media State immediately. */
-			bowChangeMediaState(prBowBssInfo,
-				MEDIA_STATE_CONNECTED);
+			bowChangeMediaState(prBowBssInfo, PARAM_MEDIA_STATE_CONNECTED);
 
 			mqmProcessAssocRsp(prAdapter, prAssocRspSwRfb, pucIE, u2IELength);
 
@@ -2242,7 +2238,7 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 	struct BSS_INFO *prBssInfo;
 	struct BOW_FSM_INFO *prBowFsmInfo;
 
-	prConnSettings = aisGetConnSettings(prAdapter, AIS_DEFAULT_INDEX);
+	prConnSettings = &(prAdapter->rWifiVar.rConnSettings);
 
 	prBowFsmInfo = &(prAdapter->rWifiVar.rBowFsmInfo);
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prBowFsmInfo->ucBssIndex);
@@ -2253,7 +2249,7 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 	/* For indicating the Disconnect Event only if current media state is
 	 * disconnected and we didn't do indication yet.
 	 */
-	if (prBssInfo->eConnectionState == MEDIA_STATE_DISCONNECTED) {
+	if (prBssInfo->eConnectionState == PARAM_MEDIA_STATE_DISCONNECTED) {
 		if (prBssInfo->eConnectionStateIndicated == eConnectionState)
 			return;
 	}
@@ -2265,7 +2261,7 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 		/* 4 <1> Fill EVENT_CONNECTION_STATUS */
 		rEventConnStatus.ucMediaStatus = (uint8_t) eConnectionState;
 
-		if (eConnectionState == MEDIA_STATE_CONNECTED) {
+		if (eConnectionState == PARAM_MEDIA_STATE_CONNECTED) {
 			rEventConnStatus.ucReasonOfDisconnect = DISCONNECT_REASON_CODE_RESERVED;
 
 			if (prBssInfo->eCurrentOPMode == OP_MODE_BOW) {
@@ -2286,8 +2282,7 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 			COPY_MAC_ADDR(rEventConnStatus.aucBssid, prBssInfo->aucBSSID);
 
 			rEventConnStatus.u2BeaconPeriod = prBssInfo->u2BeaconInterval;
-			rEventConnStatus.u4FreqInKHz = nicChannelNum2Freq(
-				prBssInfo->ucPrimaryChannel, prBssInfo->eBand);
+			rEventConnStatus.u4FreqInKHz = nicChannelNum2Freq(prBssInfo->ucPrimaryChannel);
 
 			switch (prBssInfo->ucNonHTBasicPhyType) {
 			case PHY_TYPE_HR_DSSS_INDEX:
@@ -2318,7 +2313,7 @@ bowIndicationOfMediaStateToHost(IN struct ADAPTER *prAdapter,
 		prBssInfo->eConnectionStateIndicated = eConnectionState;
 	} else {
 		/* NOTE: Only delay the Indication of Disconnect Event */
-		ASSERT(eConnectionState == MEDIA_STATE_DISCONNECTED);
+		ASSERT(eConnectionState == PARAM_MEDIA_STATE_DISCONNECTED);
 
 		DBGLOG(BOW, INFO, "Postpone the indication of Disconnect for %d seconds\n",
 		       prConnSettings->ucDelayTimeOfDisconnectEvent);
@@ -2387,7 +2382,7 @@ uint32_t bowRunEventAAAComplete(IN struct ADAPTER *prAdapter, IN struct STA_RECO
 	DBGLOG(BOW, EVENT, "BoW AAA complete [" MACSTR "]\n", MAC2STR(prStaRec->aucMacAddr));
 
 	/*Update BssInfo to connected */
-	bowChangeMediaState(prBssInfo, MEDIA_STATE_CONNECTED);
+	bowChangeMediaState(prBssInfo, PARAM_MEDIA_STATE_CONNECTED);
 	nicUpdateBss(prAdapter, prBowFsmInfo->ucBssIndex);
 
 	/*Update StaRec to State3 */
@@ -2598,7 +2593,7 @@ u_int8_t bowValidateAssocReq(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prS
 #endif
 
 		/*Update BssInfo to FW */
-		bowChangeMediaState(prBowBssInfo, MEDIA_STATE_CONNECTED);
+		bowChangeMediaState(prBowBssInfo, PARAM_MEDIA_STATE_CONNECTED);
 		nicUpdateBss(prAdapter, prStaRec->ucBssIndex);
 
 		/*reply successful */

@@ -72,6 +72,12 @@
 #include "precomp.h"
 #include "que_mgt.h"
 
+#ifndef LINUX
+#include <limits.h>
+#else
+#include <linux/limits.h>
+#endif
+
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************
@@ -320,8 +326,8 @@ OUT uint16_t halUmacWrapFrePageCnt(IN struct ADAPTER
 
 	HAL_MCR_RD(prAdapter, UMAC_FREEPG_CNT(fgPsePleFlag),
 		   &u4Value);
-	return (u4Value & UMAC_FREEPG_CNT_FREEPAGE_CNT_MASK) >>
-		UMAC_FREEPG_CNT_FREEPAGE_CNT_OFFSET;
+	return ((u4Value & UMAC_FREEPG_CNT_FREEPAGE_CNT_MASK) >>
+		UMAC_FREEPG_CNT_FREEPAGE_CNT_OFFSET);
 }
 
 
@@ -342,8 +348,8 @@ OUT uint16_t halUmacWrapFfaCnt(IN struct ADAPTER *prAdapter,
 
 	HAL_MCR_RD(prAdapter, UMAC_FREEPG_CNT(fgPsePleFlag),
 		   &u4Value);
-	return (u4Value & UMAC_FREEPG_CNT_FFA_CNT_MASK) >>
-		UMAC_FREEPG_CNT_FFA_CNT_OFFSET;
+	return ((u4Value & UMAC_FREEPG_CNT_FFA_CNT_MASK) >>
+		UMAC_FREEPG_CNT_FFA_CNT_OFFSET);
 }
 
 

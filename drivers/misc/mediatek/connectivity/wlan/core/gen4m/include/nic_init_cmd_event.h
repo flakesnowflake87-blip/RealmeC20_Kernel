@@ -73,7 +73,6 @@
  */
 
 #include "gl_typedef.h"
-#include "wsys_cmd_handler_fw.h"
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -137,17 +136,8 @@ enum ENUM_INIT_CMD_ID {
 	INIT_CMD_ID_PATCH_START,
 	INIT_CMD_ID_PATCH_WRITE,
 	INIT_CMD_ID_PATCH_FINISH,
-	INIT_CMD_ID_PHY_ACTION,
-	INIT_CMD_ID_LOG_TIME_SYNC,
-
 	INIT_CMD_ID_PATCH_SEMAPHORE_CONTROL = 0x10,
 	INIT_CMD_ID_HIF_LOOPBACK = 0x20,
-
-#if (CFG_DOWNLOAD_DYN_MEMORY_MAP == 1)
-	INIT_CMD_ID_DYN_MEM_MAP_PATCH_FINISH = 0x40,
-	INIT_CMD_ID_DYN_MEM_MAP_FW_FINISH = 0x41,
-#endif
-
 #if CFG_SUPPORT_COMPRESSION_FW_OPTION
 	INIT_CMD_ID_DECOMPRESSED_WIFI_START = 0xFF,
 #endif
@@ -158,8 +148,7 @@ enum ENUM_INIT_EVENT_ID {
 	INIT_EVENT_ID_CMD_RESULT = 1,
 	INIT_EVENT_ID_ACCESS_REG,
 	INIT_EVENT_ID_PENDING_ERROR,
-	INIT_EVENT_ID_PATCH_SEMA_CTRL,
-	INIT_EVENT_ID_PHY_ACTION
+	INIT_EVENT_ID_PATCH_SEMA_CTRL
 };
 
 enum ENUM_INIT_PATCH_STATUS {
@@ -173,17 +162,42 @@ enum ENUM_INIT_PATCH_STATUS {
  *                             D A T A   T Y P E S
  *******************************************************************************
  */
-struct WIFI_CMD_INFO {
-	uint16_t u2InfoBufLen;
-	uint8_t *pucInfoBuffer;
-	uint8_t ucCID;
-	uint8_t ucExtCID;
-	uint8_t ucPktTypeID;
-	uint8_t ucSetQuery;
-	uint8_t ucS2DIndex;
-};
 
 /* commands */
+struct INIT_WIFI_CMD {
+	uint8_t ucCID;
+	uint8_t ucPktTypeID;	/* Must be 0xA0 (CMD Packet) */
+	uint8_t ucReserved;
+	uint8_t ucSeqNum;
+#if 1
+	/* padding fields, hw may auto modify this field */
+	uint8_t ucD2B0Rev;
+	uint8_t ucExtenCID;	/* Extend CID */
+	uint8_t ucS2DIndex;	/* Index for Src to Dst in CMD usage */
+	uint8_t ucExtCmdOption;	/* Extend CID option */
+
+	uint32_t au4D3toD7Rev[5];	/* padding fields */
+#endif
+	uint8_t aucBuffer[0];
+};
+
+struct INIT_HIF_TX_HEADER {
+	uint16_t u2TxByteCount;	/* Max value is over 2048 */
+	uint16_t u2PQ_ID;	/* Must be 0x8000 (Port1, Queue 0) */
+#if 1
+	uint8_t ucWlanIdx;
+	uint8_t ucHeaderFormat;
+	uint8_t ucHeaderPadding;
+	uint8_t ucPktFt: 2;
+	uint8_t ucOwnMAC: 6;
+	uint32_t au4D2toD7Rev[6];
+
+	uint16_t u2Length;
+	uint16_t u2PqId;
+#endif
+	struct INIT_WIFI_CMD rInitWifiCmd;
+};
+
 struct INIT_CMD_DOWNLOAD_CONFIG {
 	uint32_t u4Address;
 	uint32_t u4Length;
@@ -236,63 +250,28 @@ struct INIT_CMD_ACCESS_REG {
 	uint32_t u4Data;
 };
 
-#if (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1)
-#define HAL_PHY_ACTION_MAGIC_NUM			0x556789AA
-#define HAL_PHY_ACTION_VERSION				0x01
-
-#define HAL_PHY_ACTION_CAL_FORCE_CAL_REQ	0x01
-#define HAL_PHY_ACTION_CAL_FORCE_CAL_RSP	0x81
-#define HAL_PHY_ACTION_CAL_USE_BACKUP_REQ	0x02
-#define HAL_PHY_ACTION_CAL_USE_BACKUP_RSP	0x82
-#define HAL_PHY_ACTION_ERROR                0xff
-
-enum ENUM_HAL_PHY_ACTION_STATUS {
-	HAL_PHY_ACTION_STATUS_SUCCESS = 0x00,
-	HAL_PHY_ACTION_STATUS_FAIL,
-	HAL_PHY_ACTION_STATUS_RECAL,
-	HAL_PHY_ACTION_STATUS_EPA_ELNA,
-};
-
-struct INIT_CMD_PHY_ACTION_CAL {
-	uint8_t ucCmd;
-	uint8_t aucReserved[3];
-};
-
-struct INIT_EVENT_PHY_ACTION_RSP {
-	uint8_t ucEvent;
-	uint8_t ucStatus;
-	uint8_t aucReserved[2];
-	uint32_t u4EmiAddress;
-	uint32_t u4EmiLength;
-	uint32_t u4Temperatue;
-};
-
-enum ENUM_HAL_PHY_ACTION_TAG {
-	HAL_PHY_ACTION_TAG_NVRAM,
-	HAL_PHY_ACTION_TAG_CAL,
-	HAL_PHY_ACTION_TAG_COM_FEM,
-	/*HAL_PHY_ACTION_TAG_LAA,*/
-	HAL_PHY_ACTION_TAG_NUM,
-};
-
-struct HAL_PHY_ACTION_TLV {
-	uint16_t u2Tag;
-	uint16_t u2BufLength;
-	uint8_t  aucBuffer[0];
-};
-
-struct HAL_PHY_ACTION_TLV_HEADER {
-	uint32_t u4MagicNum;
-	uint8_t  ucTagNums;
-	uint8_t  ucVersion;
-	uint16_t u2BufLength;
-	uint8_t  aucBuffer[0];
-};
-#endif /* (CFG_SUPPORT_PRE_ON_PHY_ACTION == 1) */
-
 /* Events */
+struct INIT_WIFI_EVENT {
+	uint16_t u2RxByteCount;
+	uint16_t u2PacketType;	/* Must be filled with 0xE000 (EVENT Packet) */
+	uint8_t ucEID;
+	uint8_t ucSeqNum;
+	uint8_t aucReserved[2];
+	uint8_t aucBuffer[0];
+};
+
 struct INIT_HIF_RX_HEADER {
 	struct INIT_WIFI_EVENT rInitWifiEvent;
+};
+
+struct INIT_EVENT_CMD_RESULT {
+	uint8_t ucStatus;	/* 0: success */
+	/* 1: rejected by invalid param */
+	/* 2: rejected by incorrect CRC */
+	/* 3: rejected by decryption failure */
+	/* 4: unknown CMD */
+	/* 5: timeout */
+	uint8_t aucReserved[3];
 };
 
 struct INIT_EVENT_ACCESS_REG {

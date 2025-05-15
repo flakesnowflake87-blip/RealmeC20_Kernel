@@ -61,6 +61,7 @@
 
 #include "nic_cmd_event.h"
 #include "wlan_typedef.h"
+#include "nic_tx.h"
 
 enum ENUM_USB_END_POINT {
 	USB_DATA_BULK_OUT_EP4 = 4,
@@ -69,10 +70,6 @@ enum ENUM_USB_END_POINT {
 	USB_DATA_BULK_OUT_EP7,
 	USB_DATA_BULK_OUT_EP8,
 	USB_DATA_BULK_OUT_EP9,
-
-	USB_DATA_BULK_IN_EP4 = 4,
-	USB_DATA_BULK_IN_EP5,
-
 };
 
 /*******************************************************************************
@@ -177,9 +174,7 @@ enum ENUM_USB_END_POINT {
 #define USB_RX_DATA_RFB_RSV_CNT         (4)
 
 #define DEVICE_VENDOR_REQUEST_IN        (0xc0)
-#define DEVICE_VENDOR_REQUEST_IN_CONNAC2       (0xdF)
 #define DEVICE_VENDOR_REQUEST_OUT       (0x40)
-#define DEVICE_VENDOR_REQUEST_OUT_CONNAC2       (0x5F)
 #define VENDOR_TIMEOUT_MS               (1000)
 #define BULK_TIMEOUT_MS                 (1500)
 #define INTERRUPT_TIMEOUT_MS            (1000)
@@ -194,13 +189,11 @@ enum ENUM_USB_END_POINT {
 #define VND_REQ_FEATURE_SET             (0x91)
 #define FEATURE_SET_WVALUE_RESUME       (0x5)
 #define FEATURE_SET_WVALUE_SUSPEND      (0x6)
-#define VND_REQ_BUF_SIZE                (16)
 
 #define USB_TX_CMD_QUEUE_MASK           (BITS(2, 4))   /* For H2CDMA Tx CMD mapping */
 
 #define USB_DBDC1_TC                    (TC_NUM)/* for DBDC1 */
 #define USB_TC_NUM                      (TC_NUM + 1)/* for DBDC1 */
-#define USB_TX_EPOUT_NUM                (5)
 
 #define HIF_EXTRA_IO_BUFFER_SIZE        (0)
 
@@ -217,22 +210,13 @@ enum ENUM_USB_END_POINT {
  */
 
 enum usb_state {
-	USB_STATE_WIFI_OFF, /* Hif power off wifi */
 	USB_STATE_LINK_DOWN,
-	USB_STATE_PRE_SUSPEND_START,
+	USB_STATE_LINK_UP,
 	USB_STATE_PRE_SUSPEND_DONE,
 	USB_STATE_PRE_SUSPEND_FAIL,
 	USB_STATE_SUSPEND,
 	USB_STATE_PRE_RESUME,
-	USB_STATE_LINK_UP,
-	USB_STATE_READY
-};
-
-enum usb_submit_type {
-	SUBMIT_TYPE_TX_CMD,
-	SUBMIT_TYPE_TX_DATA,
-	SUBMIT_TYPE_RX_EVENT,
-	SUBMIT_TYPE_RX_DATA
+	USB_STATE_WIFI_OFF /* Hif power off wifi */
 };
 
 enum EVENT_EP_TYPE {
@@ -240,11 +224,6 @@ enum EVENT_EP_TYPE {
 	EVENT_EP_TYPE_BULK,
 	EVENT_EP_TYPE_INTR,
 	EVENT_EP_TYPE_DATA_EP
-};
-
-enum ENUM_SUSPEND_VERSION {
-	SUSPEND_V1 = 1,
-	SUSPEND_V2
 };
 
 struct BUF_CTRL {
@@ -265,7 +244,6 @@ struct GL_HIF_INFO {
 	spinlock_t rTxCmdQLock;
 	spinlock_t rRxEventQLock;
 	spinlock_t rRxDataQLock;
-	spinlock_t rStateLock;
 
 	void *prTxCmdReqHead;
 	void *arTxDataFfaReqHead;
@@ -285,17 +263,17 @@ struct GL_HIF_INFO {
 	struct list_head rTxDataFreeQ;
 	struct usb_anchor rTxDataAnchor;
 #endif
-	/*spinlock_t rTxDataFreeQLock;*/
+	spinlock_t rTxDataFreeQLock;
 	struct list_head rRxEventFreeQ;
-	/*spinlock_t rRxEventFreeQLock;*/
+	spinlock_t rRxEventFreeQLock;
 	struct usb_anchor rRxEventAnchor;
 	struct list_head rRxDataFreeQ;
-	/*spinlock_t rRxDataFreeQLock;*/
+	spinlock_t rRxDataFreeQLock;
 	struct usb_anchor rRxDataAnchor;
 	struct list_head rRxEventCompleteQ;
-	/*spinlock_t rRxEventCompleteQLock;*/
+	spinlock_t rRxEventCompleteQLock;
 	struct list_head rRxDataCompleteQ;
-	/*spinlock_t rRxDataCompleteQLock;*/
+	spinlock_t rRxDataCompleteQLock;
 	struct list_head rTxCmdCompleteQ;
 	struct list_head rTxDataCompleteQ;
 
@@ -310,8 +288,6 @@ struct GL_HIF_INFO {
 	struct BUF_CTRL rRxDataBufCtrl[USB_REQ_RX_DATA_CNT];
 
 	struct mutex vendor_req_sem;
-	void *vendor_req_buf;
-	u_int32_t vendor_req_buf_sz;
 	u_int8_t fgIntReadClear;
 	u_int8_t fgMbxReadClear;
 	u_int8_t fgEventEpDetected;
@@ -330,24 +306,10 @@ struct USB_REQ {
 struct BUS_INFO {
 	const uint32_t u4UdmaWlCfg_0_Addr;
 	const uint32_t u4UdmaWlCfg_1_Addr;
-	const uint32_t u4UdmaTxQsel;
-	const uint32_t u4device_vender_request_in;
-	const uint32_t u4device_vender_request_out;
-	const uint32_t u4usb_tx_cmd_queue_mask;
 	uint32_t u4UdmaWlCfg_0;
 	uint32_t u4UdmaTxTimeout; /* UDMA Tx time out limit, unit: us */
-	uint32_t u4SuspendVer;
-	u_int8_t (*asicUsbSuspend)(
-		IN struct ADAPTER *prAdapter,
-		IN struct GLUE_INFO *prGlueInfo);
-	u_int8_t (*asicUsbResume)(
-		IN struct ADAPTER *prAdapter,
-		IN struct GLUE_INFO *prGlueInfo);
+	u_int8_t (*asicUsbSuspend)(IN struct ADAPTER *prAdapter, IN struct GLUE_INFO *prGlueInfo);
 	uint8_t (*asicUsbEventEpDetected)(IN struct ADAPTER *prAdapter);
-	uint16_t (*asicUsbRxByteCount)(IN struct ADAPTER *prAdapter,
-		IN struct BUS_INFO *prBusInfo,
-		IN uint8_t *pRXD);
-	void (*DmaShdlInit)(IN struct ADAPTER *prAdapter);
 };
 
 /* USB_REQ_T prPriv field for TxData */
@@ -369,8 +331,7 @@ struct BUS_INFO {
 ********************************************************************************
 */
 
-#define USB_TRANS_MSDU_TC(_prMsduInfo) \
-	((_prMsduInfo)->ucWmmQueSet ? USB_DBDC1_TC : (_prMsduInfo)->ucTC)
+#define USB_TRANS_MSDU_TC(_prMsduInfo) ((_prMsduInfo)->ucWmmQueSet ? USB_DBDC1_TC:(_prMsduInfo)->ucTC)
 
 /*******************************************************************************
 *                   F U N C T I O N   D E C L A R A T I O N S
@@ -399,20 +360,14 @@ void glUdmaTxRxEnable(struct GLUE_INFO *prGlueInfo, u_int8_t enable);
 
 void glUdmaRxAggEnable(struct GLUE_INFO *prGlueInfo, u_int8_t enable);
 
-int32_t mtk_usb_vendor_request(IN struct GLUE_INFO *prGlueInfo,
-		IN uint8_t uEndpointAddress, IN uint8_t RequestType,
-	    IN uint8_t Request, IN uint16_t Value, IN uint16_t Index,
-	    IN void *TransferBuffer, IN uint32_t TransferBufferLength);
+u_int8_t mtk_usb_vendor_request(IN struct GLUE_INFO *prGlueInfo, IN uint8_t uEndpointAddress, IN uint8_t RequestType,
+			    IN uint8_t Request, IN uint16_t Value, IN uint16_t Index, IN void *TransferBuffer,
+			    IN uint32_t TransferBufferLength);
 
 void glUsbEnqueueReq(struct GL_HIF_INFO *prHifInfo, struct list_head *prHead, struct USB_REQ *prUsbReq,
 		     spinlock_t *prLock, u_int8_t fgHead);
 struct USB_REQ *glUsbDequeueReq(struct GL_HIF_INFO *prHifInfo, struct list_head *prHead, spinlock_t *prLock);
 u_int8_t glUsbBorrowFfaReq(struct GL_HIF_INFO *prHifInfo, uint8_t ucTc);
-
-void glUsbSetState(IN struct GL_HIF_INFO *prHifInfo, enum usb_state state);
-
-int glUsbSubmitUrb(IN struct GL_HIF_INFO *prHifInfo, struct urb *urb,
-			enum usb_submit_type type);
 
 uint32_t halTxUSBSendCmd(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucTc, IN struct CMD_INFO *prCmdInfo);
 void halTxUSBSendCmdComplete(struct urb *urb);
@@ -424,12 +379,8 @@ void halTxUSBSendDataComplete(struct urb *urb);
 void halTxUSBProcessMsduDone(IN struct GLUE_INFO *prGlueInfo, struct USB_REQ *prUsbReq);
 void halTxUSBProcessDataComplete(IN struct ADAPTER *prAdapter, struct USB_REQ *prUsbReq);
 
-uint32_t halRxUSBEnqueueRFB(
-	IN struct ADAPTER *prAdapter,
-	IN uint8_t *pucBuf,
-	IN uint32_t u4Length,
-	IN uint32_t u4MinRfbCnt,
-	IN struct list_head *prCompleteQ);
+uint32_t halRxUSBEnqueueRFB(IN struct ADAPTER *prAdapter, IN uint8_t *pucBuf, IN uint32_t u4Length,
+	IN uint32_t u4MinRfbCnt);
 uint32_t halRxUSBReceiveEvent(IN struct ADAPTER *prAdapter, IN u_int8_t fgFillUrb);
 void halRxUSBReceiveEventComplete(struct urb *urb);
 uint32_t halRxUSBReceiveData(IN struct ADAPTER *prAdapter);
@@ -438,7 +389,6 @@ void halRxUSBProcessEventDataComplete(IN struct ADAPTER *prAdapter,
 	struct list_head *prCompleteQ, struct list_head *prFreeQ, uint32_t u4MinRfbCnt);
 
 void halUSBPreSuspendCmd(IN struct ADAPTER *prAdapter);
-void halUSBPreResumeCmd(IN struct ADAPTER *prAdapter);
 void halUSBPreSuspendDone(IN struct ADAPTER *prAdapter, IN struct CMD_INFO *prCmdInfo, IN uint8_t *pucEventBuf);
 void halUSBPreSuspendTimeout(IN struct ADAPTER *prAdapter, IN struct CMD_INFO *prCmdInfo);
 
@@ -453,6 +403,7 @@ uint16_t glGetUsbDeviceProductId(struct usb_device *dev);
 int32_t glGetUsbDeviceManufacturerName(struct usb_device *dev, uint8_t *buffer, uint32_t bufLen);
 int32_t glGetUsbDeviceProductName(struct usb_device *dev, uint8_t *buffer, uint32_t bufLen);
 int32_t glGetUsbDeviceSerialNumber(struct usb_device *dev, uint8_t *buffer, uint32_t bufLen);
+
 
 /*******************************************************************************
 *                              F U N C T I O N S

@@ -82,22 +82,25 @@
 #define CONN_CFG_ON_CONN_ON_MISC_ADDR	(CONN_CFG_ON_BASE + 0x140)
 #define CONN_CFG_CHIP_ID_ADDR	        (CONN_CFG_BASE + 0x1010)
 
+#define CONN_MCU_CONFG_ON_BASE			0x81030000
+
+#define CONN_MCU_CONFG_ON_HOST_MAILBOX_WF_ADDR \
+	(CONN_MCU_CONFG_ON_BASE + 0x100)
+
 /*
- * ============================================================================
- *
- *  ---CONN_ON_MISC (0x81021000 + 0x140)---
- *
- *    HOST_LPCR_FW_OWN[0]          - (W1C)  xxx
- *    DRV_FM_STAT_SYNC[3..1]       - (RW)  xxx
- *    RBIST_MODE[4]                - (RW)  xxx
- *    RESERVED5[31..5]             - (RO) Reserved bits
- *
- * ============================================================================
- */
-#define CONN_CFG_ON_CONN_ON_MISC_RBIST_MODE_ADDR \
-	CONN_CFG_ON_CONN_ON_MISC_ADDR
-#define CONN_CFG_ON_CONN_ON_MISC_RBIST_MODE_MASK \
-	0x00000010/*RBIST_MODE[4]*/
+* =====================================================================================
+*
+*  ---CONN_ON_MISC (0x81021000 + 0x140)---
+*
+*    HOST_LPCR_FW_OWN[0]          - (W1C)  xxx
+*    DRV_FM_STAT_SYNC[3..1]       - (RW)  xxx
+*    RBIST_MODE[4]                - (RW)  xxx
+*    RESERVED5[31..5]             - (RO) Reserved bits
+*
+* =====================================================================================
+*/
+#define CONN_CFG_ON_CONN_ON_MISC_RBIST_MODE_ADDR  CONN_CFG_ON_CONN_ON_MISC_ADDR
+#define CONN_CFG_ON_CONN_ON_MISC_RBIST_MODE_MASK               0x00000010/*RBIST_MODE[4]*/
 #define CONN_CFG_ON_CONN_ON_MISC_RBIST_MODE_SHFT               4
 #define CONN_CFG_ON_CONN_ON_MISC_DRV_FM_STAT_SYNC_ADDR \
 	CONN_CFG_ON_CONN_ON_MISC_ADDR
@@ -131,11 +134,6 @@
 #define MCU2HOST_SW_INT_ENA			(PCIE_HIF_BASE + 0x01F4)
 
 #define WPDMA_PAUSE_TX_Q			(PCIE_HIF_BASE + 0x0224)
-
-/* Configuraiton Push */
-#define PCIE_DOORBELL_PUSH          (0x484)
-#define CR_PCIE_CFG_SET_OWN         (0x1 << 0)
-#define CR_PCIE_CFG_CLEAR_OWN       (0x1 << 1)
 #endif /* _HIF_PCIE */
 
 #if defined(_HIF_USB)
@@ -189,9 +187,6 @@
 #define GALS_AXI_DEBUG_FLAG                     0x3333
 #define MCU_AXI_DEBUG_FLAG                      0x4444
 #define RBUS_DEBUG_FLAG                         0x118
-
-#define WPDMA_PAUSE_TX_Q_RINGIDX_OFFSET         16
-#define WPDMA_PAUSE_TX_Q_RINGIDX_MASK           0xFFFF0000
 #endif /* _HIF_PCIE */
 
 
@@ -210,18 +205,13 @@
 #define MCU_INT_SER_TRIGGER_FROM_HOST   BIT(2)
 #define MCU_INT_PDMA0_RECOVERY_DONE     BIT(3)
 #define MCU_INT_DRIVER_SER              BIT(4)
-#if (CFG_SUPPORT_CONNAC2X == 0)
-#define MCU_INT_NOTIFY_MD_CRASH         BIT(5)
-#else
-#define MCU_INT_NOTIFY_MD_CRASH         BIT(2)
-#endif
 #define CONNAC_MCU_SW_INT BIT(29)
 
 #define ERROR_DETECT_STOP_PDMA_WITH_FW_RELOAD BIT(1)
 #define ERROR_DETECT_STOP_PDMA BIT(2)
 #define ERROR_DETECT_RESET_DONE BIT(3)
 #define ERROR_DETECT_RECOVERY_DONE BIT(4)
-#define ERROR_DETECT_MCU_NORMAL_STATE  BIT(5)
+#define ERROR_DETECT_N9_NORMAL_STATE  BIT(5)
 #define CP_LMAC_HANG_WORKAROUND_STEP1 BIT(8)
 #define CP_LMAC_HANG_WORKAROUND_STEP2 BIT(9)
 #define ERROR_DETECT_LMAC_ERROR BIT(24)
@@ -234,7 +224,7 @@
 	(ERROR_DETECT_STOP_PDMA			\
 	 | ERROR_DETECT_RESET_DONE		\
 	 | ERROR_DETECT_RECOVERY_DONE		\
-	 | ERROR_DETECT_MCU_NORMAL_STATE)
+	 | ERROR_DETECT_N9_NORMAL_STATE)
 
 
 /*******************************************************************************

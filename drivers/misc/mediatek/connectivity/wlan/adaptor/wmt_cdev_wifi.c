@@ -29,16 +29,14 @@
 #include <linux/inetdevice.h>
 #include <linux/string.h>
 
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-#include "wifi_pwr_on.h"
-#else
+#include "fw_log_wifi.h"
 #include "wmt_exp.h"
 #include "stp_exp.h"
-#endif
+
 MODULE_LICENSE("Dual BSD/GPL");
 
 #define WIFI_DRIVER_NAME "mtk_wmt_wifi_chrdev"
-#define WIFI_DEV_MAJOR 0
+#define WIFI_DEV_MAJOR 153
 
 #define PFX                         "[MTK-WIFI] "
 #define WIFI_LOG_DBG                  3
@@ -48,13 +46,6 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 uint32_t gDbgLevel = WIFI_LOG_DBG;
 
-#ifndef CONFIG_MTK_CONNECTIVITY_LOG
-#define WIFI_DBG_FUNC(fmt, arg...)
-#define WIFI_INFO_FUNC(fmt, arg...)
-#define WIFI_INFO_FUNC_LIMITED(fmt, arg...)
-#define WIFI_WARN_FUNC(fmt, arg...)
-#define WIFI_ERR_FUNC(fmt, arg...)
-#else
 #define WIFI_DBG_FUNC(fmt, arg...)	\
 	do { \
 		if (gDbgLevel >= WIFI_LOG_DBG) \
@@ -77,15 +68,14 @@ uint32_t gDbgLevel = WIFI_LOG_DBG;
 	} while (0)
 #define WIFI_ERR_FUNC(fmt, arg...)	\
 	do { \
-		pr_info(PFX "%s[E]: " fmt, __func__, ##arg); \
+		if (gDbgLevel >= WIFI_LOG_ERR) \
+			pr_info(PFX "%s[E]: " fmt, __func__, ##arg); \
 	} while (0)
-#endif
 
 #define VERSION "2.0"
 
 static int32_t WIFI_devs = 1;
 static int32_t WIFI_major = WIFI_DEV_MAJOR;
-static dev_t wifi_devno;
 module_param(WIFI_major, uint, 0);
 static struct cdev WIFI_cdev;
 #if CREATE_NODE_DYNAMIC
@@ -102,8 +92,6 @@ enum {
 	WLAN_MODE_AP,
 	WLAN_MODE_STA_P2P,
 	WLAN_MODE_STA_AP_P2P,
-	WLAN_MODE_DUAL_P2P,
-	WLAN_MODE_DUAL_AP,
 	WLAN_MODE_MAX
 };
 static int32_t wlan_mode = WLAN_MODE_HALT;
@@ -111,13 +99,7 @@ static int32_t powered;
 static int32_t isconcurrent;
 static char *ifname = WLAN_IFACE_NAME;
 static uint32_t driver_loaded;
-static int32_t low_latency_mode;
-static int32_t wifi_standalone_log_mode;
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-static uint8_t  driver_resetting;
-static uint8_t  write_processing;
-static uint8_t  pre_cal_ongoing;
-#endif
+
 /*******************************************************************
  */
 enum ENUM_RESET_STATUS {
@@ -137,97 +119,20 @@ struct PARAM_CUSTOM_P2P_SET_STRUCT {
 typedef int32_t(*set_p2p_mode) (struct net_device *netdev, struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode);
 
 static set_p2p_mode pf_set_p2p_mode;
-void register_set_p2p_mode_handler(set_p2p_mode handler)
+VOID register_set_p2p_mode_handler(set_p2p_mode handler)
 {
 	WIFI_INFO_FUNC("(pid %d) register set p2p mode handler %p\n", current->pid, handler);
 	pf_set_p2p_mode = handler;
 }
 EXPORT_SYMBOL(register_set_p2p_mode_handler);
 
-void update_driver_loaded_status(uint8_t loaded)
+VOID update_driver_loaded_status(uint8_t loaded)
 {
 	WIFI_INFO_FUNC("update_driver_loaded_status: %d\n", loaded);
 	driver_loaded = loaded;
 }
 EXPORT_SYMBOL(update_driver_loaded_status);
 
-static int atoh(const char *str, uint32_t *hval)
-{
-	unsigned int i;
-	uint32_t val = 0;
-
-	WIFI_INFO_FUNC("*str : %s, len = %zu\n", str,
-			strlen((const char *)str));
-	for (i = 0; i < strlen((const char *)str); i++) {
-		if (str[i] >= 'a' && str[i] <= 'f')
-			val = (val << 4) + (str[i] - 'a' + 10);
-		else if (str[i] >= 'A' && str[i] <= 'F')
-			val = (val << 4) + (str[i] - 'A' + 10);
-		else if (*(str + i) >= '0' && *(str + i) <= '9')
-			val = (val << 4) + (*(str + i) - '0');
-	}
-
-	*hval = val;
-
-	return 0;
-}
-
-void set_low_latency_mode(const char *mode)
-{
-	atoh(mode, &low_latency_mode);
-	WIFI_INFO_FUNC("LLM : %d\n", low_latency_mode);
-}
-
-uint32_t get_low_latency_mode(void)
-{
-	WIFI_INFO_FUNC("LLM : %d\n", low_latency_mode);
-	return low_latency_mode;
-}
-EXPORT_SYMBOL(get_low_latency_mode);
-
-void set_wifi_standalone_log_mode(const int mode)
-{
-	wifi_standalone_log_mode = mode;
-}
-
-uint32_t get_wifi_standalone_log_mode(void)
-{
-	return wifi_standalone_log_mode;
-}
-EXPORT_SYMBOL(get_wifi_standalone_log_mode);
-
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-void update_driver_reset_status(uint8_t fgIsResetting)
-{
-	WIFI_INFO_FUNC("update_driver_reset_status: %d\n", fgIsResetting);
-	driver_resetting = fgIsResetting;
-}
-EXPORT_SYMBOL(update_driver_reset_status);
-int32_t get_wifi_powered_status(void)
-{
-	WIFI_INFO_FUNC("wifi power status : %d\n", powered);
-	return powered;
-}
-EXPORT_SYMBOL(get_wifi_powered_status);
-int32_t get_wifi_process_status(void)
-{
-	WIFI_INFO_FUNC("wifi write status: %d\n", write_processing);
-	return write_processing;
-}
-EXPORT_SYMBOL(get_wifi_process_status);
-void update_pre_cal_status(uint8_t fgIsPreCal)
-{
-	WIFI_INFO_FUNC("update_pre_cal_status: %d\n", fgIsPreCal);
-	pre_cal_ongoing = fgIsPreCal;
-}
-EXPORT_SYMBOL(update_pre_cal_status);
-uint8_t get_pre_cal_status(void)
-{
-	WIFI_INFO_FUNC("pre cal status: %d\n", pre_cal_ongoing);
-	return pre_cal_ongoing;
-}
-EXPORT_SYMBOL(get_pre_cal_status);
-#endif
 
 enum ENUM_WLAN_DRV_BUF_TYPE_T {
 	BUF_TYPE_NVRAM,
@@ -262,7 +167,7 @@ EXPORT_SYMBOL(register_file_buf_handler);
  *  Receiving RESET_START message
  */
 /*-----------------------------------------------------------------*/
-int32_t wifi_reset_start(void)
+int32_t wifi_reset_start(VOID)
 {
 	struct net_device *netdev = NULL;
 	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
@@ -315,17 +220,7 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 
 		if (powered == 1) {
 			/* WIFI is on before whole chip reset, reopen it now */
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-			/*
-			 * mtk_wland_thread_main will check this flag for current state.
-			 * if this flag is TRUE, mtk_wland_thread_main will not do power on again.
-			 * Set this flag to FALSE to finish the reset procedure
-			 */
-			g_fgIsWiFiOn = MTK_WCN_BOOL_FALSE;
-			if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_ON) == MTK_WCN_BOOL_FALSE) {
-#else
 			if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
-#endif
 				WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
 				goto done;
 			} else {
@@ -368,8 +263,16 @@ int32_t wifi_reset_end(enum ENUM_RESET_STATUS status)
 					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_AP);
 					ret = 0;
 				}
-			} else
-				ret = 0;
+			} else if (wlan_mode == WLAN_MODE_STA_AP_P2P) {
+				p2pmode.u4Enable = 1;
+				p2pmode.u4Mode = 3;
+				if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
+					WIFI_ERR_FUNC("Set wlan mode 3 fail\n");
+				} else {
+					WIFI_WARN_FUNC("Set wlan mode %d\n", WLAN_MODE_STA_AP_P2P);
+					ret = 0;
+				}
+			}
 done:
 			if (netdev != NULL)
 				dev_put(netdev);
@@ -400,38 +303,24 @@ static int WIFI_close(struct inode *inode, struct file *file)
 
 ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff_t *f_pos)
 {
-	int32_t retval = -EIO;
-	int8_t local[20] = { 0 };
+	INT32 retval = -EIO;
+	INT8 local[20] = { 0 };
 	struct net_device *netdev = NULL;
 	struct PARAM_CUSTOM_P2P_SET_STRUCT p2pmode;
 	int32_t wait_cnt = 0;
 	int copy_size = 0;
 
 	down(&wr_mtx);
-	if (count == 0) {
+	if (count <= 0) {
 		WIFI_ERR_FUNC("WIFI_write invalid param\n");
 		goto done;
 	}
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-	if (driver_resetting == 1) {
-		WIFI_ERR_FUNC("Wi-Fi is resetting\n");
-		goto done;
-	}
-#endif
+
 	copy_size = min(sizeof(local) - 1, count);
-	if (copy_size < 0) {
-		WIFI_ERR_FUNC("Invalid copy_size: %d\n", copy_size);
-		goto done;
-	}
 	if (copy_from_user(local, buf, copy_size) == 0) {
-		local[copy_size] = '\0';
-		WIFI_INFO_FUNC("WIFI_write %s, length %zu, copy_size %d\n",
-			local, count, copy_size);
+		WIFI_INFO_FUNC("WIFI_write %s, length %zu\n", local, count);
 
 		if (local[0] == '0') {
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-			write_processing = 1;
-#endif
 			if (powered == 0) {
 				WIFI_INFO_FUNC("WIFI is already power off!\n");
 				retval = count;
@@ -458,32 +347,22 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 				netdev = NULL;
 			}
 
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-			if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_OFF) == MTK_WCN_BOOL_FALSE) {
-#else
 			if (mtk_wcn_wmt_func_off(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
-#endif
 				WIFI_ERR_FUNC("WMT turn off WIFI fail!\n");
 			} else {
-				WIFI_INFO_FUNC("WMT turn off WIFI success!\n");
+				WIFI_INFO_FUNC("WMT turn off WIFI OK!\n");
 				powered = 0;
 				retval = count;
 				wlan_mode = WLAN_MODE_HALT;
 			}
 		} else if (local[0] == '1') {
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-			write_processing = 1;
-#endif
 			if (powered == 1) {
 				WIFI_INFO_FUNC("WIFI is already power on!\n");
 				retval = count;
 				goto done;
 			}
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-			if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_ON) == MTK_WCN_BOOL_FALSE) {
-#else
+
 			if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
-#endif
 				WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
 			} else {
 				powered = 1;
@@ -493,26 +372,24 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 			}
 		} else if (!strncmp(local, "WR-BUF:", 7)) {
 			file_buf_handler handler = NULL;
-			void *ctx = NULL;
+			VOID *ctx = NULL;
 
 			if (!strncmp(&local[7], "NVRAM", 5)) {
 				copy_size = count - 12;
 				buf += 12;
 				wait_cnt = 0;
-				while (wait_cnt < 2000) {
+				while (wait_cnt < 20) {
 					handler = buf_handler[BUF_TYPE_NVRAM];
 					ctx = buf_handler_ctx[BUF_TYPE_NVRAM];
 					if (handler)
 						break;
-					if (wait_cnt % 20 == 0)
-						WIFI_ERR_FUNC("Wi-Fi driver is not ready for 2s\n");
 					msleep(100);
 					wait_cnt++;
 				}
 
-				if (!handler) {
+				if (!handler)
 					WIFI_ERR_FUNC("Wi-Fi driver is not ready for write NVRAM\n");
-				} else
+				else
 					WIFI_INFO_FUNC("Wi-Fi handler = %p\n", handler);
 			} else if (!strncmp(&local[7], "DRVCFG", 6)) {
 				copy_size = count - 13;
@@ -525,13 +402,14 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 				handler = buf_handler[BUF_TYPE_FW_CFG];
 				ctx = buf_handler_ctx[BUF_TYPE_FW_CFG];
 			}
-			if (handler && !handler(ctx, buf, (uint16_t)copy_size))
+
+			if (handler && !handler(ctx, buf, (UINT16)copy_size))
 				retval = count;
 			else
 				retval = -ENOTSUPP;
 		} else if (!strncmp(local, "RM-BUF:", 7)) {
 			file_buf_handler handler = NULL;
-			void *ctx = NULL;
+			VOID *ctx = NULL;
 
 			if (!strncmp(&local[7], "DRVCFG", 6)) {
 				handler = buf_handler[BUF_TYPE_DRV_CFG];
@@ -554,11 +432,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 
 			if (powered == 0) {
 				/* If WIFI is off, turn on WIFI first */
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-				if (mtk_wcn_wlan_func_ctrl(WLAN_OPID_FUNC_ON) == MTK_WCN_BOOL_FALSE) {
-#else
 				if (mtk_wcn_wmt_func_on(WMTDRV_TYPE_WIFI) == MTK_WCN_BOOL_FALSE) {
-#endif
 					WIFI_ERR_FUNC("WMT turn on WIFI fail!\n");
 					goto done;
 				} else {
@@ -658,7 +532,7 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
 						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
 					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
+						WIFI_INFO_FUNC("Turn off p2p/ap mode ok");
 				} else
 					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
 			}
@@ -675,98 +549,19 @@ ssize_t WIFI_write(struct file *filp, const char __user *buf, size_t count, loff
 					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
 						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
 					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
+						WIFI_INFO_FUNC("Turn off p2p/ap mode ok");
 				} else
 					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
 			}
 			isconcurrent = 0;
 			WIFI_INFO_FUNC("Disable concurrent mode\n");
 			retval = count;
-		} else if (local[0] == 'D') {
-			if (wlan_mode == WLAN_MODE_DUAL_P2P) {
-				WIFI_INFO_FUNC("WIFI is already in dual p2p mode %d!\n", wlan_mode);
-			} else {
-				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
-
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 1;
-					p2pmode.u4Mode = 4;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-						WIFI_ERR_FUNC("Set wlan mode fail\n");
-					} else {
-						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
-							wlan_mode, WLAN_MODE_DUAL_P2P);
-						wlan_mode = WLAN_MODE_DUAL_P2P;
-					}
-				}
-			}
-			retval = count;
-		} else if (local[0] == 'E') {
-			if (wlan_mode == WLAN_MODE_DUAL_AP) {
-				WIFI_INFO_FUNC("WIFI is already in dual ap mode %d!\n", wlan_mode);
-			} else {
-				netdev = dev_get_by_name(&init_net, ifname);
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 0;
-					p2pmode.u4Mode = 0;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0)
-						WIFI_ERR_FUNC("Turn off p2p/ap mode fail");
-					else
-						WIFI_INFO_FUNC("Turn off p2p/ap mode success");
-				} else
-					WIFI_ERR_FUNC("Fail to get %s netdev\n", ifname);
-
-				if (netdev && pf_set_p2p_mode) {
-					p2pmode.u4Enable = 1;
-					p2pmode.u4Mode = 2;
-					if (pf_set_p2p_mode(netdev, p2pmode) != 0) {
-						WIFI_ERR_FUNC("Set wlan mode fail\n");
-					} else {
-						WIFI_INFO_FUNC("Set wlan mode %d --> %d\n",
-							wlan_mode, WLAN_MODE_DUAL_AP);
-						wlan_mode = WLAN_MODE_DUAL_AP;
-					}
-				}
-			}
-			retval = count;
-		} else if (!strncmp(local, "LLM", 3)) {
-			WIFI_INFO_FUNC("local = %s", local);
-			if (!strncmp(local + 4, "0x", 2)) {
-				WIFI_INFO_FUNC("LLM val = %s", local + 6);
-				set_low_latency_mode(local + 6);
-				retval = count;
-			} else {
-				retval = -ENOTSUPP;
-			}
-		} else if (!strncmp(local, "wifiSLog", 8)) {
-			if (!strncmp(local + 9, "1", 1)) {
-				WIFI_INFO_FUNC("local = %s, wifiSLog val = %s", local, local + 9);
-				set_wifi_standalone_log_mode(1);
-				retval = count;
-			} else if (!strncmp(local + 9, "0", 1)) {
-				WIFI_INFO_FUNC("local = %s, wifiSLog val = %s", local, local + 9);
-				set_wifi_standalone_log_mode(0);
-				retval = count;
-			} else {
-				retval = -ENOTSUPP;
-			}
 		}
 	}
 done:
 	if (netdev != NULL)
 		dev_put(netdev);
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-	write_processing = 0;
-#endif
+
 	up(&wr_mtx);
 	return retval;
 }
@@ -779,27 +574,12 @@ const struct file_operations WIFI_fops = {
 
 static int WIFI_init(void)
 {
+	dev_t dev = MKDEV(WIFI_major, 0);
 	int32_t alloc_ret = 0;
 	int32_t cdev_err = 0;
 
-	low_latency_mode = 0;
-	wifi_standalone_log_mode = 0;
-
-	sema_init(&wr_mtx, 1);
-
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-	wifi_pwr_on_init();
-#endif
-
 	/* Allocate char device */
-	if (WIFI_major) {
-		wifi_devno = MKDEV(WIFI_major, 0);
-		alloc_ret = register_chrdev_region(wifi_devno, WIFI_devs,
-				WIFI_DRIVER_NAME);
-	} else {
-		alloc_ret = alloc_chrdev_region(&wifi_devno, 0, WIFI_devs,
-				WIFI_DRIVER_NAME);
-	}
+	alloc_ret = register_chrdev_region(dev, WIFI_devs, WIFI_DRIVER_NAME);
 	if (alloc_ret) {
 		WIFI_ERR_FUNC("Fail to register device numbers\n");
 		return alloc_ret;
@@ -808,7 +588,7 @@ static int WIFI_init(void)
 	cdev_init(&WIFI_cdev, &WIFI_fops);
 	WIFI_cdev.owner = THIS_MODULE;
 
-	cdev_err = cdev_add(&WIFI_cdev, wifi_devno, WIFI_devs);
+	cdev_err = cdev_add(&WIFI_cdev, dev, WIFI_devs);
 	if (cdev_err)
 		goto error;
 
@@ -816,21 +596,28 @@ static int WIFI_init(void)
 	wmtwifi_class = class_create(THIS_MODULE, "wmtWifi");
 	if (IS_ERR(wmtwifi_class))
 		goto error;
-	wmtwifi_dev = device_create(wmtwifi_class, NULL, wifi_devno, NULL,
-			"wmtWifi");
+	wmtwifi_dev = device_create(wmtwifi_class, NULL, dev, NULL, "wmtWifi");
 	if (IS_ERR(wmtwifi_dev))
 		goto error;
 #endif
 
-	WIFI_INFO_FUNC("%s driver(major %d %d) installed.\n", WIFI_DRIVER_NAME,
-			WIFI_major, MAJOR(wifi_devno));
+	sema_init(&wr_mtx, 1);
+
+	WIFI_INFO_FUNC("%s driver(major %d) installed\n", WIFI_DRIVER_NAME, WIFI_major);
+
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+	if (fw_log_wifi_init() < 0) {
+		WIFI_INFO_FUNC("connsys debug node init failed!!\n");
+		return -1;
+	}
+#endif
 
 	return 0;
 
 error:
 #if CREATE_NODE_DYNAMIC
 	if (wmtwifi_dev && !IS_ERR(wmtwifi_dev)) {
-		device_destroy(wmtwifi_class, wifi_devno);
+		device_destroy(wmtwifi_class, dev);
 		wmtwifi_dev = NULL;
 	}
 	if (wmtwifi_class && !IS_ERR(wmtwifi_class)) {
@@ -842,16 +629,18 @@ error:
 		cdev_del(&WIFI_cdev);
 
 	if (alloc_ret == 0)
-		unregister_chrdev_region(wifi_devno, WIFI_devs);
+		unregister_chrdev_region(dev, WIFI_devs);
 
 	return -1;
 }
 
 static void WIFI_exit(void)
 {
+	dev_t dev = MKDEV(WIFI_major, 0);
+
 #if CREATE_NODE_DYNAMIC
 	if (wmtwifi_dev && !IS_ERR(wmtwifi_dev)) {
-		device_destroy(wmtwifi_class, wifi_devno);
+		device_destroy(wmtwifi_class, dev);
 		wmtwifi_dev = NULL;
 	}
 	if (wmtwifi_class && !IS_ERR(wmtwifi_class)) {
@@ -861,14 +650,16 @@ static void WIFI_exit(void)
 #endif
 
 	cdev_del(&WIFI_cdev);
-	unregister_chrdev_region(wifi_devno, WIFI_devs);
+	unregister_chrdev_region(dev, WIFI_devs);
 
 	WIFI_INFO_FUNC("%s driver removed\n", WIFI_DRIVER_NAME);
 
-#if (CFG_ANDORID_CONNINFRA_SUPPORT == 1)
-	wifi_pwr_on_deinit();
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+	fw_log_wifi_deinit();
 #endif
 }
+
+#ifdef MTK_WCN_BUILT_IN_DRIVER
 
 int mtk_wcn_wmt_wifi_init(void)
 {
@@ -881,3 +672,10 @@ void mtk_wcn_wmt_wifi_exit(void)
 	return WIFI_exit();
 }
 EXPORT_SYMBOL(mtk_wcn_wmt_wifi_exit);
+
+#else
+
+module_init(WIFI_init);
+module_exit(WIFI_exit);
+
+#endif

@@ -78,17 +78,10 @@
  *******************************************************************************
  */
 /* Roaming Discovery interval, SCAN result need to be updated */
-#if (CFG_TC10_FEATURE == 1)
-#define ROAMING_DISCOVER_TIMEOUT_SEC                0   /* Seconds. */
-#else
-#define ROAMING_DISCOVER_TIMEOUT_SEC                10  /* Seconds. */
-#endif
-#define ROAMING_INACTIVE_TIMEOUT_SEC                10	/* Seconds. */
+#define ROAMING_DISCOVERY_TIMEOUT_SEC               5	/* Seconds. */
 #if CFG_SUPPORT_ROAMING_SKIP_ONE_AP
 #define ROAMING_ONE_AP_SKIP_TIMES		3
 #endif
-
-#define ROAMING_BTM_DELTA			    0   /* % */
 
 /* #define ROAMING_NO_SWING_RCPI_STEP                  5 //rcpi */
 /*******************************************************************************
@@ -108,39 +101,25 @@ enum ENUM_ROAMING_EVENT {
 	ROAMING_EVENT_ROAM,
 	ROAMING_EVENT_FAIL,
 	ROAMING_EVENT_ABORT,
-	ROAMING_EVENT_THRESHOLD_UPDATE,
 	ROAMING_EVENT_NUM
 };
 
 enum ENUM_ROAMING_REASON {
-	/* FW defined */
 	ROAMING_REASON_POOR_RCPI = 0,
-	ROAMING_REASON_TX_ERR, /*Lowest rate, high PER */
+	ROAMING_REASON_TX_ERR, /*Lowest rate, high PER*/
 	ROAMING_REASON_RETRY,
-	ROAMING_REASON_IDLE,
-	ROAMING_REASON_HIGH_CU,
-
-	/* driver defined */
-	ROAMING_REASON_BEACON_TIMEOUT,
-	ROAMING_REASON_BEACON_TIMEOUT_TX_ERR,
-	ROAMING_REASON_INACTIVE,
-	ROAMING_REASON_SAA_FAIL, /* A.K.A. emergency roaming */
-	ROAMING_REASON_UPPER_LAYER_TRIGGER,
-	ROAMING_REASON_BTM,
-	ROAMING_REASON_REASSOC,
 	ROAMING_REASON_NUM
 };
 
 struct CMD_ROAMING_TRANSIT {
-	uint16_t u2Event;
-	uint16_t u2Data;
-	uint16_t u2RcpiLowThreshold;
-	uint8_t ucIsSupport11B;
-	uint8_t ucBssidx;
-	enum ENUM_ROAMING_REASON eReason;
-	uint32_t u4RoamingTriggerTime; /*sec in mcu*/
-	uint16_t u2RcpiHighThreshold;
-	uint8_t aucReserved2[6];
+	uint16_t	u2Event;
+	uint16_t	u2Data;
+	uint16_t	u2RcpiLowThreshold;
+	uint8_t	ucIsSupport11B;
+	uint8_t	aucReserved[1];
+	enum ENUM_ROAMING_REASON	eReason;
+	uint32_t	u4RoamingTriggerTime; /*sec in mcu*/
+	uint8_t aucReserved2[8];
 };
 
 
@@ -165,27 +144,9 @@ enum ENUM_ROAMING_STATE {
 	ROAMING_STATE_IDLE = 0,
 	ROAMING_STATE_DECISION,
 	ROAMING_STATE_DISCOVERY,
+	ROAMING_STATE_REQ_CAND_LIST,
 	ROAMING_STATE_ROAM,
 	ROAMING_STATE_NUM
-};
-
-struct ROAMING_EVENT_INFO {
-	uint8_t ucStatus;
-	uint8_t aucPrevBssid[MAC_ADDR_LEN];
-	uint8_t aucCurrBssid[MAC_ADDR_LEN];
-	uint8_t ucPrevChannel;
-	uint8_t ucCurrChannel;
-	uint8_t ucPrevRcpi;
-	uint8_t ucCurrRcpi;
-	uint8_t ucBw;
-	uint16_t u2ApLoading;
-	uint8_t ucSupportStbc;
-};
-
-struct CONNECTED_BSS {
-	struct LINK_ENTRY rLinkEntry;
-	uint8_t aucBssid[MAC_ADDR_LEN];
-	uint8_t fgQueriedCandidates;
 };
 
 struct ROAMING_INFO {
@@ -194,21 +155,9 @@ struct ROAMING_INFO {
 	enum ENUM_ROAMING_STATE eCurrentState;
 
 	OS_SYSTIME rRoamingDiscoveryUpdateTime;
-#if CFG_SUPPORT_DRIVER_ROAMING
-	OS_SYSTIME rRoamingLastDecisionTime;
-#endif
 
 	u_int8_t fgDrvRoamingAllow;
-	enum ENUM_ROAMING_REASON eReason;
-	uint8_t ucPER;
-	uint8_t ucRcpi;
-	uint8_t ucThreshold;
-	struct ROAMING_EVENT_INFO rEventInfo;
-#if (CFG_TC10_FEATURE == 1)
-	struct LINK rCandidateApList;
-	struct LINK rRoamingHistory;
-	uint8_t fgIsGBandCoex;
-#endif
+	struct TIMER rWaitCandidateTimer;
 };
 
 /*******************************************************************************
@@ -226,81 +175,43 @@ struct ROAMING_INFO {
  *******************************************************************************
  */
 
+#if CFG_SUPPORT_ROAMING
+#define IS_ROAMING_ACTIVE(prAdapter) \
+	(prAdapter->rWifiVar.rRoamingInfo.eCurrentState == ROAMING_STATE_ROAM)
+#else
+#define IS_ROAMING_ACTIVE(prAdapter) FALSE
+#endif /* CFG_SUPPORT_ROAMING */
 
 /*******************************************************************************
  *                  F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
  */
-void roamingFsmInit(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
+void roamingFsmInit(IN struct ADAPTER *prAdapter);
 
-void roamingFsmUninit(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-
-#if (CFG_TC10_FEATURE == 1)
-struct CONNECTED_BSS *roamingGetBss(struct ROAMING_INFO *prRoamingFsmInfo,
-	struct BSS_DESC *prTarget);
-
-uint8_t roamingIsBssInHistory(struct ROAMING_INFO *prRoamingFsmInfo,
-	struct BSS_DESC *prTarget);
-
-void roamingClearHistory(struct ROAMING_INFO *prRoamingFsmInfo);
-
-void roamingAddBssToHistory(struct ROAMING_INFO *prRoamingFsmInfo,
-	struct BSS_DESC *prTarget);
-#endif
+void roamingFsmUninit(IN struct ADAPTER *prAdapter);
 
 void roamingFsmSendCmd(IN struct ADAPTER *prAdapter,
-	IN struct CMD_ROAMING_TRANSIT *prTransit);
+				IN struct CMD_ROAMING_TRANSIT *prTransit);
 
-void roamingFsmScanResultsUpdate(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
+void roamingFsmScanResultsUpdate(IN struct ADAPTER *prAdapter);
 
 void roamingFsmSteps(IN struct ADAPTER *prAdapter,
-	IN enum ENUM_ROAMING_STATE eNextState,
-	IN uint8_t ucBssIndex);
+				IN enum ENUM_ROAMING_STATE eNextState);
 
-void roamingFsmRunEventStart(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
+void roamingFsmRunEventStart(IN struct ADAPTER *prAdapter);
 
 void roamingFsmRunEventDiscovery(IN struct ADAPTER *prAdapter,
-	IN struct CMD_ROAMING_TRANSIT *prTransit);
+				IN struct CMD_ROAMING_TRANSIT *prTransit);
 
-void roamingFsmRunEventRoam(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
+void roamingFsmRunEventRoam(IN struct ADAPTER *prAdapter);
 
 void roamingFsmRunEventFail(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucReason,
-	IN uint8_t ucBssIndex);
+				IN uint32_t u4Reason);
 
-void roamingFsmRunEventAbort(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-
-void roamingFsmNotifyEvent(IN struct ADAPTER *adapter, IN uint8_t bssIndex,
-	IN uint8_t ucFail, IN struct BSS_DESC *prBssDesc);
+void roamingFsmRunEventAbort(IN struct ADAPTER *prAdapter);
 
 uint32_t roamingFsmProcessEvent(IN struct ADAPTER *prAdapter,
-	IN struct CMD_ROAMING_TRANSIT *prTransit);
+				IN struct CMD_ROAMING_TRANSIT *prTransit);
 
-uint8_t roamingFsmInDecision(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
 
-uint8_t roamingFsmIsDiscovering(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-
-void roamingFsmLogScanStart(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex, IN uint8_t fgIsFullScn,
-	IN struct BSS_DESC *prBssDesc);
-
-void roamingFsmLogScanDone(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex);
-
-void roamingFsmLogSocre(IN struct ADAPTER *prAdapter, uint8_t *prefix,
-	IN uint8_t ucBssIndex, struct BSS_DESC *prBssDesc, uint32_t u4Score,
-	uint32_t u4Tput);
-
-void roamingFsmLogResult(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex, struct BSS_DESC *prSelectedBssDesc);
-
-void roamingFsmLogCancel(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex, uint8_t *pucReason);
 #endif /* _ROAMING_FSM_H */

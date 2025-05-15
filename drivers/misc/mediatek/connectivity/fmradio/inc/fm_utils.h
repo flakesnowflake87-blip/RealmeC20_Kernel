@@ -14,15 +14,6 @@
 #ifndef __FM_UTILS_H__
 #define __FM_UTILS_H__
 
-#include <linux/version.h>
-
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-#include <linux/device.h>
-#include <linux/pm_wakeup.h>
-#else
-#include <linux/wakelock.h>
-#endif
-
 #include "fm_typedef.h"
 
 /**
@@ -206,15 +197,6 @@ extern signed int fm_flag_event_put(struct fm_flag_event *thiz);
 })
 
 /*
- * FM wake lock
- */
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-#define FM_WAKE_LOCK_T struct wakeup_source
-#else
-#define FM_WAKE_LOCK_T struct wake_lock
-#endif
-
-/*
  * FM lock mechanism
  */
 struct fm_lock {
@@ -240,23 +222,21 @@ extern signed int fm_spin_lock_get(struct fm_lock *thiz);
 
 extern signed int fm_spin_lock_put(struct fm_lock *thiz);
 
-#define FM_LOCK(a)					\
-	({						\
-		signed int __ret = (signed int)0;	\
-		if (!a) {				\
-			__ret = -1;			\
-		} else if ((a)->lock) {			\
-			__ret = (a)->lock(a);		\
-		}					\
-		__ret;					\
-	})
+#define FM_LOCK(a)         \
+({                           \
+	signed int __ret = (signed int)0; \
+	if (a && (a)->lock) {          \
+		__ret = (a)->lock(a);    \
+	}                       \
+	__ret;                   \
+})
 
-#define FM_UNLOCK(a)				\
-	{					\
-		if (a && (a)->unlock) {		\
-			(a)->unlock(a);		\
-		}				\
-	}
+#define FM_UNLOCK(a)         \
+{                             \
+	if ((a)->unlock) {          \
+		(a)->unlock(a);    \
+	}                       \
+}
 
 /*
  * FM timer mechanism
@@ -275,11 +255,7 @@ struct fm_timer {
 	void *priv;		/* platform detail impliment */
 
 	signed int flag;		/* timer active/inactive */
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-	void (*timeout_func)(struct timer_list *timer);	/* timeout function */
-#else
 	void (*timeout_func)(unsigned long data);	/* timeout function */
-#endif
 	unsigned long data;	/* timeout function's parameter */
 	signed long timeout_ms;	/* timeout tick */
 	/* Tx parameters */
@@ -287,16 +263,10 @@ struct fm_timer {
 	unsigned char tx_pwr_ctrl_en;
 	unsigned char tx_rtc_ctrl_en;
 	unsigned char tx_desense_en;
-	struct fm_lock *lock;
 
 	/* timer methods */
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-	signed int (*init)(struct fm_timer *thiz, void (*timeout) (struct timer_list *timer),
-		unsigned long data, signed long time, signed int flag);
-#else
 	signed int (*init)(struct fm_timer *thiz, void (*timeout) (unsigned long data),
 		unsigned long data, signed long time, signed int flag);
-#endif
 	signed int (*start)(struct fm_timer *thiz);
 	signed int (*update)(struct fm_timer *thiz);
 	signed int (*stop)(struct fm_timer *thiz);
@@ -317,10 +287,10 @@ struct fm_work {
 	signed char name[FM_NAME_MAX + 1];
 	void *priv;
 
-	work_func_t work_func;
+	void (*work_func)(unsigned long data);
 	unsigned long data;
 	/* work methods */
-	signed int (*init)(struct fm_work *thiz, work_func_t work_func, unsigned long data);
+	signed int (*init)(struct fm_work *thiz, void (*work_func) (unsigned long data), unsigned long data);
 };
 
 extern struct fm_work *fm_work_create(const signed char *name);
@@ -344,28 +314,8 @@ extern signed int fm_workthread_get(struct fm_workthread *thiz);
 
 extern signed int fm_workthread_put(struct fm_workthread *thiz);
 
-/*
- * FM wake lock mechanism
- */
-
-extern FM_WAKE_LOCK_T *fm_wakelock_create(const signed char *name);
-
-extern void fm_wakelock_destroy(FM_WAKE_LOCK_T *lock);
-
-extern void fm_wakelock_get(FM_WAKE_LOCK_T *lock);
-
-extern void fm_wakelock_put(FM_WAKE_LOCK_T *lock);
-
 signed int fm_delayms(unsigned int data);
 
 signed int fm_delayus(unsigned int data);
-
-unsigned short fm_get_u16_from_auc(unsigned char *buf);
-
-void fm_set_u16_to_auc(unsigned char *buf, unsigned short val);
-
-unsigned int fm_get_u32_from_auc(unsigned char *buf);
-
-void fm_set_u32_to_auc(unsigned char *buf, unsigned int val);
 
 #endif /* __FM_UTILS_H__ */

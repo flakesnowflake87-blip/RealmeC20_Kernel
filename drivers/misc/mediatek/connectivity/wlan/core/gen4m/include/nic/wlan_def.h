@@ -1,5 +1,5 @@
 /******************************************************************************
- *
+*
  * This file is provided under a dual license.  When you use or
  * distribute this software, you may choose to be licensed under
  * version 2 of the GNU General Public License ("GPLv2 License")
@@ -78,17 +78,13 @@
  *******************************************************************************
  */
 /* disconnect reason */
-#define DISCONNECT_REASON_CODE_RESERVED           0
-#define DISCONNECT_REASON_CODE_RADIO_LOST         1
-#define DISCONNECT_REASON_CODE_DEAUTHENTICATED    2
-#define DISCONNECT_REASON_CODE_DISASSOCIATED      3
-#define DISCONNECT_REASON_CODE_NEW_CONNECTION     4
-#define DISCONNECT_REASON_CODE_REASSOCIATION      5
-#define DISCONNECT_REASON_CODE_ROAMING            6
-#define DISCONNECT_REASON_CODE_CHIPRESET          7
-#define DISCONNECT_REASON_CODE_LOCALLY            8
-#define DISCONNECT_REASON_CODE_RADIO_LOST_TX_ERR  9
-#define DISCONNECT_REASON_CODE_NCHO_DIFF_BAND     10
+#define DISCONNECT_REASON_CODE_RESERVED         0
+#define DISCONNECT_REASON_CODE_RADIO_LOST       1
+#define DISCONNECT_REASON_CODE_DEAUTHENTICATED  2
+#define DISCONNECT_REASON_CODE_DISASSOCIATED    3
+#define DISCONNECT_REASON_CODE_NEW_CONNECTION   4
+#define DISCONNECT_REASON_CODE_REASSOCIATION    5
+#define DISCONNECT_REASON_CODE_ROAMING          6
 
 /* The rate definitions */
 #define TX_MODE_CCK             0x00
@@ -96,9 +92,6 @@
 #define TX_MODE_HT_MM           0x80
 #define TX_MODE_HT_GF           0xC0
 #define TX_MODE_VHT             0x100
-#define TX_MODE_HE_SU           0x200
-#define TX_MODE_HE_ER_SU        0x240
-#define TX_MODE_HE_TB           0X280
 
 #define RATE_CCK_SHORT_PREAMBLE 0x4
 
@@ -125,12 +118,7 @@
 #define PHY_RATE_MCS7           0x7
 #define PHY_RATE_MCS8           0x8
 #define PHY_RATE_MCS9           0x9
-#define PHY_RATE_MCS10          0xA
-#define PHY_RATE_MCS11          0xB
 #define PHY_RATE_MCS32          0x20
-
-#define PHY_RATE_DCM			0x10
-#define PHY_RATE_TONE_106		0x20
 
 #define RATE_CCK_1M_LONG        (TX_MODE_CCK | PHY_RATE_1M)
 #define RATE_CCK_2M_LONG        (TX_MODE_CCK | PHY_RATE_2M)
@@ -181,11 +169,6 @@
 #define RATE_VHT_MCS_7          (TX_MODE_VHT | PHY_RATE_MCS7)
 #define RATE_VHT_MCS_8          (TX_MODE_VHT | PHY_RATE_MCS8)
 #define RATE_VHT_MCS_9          (TX_MODE_VHT | PHY_RATE_MCS9)
-#define RATE_VHT_MCS_10         (TX_MODE_VHT | PHY_RATE_MCS10)
-#define RATE_VHT_MCS_11         (TX_MODE_VHT | PHY_RATE_MCS11)
-
-#define RATE_HE_ER_DCM_MCS_0	(TX_MODE_HE_ER_SU | PHY_RATE_DCM)
-#define RATE_HE_ER_TONE_106_MCS_0	(TX_MODE_HE_ER_SU | PHY_RATE_TONE_106)
 
 #define RATE_NSTS_MASK					BITS(9, 10)
 #define RATE_NSTS_OFFSET				9
@@ -218,14 +201,6 @@
 #define PHY_TYPE_BIT_HT         BIT(PHY_TYPE_HT_INDEX)
 /* HT PHY (clause 22) */
 #define PHY_TYPE_BIT_VHT        BIT(PHY_TYPE_VHT_INDEX)
-
-#if (CFG_SUPPORT_802_11AX == 1)
-/* HE PHY */
-#define PHY_TYPE_BIT_HE         BIT(PHY_TYPE_HE_INDEX)
-#endif
-
-/* EHT PHY */
-#define PHY_TYPE_BIT_EHT         BIT(PHY_TYPE_EHT_INDEX)
 
 /* PHY TYPE set definitions */
 #define PHY_TYPE_SET_802_11ABGN (PHY_TYPE_BIT_OFDM | \
@@ -269,25 +244,6 @@
 				   PHY_TYPE_BIT_ERP | \
 				   PHY_TYPE_BIT_HT | \
 				   PHY_TYPE_BIT_VHT)
-
-#if (CFG_SUPPORT_802_11AX == 1)
-#define PHY_TYPE_SET_802_11AX   (PHY_TYPE_BIT_HE)
-#define PHY_TYPE_SET_802_11ABGNACAX (PHY_TYPE_BIT_OFDM | \
-				   PHY_TYPE_BIT_HR_DSSS | \
-				   PHY_TYPE_BIT_ERP | \
-				   PHY_TYPE_BIT_HT | \
-				   PHY_TYPE_BIT_VHT | \
-				   PHY_TYPE_BIT_HE)
-#endif /* CFG_SUPPORT_802_11AX == 1 */
-
-#define PHY_TYPE_SET_802_11BE   (PHY_TYPE_BIT_EHT)
-#define PHY_TYPE_SET_802_11ABGNACAXBE (PHY_TYPE_BIT_OFDM | \
-				   PHY_TYPE_BIT_HR_DSSS | \
-				   PHY_TYPE_BIT_ERP | \
-				   PHY_TYPE_BIT_HT | \
-				   PHY_TYPE_BIT_VHT | \
-				   PHY_TYPE_BIT_HE | \
-				   PHY_TYPE_BIT_EHT)
 
 /* Rate set bit definitions */
 #define RATE_SET_BIT_1M         BIT(RATE_1M_SW_INDEX)	/* Bit 0: 1M */
@@ -418,8 +374,6 @@
 			BIT(AUTH_ALGORITHM_NUM_SHARED_KEY)
 #define AUTH_TYPE_FAST_BSS_TRANSITION \
 			BIT(AUTH_ALGORITHM_NUM_FAST_BSS_TRANSITION)
-#define AUTH_TYPE_SAE \
-			BIT(AUTH_ALGORITHM_NUM_SAE)
 
 /* Authentication Retry Limit */
 #define TX_AUTH_ASSOCI_RETRY_LIMIT                  2
@@ -428,10 +382,8 @@
 /* WMM-2.2.1 WMM Information Element */
 #define ELEM_MAX_LEN_WMM_INFO       7
 
-/* */
-#define RA_ER_Disable	0
-#define RA_DCM			1
-#define RA_ER_106		2
+/* PF TCP/UDP max port number */
+#define MAX_TCP_UDP_PORT            20
 
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -485,7 +437,6 @@ enum ENUM_NETWORK_TYPE {
 	NETWORK_TYPE_P2P,
 	NETWORK_TYPE_BOW,
 	NETWORK_TYPE_MBSS,
-	NETWORK_TYPE_NAN,
 	NETWORK_TYPE_NUM
 };
 
@@ -494,33 +445,8 @@ enum ENUM_STA_TYPE_INDEX {
 	STA_TYPE_LEGACY_INDEX = 0,
 	STA_TYPE_P2P_INDEX,
 	STA_TYPE_BOW_INDEX,
-#if CFG_SUPPORT_NAN
-	STA_TYPE_NAN_INDEX,
-#endif
 	STA_TYPE_INDEX_NUM
 };
-
-enum ENUM_PHY_MODE_TYPE {
-	PHY_MODE_CCK = 0,
-	PHY_MODE_OFDM = 1,
-	PHY_MODE_HT20 = 2,
-	PHY_MODE_HT40 = 3,
-	PHY_MODE_VHT20 = 4,
-	PHY_MODE_VHT40 = 5,
-	PHY_MODE_VHT80 = 6,
-	PHY_MODE_VHT160 = 7,
-	PHY_MODE_SU20 = 8,
-	PHY_MODE_SU40 = 9,
-	PHY_MODE_SU80 = 10,
-	PHY_MODE_RU26 = 11,
-	PHY_MODE_RU52 = 12,
-	PHY_MODE_RU106 = 13,
-	PHY_MODE_RU242 = 14,
-	PHY_MODE_RU484 = 15,
-	PHY_MODE_RU996 = 16,
-	PHY_MODE_TYPE_NUM
-};
-
 
 #define STA_ROLE_BASE_INDEX     4
 
@@ -550,8 +476,6 @@ enum ENUM_PHY_TYPE_INDEX {
 	PHY_TYPE_OFDM_INDEX,	/* OFDM 5 GHz PHY (clause 17) */
 	PHY_TYPE_HT_INDEX,	/* HT PHY (clause 20) */
 	PHY_TYPE_VHT_INDEX,	/* HT PHY (clause 22) */
-	PHY_TYPE_HE_INDEX,	/* HE PHY */
-	PHY_TYPE_EHT_INDEX,	/* EHT PHY */
 	PHY_TYPE_INDEX_NUM	/* 6 */
 };
 
@@ -627,9 +551,7 @@ enum ENUM_VHT_RATE_INDEX {
 	VHT_RATE_MCS7_INDEX,
 	VHT_RATE_MCS8_INDEX,
 	VHT_RATE_MCS9_INDEX,
-	VHT_RATE_MCS10_INDEX,
-	VHT_RATE_MCS11_INDEX,
-	VHT_RATE_NUM		/* 12 */
+	VHT_RATE_NUM		/* 10 */
 };
 
 enum ENUM_PREMABLE_OPTION {
@@ -676,7 +598,6 @@ enum ENUM_OP_MODE {
 	OP_MODE_ACCESS_POINT,	/* For GO */
 	OP_MODE_P2P_DEVICE,	/* P2P Device */
 	OP_MODE_BOW,
-	OP_MODE_NAN,
 	OP_MODE_NUM
 };
 
@@ -731,24 +652,7 @@ enum ENUM_BAND {
 	BAND_NULL,
 	BAND_2G4,
 	BAND_5G,
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	BAND_6G,
-#endif
 	BAND_NUM
-};
-
-enum ENUM_CH_REQ_TYPE {
-	CH_REQ_TYPE_JOIN,
-	CH_REQ_TYPE_ROC, /* requested by remain on channel type */
-	CH_REQ_TYPE_OFFCHNL_TX,
-	CH_REQ_TYPE_GO_START_BSS,
-#if (CFG_SUPPORT_DFS_MASTER == 1)
-	CH_REQ_TYPE_DFS_CAC,
-#endif
-#if (CFG_SUPPORT_NAN == 1)
-	CH_REQ_TYPE_NAN_ON,
-#endif
-	CH_REQ_TYPE_NUM
 };
 
 enum ENUM_DBDC_BN {
@@ -803,18 +707,6 @@ struct DEAUTH_INFO {
 	OS_SYSTIME rLastSendTime;
 };
 
-enum ENUM_CHNL_SWITCH_POLICY {
-	CHNL_SWITCH_POLICY_NONE,
-	CHNL_SWITCH_POLICY_DEAUTH,
-	CHNL_SWITCH_POLICY_CSA
-};
-
-enum ENUM_CHNL_SORT_POLICY {
-	CHNL_SORT_POLICY_NONE,
-	CHNL_SORT_POLICY_ALL_CN,
-	CHNL_SORT_POLICY_BY_CH_DOMAIN
-};
-
 /*----------------------------------------------------------------------------*/
 /* Information Element (IE) handlers                                          */
 /*----------------------------------------------------------------------------*/
@@ -823,8 +715,7 @@ typedef void(*PFN_APPEND_IE_FUNC) (struct ADAPTER *,
 typedef void(*PFN_HANDLE_IE_FUNC) (struct ADAPTER *,
 	struct SW_RFB *, struct IE_HDR *);
 typedef void(*PFN_VERIFY_IE_FUNC) (struct ADAPTER *,
-	struct SW_RFB *, struct IE_HDR *,
-	uint16_t *);
+	struct SW_RFB *, struct IE_HDR *, uint16_t *);
 typedef uint32_t(*PFN_CALCULATE_VAR_IE_LEN_FUNC) (
 	struct ADAPTER *, uint8_t, struct STA_RECORD *);
 
@@ -907,12 +798,6 @@ enum ENUM_PARAM_PHY_CONFIG {
 	PHY_CONFIG_802_11AC,
 	PHY_CONFIG_802_11ANAC,
 	PHY_CONFIG_802_11ABGNAC,
-#if (CFG_SUPPORT_802_11AX == 1)
-	PHY_CONFIG_802_11ABGNACAX,
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-	PHY_CONFIG_802_11ABGNACAXBE,
-#endif
 	PHY_CONFIG_NUM		/* 12 */
 };
 
@@ -933,16 +818,6 @@ enum ENUM_PARAM_AP_MODE {
 	AP_MODE_NUM		/* 4 */
 };
 
-#if CFG_SUPPORT_NAN
-enum ENUM_PARAM_NAN_MODE_T {
-	NAN_MODE_11B = 0,
-	NAN_MODE_MIXED_11BG,
-	NAN_MODE_11G,
-	NAN_MODE_11A,
-	NAN_MODE_NUM
-};
-#endif /* CFG_SUPPORT_NAN */
-
 /* Masks for determining the Network Type
  * or the Station Role, given the ENUM_STA_TYPE_T
  */
@@ -953,16 +828,12 @@ enum ENUM_PARAM_NAN_MODE_T {
 #define STA_TYPE_CLIENT_MASK                BIT(STA_ROLE_CLIENT_INDEX)
 #define STA_TYPE_AP_MASK                    BIT(STA_ROLE_AP_INDEX)
 #define STA_TYPE_DLS_MASK                   BIT(STA_ROLE_DLS_INDEX)
-#if CFG_SUPPORT_NAN
-#define STA_TYPE_NAN_MASK BIT(STA_TYPE_NAN_INDEX)
-#endif
 
 /* Macros for obtaining the Network Type
  * or the Station Role, given the ENUM_STA_TYPE_T
  */
-#define IS_STA_IN_AIS(_prStaRec) \
-	(prAdapter->aprBssInfo[(_prStaRec)->ucBssIndex]->eNetworkType \
-	== NETWORK_TYPE_AIS)
+#define IS_STA_IN_AIS(_prStaRec)        ((prAdapter->prAisBssInfo != NULL) && \
+	((_prStaRec)->ucBssIndex == prAdapter->prAisBssInfo->ucBssIndex))
 #define IS_STA_IN_P2P(_prStaRec) \
 	(prAdapter->aprBssInfo[(_prStaRec)->ucBssIndex]->eNetworkType \
 	== NETWORK_TYPE_P2P)
@@ -980,9 +851,6 @@ enum ENUM_PARAM_NAN_MODE_T {
 	((_prStaRec->eStaType) & STA_TYPE_AP_MASK)
 #define IS_DLS_STA(_prStaRec) \
 	((_prStaRec->eStaType) & STA_TYPE_DLS_MASK)
-#if CFG_SUPPORT_NAN
-#define IS_STA_NAN_TYPE(_prStaRec) ((_prStaRec->eStaType) & STA_TYPE_NAN_MASK)
-#endif
 
 /* The ENUM_STA_TYPE_T accounts for
  * ENUM_NETWORK_TYPE_T and ENUM_STA_ROLE_INDEX_T.
@@ -1001,9 +869,6 @@ enum ENUM_STA_TYPE {
 	STA_TYPE_BOW_CLIENT = (STA_TYPE_BOW_MASK | STA_TYPE_CLIENT_MASK),
 #endif
 	STA_TYPE_DLS_PEER = (STA_TYPE_LEGACY_MASK | STA_TYPE_DLS_MASK),
-#if CFG_SUPPORT_NAN
-	STA_TYPE_NAN = (STA_TYPE_NAN_MASK),
-#endif
 };
 
 /* The type of BSS we discovered */
@@ -1029,13 +894,13 @@ enum ENUM_ANTENNA_NUM {
 /* #endif */
 
 /* max number of supported cipher suites */
-#define MAX_NUM_SUPPORTED_CIPHER_SUITES 11
+#define MAX_NUM_SUPPORTED_CIPHER_SUITES 9
 #if CFG_SUPPORT_802_11W
 /* max number of supported AKM suites */
-#define MAX_NUM_SUPPORTED_AKM_SUITES    15
+#define MAX_NUM_SUPPORTED_AKM_SUITES    11
 #else
 /* max number of supported AKM suites */
-#define MAX_NUM_SUPPORTED_AKM_SUITES    13
+#define MAX_NUM_SUPPORTED_AKM_SUITES    9
 #endif
 
 /* Structure of RSN Information */
@@ -1049,8 +914,6 @@ struct RSN_INFO {
 	uint32_t au4AuthKeyMgtSuite[MAX_NUM_SUPPORTED_AKM_SUITES];
 	uint16_t u2RsnCap;
 	u_int8_t fgRsnCapPresent;
-	uint16_t u2PmkidCount;
-	uint8_t aucPmkid[IW_PMKID_LEN];
 } __KAL_ATTRIB_PACKED__;
 
 /* max number of supported AKM suites */
@@ -1136,23 +999,6 @@ struct P2P_DEVICE_DESC {
 			((uint16_t)__cp[1]); \
 	}
 
-#define WLAN_GET_FIELD_24(_memAddr_p, _value_p) \
-	{ \
-		uint8_t *__cp = (uint8_t *)(_memAddr_p); \
-		*(uint32_t *)(_value_p) = 0; \
-		*(uint32_t *)(_value_p) = ((uint32_t)__cp[0]) | \
-			((uint32_t)__cp[1] << 8) | \
-			((uint32_t)__cp[2] << 16); \
-	}
-
-#define WLAN_GET_FIELD_BE24(_memAddr_p, _value_p) \
-	{ \
-		uint8_t *__cp = (uint8_t *)(_memAddr_p); \
-		*(uint32_t *)(_value_p) = 0; \
-		*(uint32_t *)(_value_p) = ((uint32_t)__cp[0] << 16) | \
-		    ((uint32_t)__cp[1] << 8) | (uint32_t)__cp[2]; \
-	}
-
 #define WLAN_GET_FIELD_32(_memAddr_p, _value_p) \
 	{ \
 		uint8_t *__cp = (uint8_t *)(_memAddr_p); \
@@ -1187,19 +1033,6 @@ struct P2P_DEVICE_DESC {
 		uint8_t *__cp = (uint8_t *)(_memAddr_p); \
 		__cp[0] = (uint8_t)(_value); \
 		__cp[1] = (uint8_t)((_value) >> 8); \
-	}
-
-#define WLAN_SET_FIELD_64(_memAddr_p, _value) \
-	{ \
-		uint8_t *__cp = (uint8_t *)(_memAddr_p); \
-		__cp[0] = (uint8_t)((_value) & 0xff); \
-		__cp[1] = (uint8_t)((_value) >> 8); \
-		__cp[2] = (uint8_t)((_value) >> 16); \
-		__cp[3] = (uint8_t)((_value) >> 24); \
-		__cp[4] = (uint8_t)((_value) >> 32); \
-		__cp[5] = (uint8_t)((_value) >> 40); \
-		__cp[6] = (uint8_t)((_value) >> 48); \
-		__cp[7] = (uint8_t)((_value) >> 56); \
 	}
 
 #define WLAN_SET_FIELD_BE16(_memAddr_p, _value) \

@@ -61,12 +61,22 @@
 
 #ifndef _GL_WEXT_PRIV_H
 #define _GL_WEXT_PRIV_H
+
 /*******************************************************************************
  *                         C O M P I L E R   F L A G S
  *******************************************************************************
  */
 /* If it is set to 1, iwpriv will support register read/write */
 #define CFG_SUPPORT_PRIV_MCR_RW         1
+
+/* Stat CMD will have different format due to different algorithm support */
+#if (defined(MT6632) || defined(MT7668))
+#define CFG_SUPPORT_RA_GEN			0
+#define CFG_SUPPORT_TXPOWER_INFO		0
+#else
+#define CFG_SUPPORT_RA_GEN			1
+#define CFG_SUPPORT_TXPOWER_INFO		1
+#endif
 
 /*******************************************************************************
  *			E X T E R N A L   R E F E R E N C E S
@@ -102,15 +112,10 @@
 #define IOCTL_IWPRIV_ATE                (SIOCIWFIRSTPRIV + 17)
 #endif
 
-#if CFG_SUPPORT_NAN
-#define IOCTL_NAN_STRUCT (SIOCIWFIRSTPRIV + 20)
-#endif
-
 #define IOC_AP_GET_STA_LIST     (SIOCIWFIRSTPRIV+19)
 #define IOC_AP_SET_MAC_FLTR     (SIOCIWFIRSTPRIV+21)
 #define IOC_AP_SET_CFG          (SIOCIWFIRSTPRIV+23)
 #define IOC_AP_STA_DISASSOC     (SIOCIWFIRSTPRIV+25)
-#define IOC_AP_SET_NSS           (SIOCIWFIRSTPRIV+27)
 
 #define PRIV_CMD_REG_DOMAIN             0
 #define PRIV_CMD_BEACON_PERIOD          1
@@ -151,7 +156,7 @@
 
 #define PRIV_CMD_GET_CH_LIST            24
 
-#define PRIV_CMD_SET_TX_POWER_NO_USED           25
+#define PRIV_CMD_SET_TX_POWER           25
 
 #define PRIV_CMD_BAND_CONFIG            26
 
@@ -179,28 +184,11 @@
 /* Get FW manifest version */
 #define  PRIV_CMD_GET_FW_VERSION        38
 
-
 /* dynamic tx power control */
 #define PRIV_CMD_SET_PWR_CTRL		40
 
 /* wifi type: 11g, 11n, ... */
 #define  PRIV_CMD_GET_WIFI_TYPE		41
-
-/* fos_change begin */
-#define PRIV_CMD_CONNSTATUS			42
-#if CFG_SUPPORT_STAT_STATISTICS
-#define PRIV_CMD_STAT				43
-#endif
-#if CFG_SUPPORT_WAKEUP_STATISTICS
-#define PRIV_CMD_INT_STAT			44
-#endif
-#if CFG_SUPPORT_EXCEPTION_STATISTICS
-#define PRIV_CMD_EXCEPTION_STAT		45
-#endif
-#define PRIV_CMD_SHOW_CHANNEL		46
-
-
-
 
 /* 802.3 Objects (Ethernet) */
 #define OID_802_3_CURRENT_ADDRESS           0x01010102
@@ -275,10 +263,6 @@
 #define OID_IPC_WIFI_LOG_UI                             0xFFA0CC01
 #define OID_IPC_WIFI_LOG_LEVEL                          0xFFA0CC02
 
-#if CFG_SUPPORT_ANT_SWAP
-#define OID_CUSTOM_QUERY_ANT_SWAP_CAPABILITY		0xFFA0CD00
-#endif
-
 #if CFG_SUPPORT_NCHO
 #define CMD_NCHO_COMP_TIMEOUT			1500	/* ms */
 #define CMD_NCHO_AF_DATA_LENGTH			1040
@@ -291,12 +275,27 @@
 /* Define magic key of test mode (Don't change it for future compatibity) */
 #define PRIV_CMD_TEST_MAGIC_KEY                         2011
 #define PRIV_CMD_TEST_MAGIC_KEY_ICAP                         2013
-#ifdef CFG_MODIFY_TX_POWER_BY_BAT_VOLT
-#define TX_POWER_PERCENTAGE_CTRL                        0x1
-#define TX_POWER_DROP_CTRL                              0x2
+
+#if (CFG_SUPPORT_TXPOWER_INFO == 1)
+#define TX_POWER_SHOW_INFO                              0x7
 #endif
 
-#define IW_PRIV_BUF_SIZE			2000
+#define AGG_RANGE_SEL_NUM                               7
+#define AGG_RANGE_SEL_0_MASK                            BITS(0, 7)
+#define AGG_RANGE_SEL_0_OFFSET                          0
+#define AGG_RANGE_SEL_1_MASK                            BITS(8, 15)
+#define AGG_RANGE_SEL_1_OFFSET                          8
+#define AGG_RANGE_SEL_2_MASK                            BITS(16, 23)
+#define AGG_RANGE_SEL_2_OFFSET                          16
+#define AGG_RANGE_SEL_3_MASK                            BITS(24, 31)
+#define AGG_RANGE_SEL_3_OFFSET                          24
+#define AGG_RANGE_SEL_4_MASK                            AGG_RANGE_SEL_0_MASK
+#define AGG_RANGE_SEL_4_OFFSET                          AGG_RANGE_SEL_0_OFFSET
+#define AGG_RANGE_SEL_5_MASK                            AGG_RANGE_SEL_1_MASK
+#define AGG_RANGE_SEL_5_OFFSET                          AGG_RANGE_SEL_1_OFFSET
+#define AGG_RANGE_SEL_6_MASK                            AGG_RANGE_SEL_2_MASK
+#define AGG_RANGE_SEL_6_OFFSET                          AGG_RANGE_SEL_2_OFFSET
+
 /*******************************************************************************
  *                             D A T A   T Y P E S
  *******************************************************************************
@@ -336,59 +335,6 @@ struct NDIS_TRANSPORT_STRUCT {
 	uint32_t outNdisOidLength;
 	uint8_t ndisOidContent[16];
 };
-
-#if CFG_SUPPORT_NAN
-enum _ENUM_NAN_CONTROL_ID {
-	/* SD 0x00 */
-	ENUM_NAN_PUBLISH = 0x00,
-	ENUM_CANCEL_PUBLISH = 0x01,
-	ENUM_NAN_SUBSCIRBE = 0x02,
-	EMUM_NAN_CANCEL_SUBSCRIBE = 0x03,
-	ENUM_NAN_TRANSMIT = 0x04,
-	ENUM_NAN_UPDATE_PUBLISH = 0x05,
-	ENUM_NAN_GAS_SCHEDULE_REQ = 0x06,
-
-	/* DATA 0x10 */
-	ENUM_NAN_DATA_REQ = 0x10,
-	ENUM_NAN_DATA_RESP = 0x11,
-	ENUM_NAN_DATA_END = 0x12,
-	ENUM_NAN_DATA_UPDTAE = 0x13,
-
-	/* RANGING 0x20 */
-	ENUM_NAN_RG_REQ = 0x20,
-	ENUM_NAN_RG_CANCEL = 0x21,
-	ENUM_NAN_RG_RESP = 0x22,
-
-	/* ENABLE/DISABLE NAN function */
-	ENUM_NAN_ENABLE_REQ = 0x30,
-	ENUM_NAN_DISABLE_REQ = 0x31,
-
-	/* CONFIG 0x40 */
-	ENUM_NAN_CONFIG_MP = 0x40,
-	ENUM_NAN_CONFIG_HC = 0x41,
-	ENUM_NAN_CONFIG_RANFAC = 0x42,
-	ENUM_NAN_CONFIG_AWDW = 0x43
-};
-
-enum _ENUM_NAN_STATUS_REPORT {
-	/* SD 0X00 */
-	ENUM_NAN_SD_RESULT = 0x00,
-	ENUM_NAN_REPLIED = 0x01,
-	ENUM_NAN_SUB_TERMINATE = 0x02,
-	ENUM_NAN_PUB_TERMINATE = 0x03,
-	ENUM_NAN_RECEIVE = 0x04,
-	ENUM_NAN_GAS_CONFIRM = 0x05,
-
-	/* DATA 0X00 */
-	ENUM_NAN_DATA_INDICATION = 0x10,
-	ENUM_NAN_DATA_TERMINATE = 0x11,
-	ENUM_NAN_DATA_CONFIRM = 0x12,
-
-	/* RANGING 0X00 */
-	ENUM_NAN_RG_INDICATION = 0x20,
-	ENUM_NAN_RG_RESULT = 0x21
-};
-#endif
 
 enum AGG_RANGE_TYPE_T {
 	ENUM_AGG_RANGE_TYPE_TX = 0,
@@ -446,12 +392,10 @@ priv_get_struct(IN struct net_device *prNetDev,
 		IN struct iw_request_info *prIwReqInfo,
 		IN union iwreq_data *prIwReqData, IN OUT char *pcExtra);
 
-/* fos_change begin */
-int
-priv_get_string(IN struct net_device *prNetDev,
-		IN struct iw_request_info *prIwReqInfo,
-		IN union iwreq_data *prIwReqData, IN OUT char *pcExtra);
-/* fos_change end */
+#if CFG_SUPPORT_NCHO
+uint8_t CmdString2HexParse(IN uint8_t *InStr,
+			   OUT uint8_t **OutStr, OUT uint8_t *OutLen);
+#endif
 
 int
 priv_set_driver(IN struct net_device *prNetDev,
@@ -487,23 +431,6 @@ priv_ate_set(IN struct net_device *prNetDev,
 	     IN union iwreq_data *prIwReqData, IN char *pcExtra);
 #endif
 
-#if CFG_SUPPORT_NAN
-int priv_nan_struct(struct net_device *prNetDev,
-		    struct iw_request_info *prIwReqInfo,
-		    union iwreq_data *prIwReqData, char *pcExtra);
-int priv_driver_set_nan_start(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-int priv_driver_get_master_ind(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-int priv_driver_get_range(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-int priv_driver_set_faw_reset(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-int priv_driver_set_faw_config(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-int priv_driver_set_faw_apply(struct net_device *prNetDev,
-	char *pcCommand, int i4TotalLen);
-#endif
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************

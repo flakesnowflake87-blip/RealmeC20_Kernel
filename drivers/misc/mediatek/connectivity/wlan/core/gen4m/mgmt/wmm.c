@@ -1,30 +1,62 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
+/******************************************************************************
  *
- * This program is free software: you can redistribute it and/or modify it under
- * the terms of the
- * GNU General Public License version 2 as published by the Free Software
- * Foundation.
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
+ * GPLv2 License
  *
- * You should have received a copy of the GNU General Public License along with
- * this program.
- * If not, see <http://www.gnu.org/licenses/>.
- */
+ * Copyright(C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ *
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 
 #include "precomp.h"
 
 static void wmmTxTspecFrame(struct ADAPTER *prAdapter, uint8_t ucTid,
-	enum TSPEC_OP_CODE eOpCode,
-	struct PARAM_QOS_TSPEC *prTsParam,
-	uint8_t ucBssIndex);
+			    enum TSPEC_OP_CODE eOpCode,
+			    struct PARAM_QOS_TSPEC *prTsParam);
 static void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint16_t u2MediumTime, uint32_t u4PhyRate, uint8_t ucBssIndex);
+				 uint16_t u2MediumTime, uint32_t u4PhyRate);
 
 static void wmmGetTsmRptTimeout(struct ADAPTER *prAdapter,
 				unsigned long ulParam);
@@ -32,18 +64,15 @@ static void wmmGetTsmRptTimeout(struct ADAPTER *prAdapter,
 static void wmmQueryTsmResult(struct ADAPTER *prAdapter, unsigned long ulParam);
 static void wmmRemoveTSM(struct ADAPTER *prAdapter,
 			 struct ACTIVE_RM_TSM_REQ *prActiveTsm,
-			 u_int8_t fgNeedStop,
-			 uint8_t ucBssIndex);
+			 u_int8_t fgNeedStop);
 static struct ACTIVE_RM_TSM_REQ *wmmGetActiveTsmReq(struct ADAPTER *prAdapter,
 						    uint8_t ucTid,
 						    u_int8_t fgTriggered,
-						    u_int8_t fgAllocIfNotExist,
-						    uint8_t ucBssIndex);
+						    u_int8_t fgAllocIfNotExist);
 static uint32_t wmmRunEventActionTxDone(struct ADAPTER *prAdapter,
 					struct MSDU_INFO *prMsduInfo,
 					enum ENUM_TX_RESULT_CODE rTxDoneStatus);
-static void wmmMayDoTsReplacement(struct ADAPTER *prAdapter,
-	uint8_t ucNewTid, uint8_t ucBssIndex);
+static void wmmMayDoTsReplacement(struct ADAPTER *prAdapter, uint8_t ucNewTid);
 
 #if 0
 static void DumpData(PUINT8 prAddr, UINT8 uLen, char *tag);
@@ -99,54 +128,37 @@ uint8_t const aucUp2ACIMap[8] = {ACI_BE, ACI_BK, ACI_BK, ACI_BE,
 
 void wmmInit(IN struct ADAPTER *prAdapter)
 {
-	uint8_t i;
+	struct WMM_INFO *prWmmInfo = &prAdapter->rWifiVar.rWmmInfo;
+	struct TSPEC_INFO *prTspecInfo = &prWmmInfo->arTsInfo[0];
+	uint8_t ucTid = 0;
 
-	for (i = 0; i < KAL_AIS_NUM; i++) {
-		struct WMM_INFO *prWmmInfo =
-			aisGetWMMInfo(prAdapter, i);
-		struct TSPEC_INFO *prTspecInfo = &prWmmInfo->arTsInfo[0];
-		uint8_t ucTid = 0;
-
-		for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM;
-			ucTid++, prTspecInfo++) {
-			prTspecInfo->ucTid = ucTid;
-			cnmTimerInitTimer(prAdapter,
-			&prTspecInfo->rAddTsTimer,
-			(PFN_MGMT_TIMEOUT_FUNC)
-			wmmSetupTspecTimeOut,
-			(unsigned long)prTspecInfo);
-		}
+	for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM; ucTid++, prTspecInfo++)
+		cnmTimerInitTimer(prAdapter, &prTspecInfo->rAddTsTimer,
+				  (PFN_MGMT_TIMEOUT_FUNC)wmmSetupTspecTimeOut,
+				  (unsigned long)ucTid);
 #if CFG_SUPPORT_SOFT_ACM
-		cnmTimerInitTimer(prAdapter, &prWmmInfo->rAcmDeqTimer,
-				wmmAcmDequeueTimeOut, i);
-		kalMemZero(&prWmmInfo->arAcmCtrl[0],
-				sizeof(prWmmInfo->arAcmCtrl));
+	cnmTimerInitTimer(prAdapter, &prWmmInfo->rAcmDeqTimer,
+			  wmmAcmDequeueTimeOut, 0);
+	kalMemZero(&prAdapter->rWifiVar.rWmmInfo.arAcmCtrl[0],
+		   sizeof(prAdapter->rWifiVar.rWmmInfo.arAcmCtrl));
 #endif
-		LINK_INITIALIZE(&prWmmInfo->rActiveTsmReq);
-		prWmmInfo->rTriggeredTsmRptTime = 0;
-	}
+	LINK_INITIALIZE(&prWmmInfo->rActiveTsmReq);
+	prWmmInfo->rTriggeredTsmRptTime = 0;
 	DBGLOG(WMM, TRACE, "wmm init done\n");
 }
 
 void wmmUnInit(IN struct ADAPTER *prAdapter)
 {
-	uint8_t i;
+	struct WMM_INFO *prWmmInfo = &prAdapter->rWifiVar.rWmmInfo;
+	struct TSPEC_INFO *prTspecInfo = &prWmmInfo->arTsInfo[0];
+	uint8_t ucTid = 0;
 
-	for (i = 0; i < KAL_AIS_NUM; i++) {
-		struct WMM_INFO *prWmmInfo =
-			aisGetWMMInfo(prAdapter, i);
-		struct TSPEC_INFO *prTspecInfo = &prWmmInfo->arTsInfo[0];
-		uint8_t ucTid = 0;
-
-		for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM;
-			ucTid++, prTspecInfo++)
-			cnmTimerStopTimer(prAdapter,
-				&prTspecInfo->rAddTsTimer);
+	for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM; ucTid++, prTspecInfo++)
+		cnmTimerStopTimer(prAdapter, &prTspecInfo->rAddTsTimer);
 #if CFG_SUPPORT_SOFT_ACM
-		cnmTimerStopTimer(prAdapter, &prWmmInfo->rAcmDeqTimer);
+	cnmTimerStopTimer(prAdapter, &prWmmInfo->rAcmDeqTimer);
 #endif
-		wmmRemoveAllTsmMeasurement(prAdapter, FALSE, i);
-	}
+	wmmRemoveAllTsmMeasurement(prAdapter, FALSE);
 	DBGLOG(WMM, TRACE, "wmm uninit done\n");
 }
 
@@ -242,15 +254,13 @@ static uint8_t wmmNewDlgToken(void)
 
 /* follow WMM spec, send add/del tspec request frame */
 static void wmmTxTspecFrame(struct ADAPTER *prAdapter, uint8_t ucTid,
-	enum TSPEC_OP_CODE eOpCode,
-	struct PARAM_QOS_TSPEC *prTsParam,
-	uint8_t ucBssIndex)
+			    enum TSPEC_OP_CODE eOpCode,
+			    struct PARAM_QOS_TSPEC *prTsParam)
 {
-	struct BSS_INFO *prBssInfo =
-		aisGetAisBssInfo(prAdapter, ucBssIndex);
+	struct BSS_INFO *prBssInfo = prAdapter->prAisBssInfo;
 	uint16_t u2PayLoadLen = WLAN_MAC_HEADER_LEN + 4; /*exclude TSPEC IE*/
 	struct STA_RECORD *prStaRec =
-		aisGetTargetStaRec(prAdapter, ucBssIndex);
+		prAdapter->rWifiVar.rAisFsmInfo.prTargetStaRec;
 	struct MSDU_INFO *prMsduInfo = NULL;
 	struct WMM_ACTION_TSPEC_FRAME *prActionFrame = NULL;
 	uint16_t u2FrameCtrl = MAC_FRAME_ACTION;
@@ -317,53 +327,40 @@ static void wmmTxTspecFrame(struct ADAPTER *prAdapter, uint8_t ucTid,
 
 void wmmSetupTspecTimeOut(struct ADAPTER *prAdapter, unsigned long ulParam)
 {
-	struct TSPEC_INFO *prTsInfo = (struct TSPEC_INFO *)ulParam;
+	struct TSPEC_INFO *prTsInfo = NULL;
+	uint8_t ucTimeoutTid = (uint8_t)ulParam;
 
-	if (!prTsInfo) {
-		DBGLOG(WMM, INFO, "Wrong TS info\n");
+	if (ulParam >= WMM_TSPEC_ID_NUM) {
+		DBGLOG(WMM, INFO, "Wrong TS ID %d\n", ucTimeoutTid);
 		return;
 	}
-
+	prTsInfo = &prAdapter->rWifiVar.rWmmInfo.arTsInfo[ucTimeoutTid];
 	switch (prTsInfo->eState) {
 	case QOS_TS_ACTIVE:
 		DBGLOG(WMM, INFO, "Update TS TIMEOUT for TID %d\n",
-			prTsInfo->ucTid);
+		       ucTimeoutTid);
 		break;
 	case QOS_TS_SETUPING:
-		DBGLOG(WMM, INFO, "ADD TS TIMEOUT for TID %d\n",
-			prTsInfo->ucTid);
+		DBGLOG(WMM, INFO, "ADD TS TIMEOUT for TID %d\n", ucTimeoutTid);
 		prTsInfo->eState = QOS_TS_INACTIVE;
 		break;
 	default:
 		DBGLOG(WMM, INFO,
 		       "Shouldn't start this timer when Ts %d in state %d\n",
-		       prTsInfo->ucTid, prTsInfo->eState);
+		       ucTimeoutTid, prTsInfo->eState);
 		break;
 	}
 }
 
-uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex)
+uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter)
 {
 	struct PM_PROFILE_SETUP_INFO *prPmProf = NULL;
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct TSPEC_INFO *prCurTs;
+	struct TSPEC_INFO *prCurTs = &prAdapter->rWifiVar.rWmmInfo.arTsInfo[0];
 	uint8_t ucTid = 0;
 	uint8_t ucFinalSetting = 0;
-	struct BSS_INFO *prAisBssInfo;
 
-	prAisBssInfo =
-		aisGetAisBssInfo(prAdapter,
-		ucBssIndex);
-
-	if (!prAisBssInfo || !prWmmInfo) {
-		DBGLOG(WMM, INFO, "prWmmInfo is null %d\n", ucBssIndex);
-		return 0;
-	}
-
-	prCurTs = &prWmmInfo->arTsInfo[0];
-	prPmProf = &prAisBssInfo->rPmProfSetupInfo;
+	ASSERT(prAdapter->prAisBssInfo);
+	prPmProf = &prAdapter->prAisBssInfo->rPmProfSetupInfo;
 	ucFinalSetting =
 		(prPmProf->ucBmpDeliveryAC << 4) | prPmProf->ucBmpTriggerAC;
 	for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM; ucTid++, prCurTs++) {
@@ -390,61 +387,18 @@ uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter,
 	return ucFinalSetting;
 }
 
-void wmmSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint8_t ucBssIndex)
+void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
+			  uint16_t u2MediumTime, uint32_t u4PhyRate)
 {
 	struct CMD_SET_WMM_PS_TEST_STRUCT rSetWmmPsTestParam;
-	struct BSS_INFO *prAisBssInfo = NULL;
-
-	prAisBssInfo = aisGetAisBssInfo(prAdapter, ucBssIndex);
-	if (prAisBssInfo == NULL)
-		return;
-
-	kalMemZero(&rSetWmmPsTestParam, sizeof(rSetWmmPsTestParam));
-	rSetWmmPsTestParam.ucBssIndex = prAisBssInfo->ucBssIndex;
-	rSetWmmPsTestParam.bmfgApsdEnAc =
-		wmmCalculateUapsdSetting(prAdapter, prAisBssInfo->ucBssIndex);
-	wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_WMM_PS_TEST_PARMS, TRUE,
-			    FALSE, FALSE, NULL, NULL,
-			    sizeof(struct CMD_SET_WMM_PS_TEST_STRUCT),
-			    (uint8_t *)&rSetWmmPsTestParam, NULL, 0);
-
-	DBGLOG(WMM, INFO, "Ac=%d, Uapsd 0x%02x\n",
-	       ucAc, rSetWmmPsTestParam.bmfgApsdEnAc);
-}
-
-void wmmReSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucBssIndex)
-{
-	struct WMM_INFO *prWmmInfo = aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct TSPEC_INFO *prCurTs = NULL;
-	uint8_t ucTid = 0;
-
-	for (ucTid = 0; ucTid < WMM_TSPEC_ID_NUM; ucTid++) {
-		prCurTs = &prWmmInfo->arTsInfo[ucTid];
-		if (prCurTs->eState == QOS_TS_ACTIVE)
-			wmmSyncPsParamWithFw(
-				prAdapter, prCurTs->eAC, ucBssIndex);
-	}
-}
-
-void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint16_t u2MediumTime, uint32_t u4PhyRate,
-	uint8_t ucBssIndex)
-{
 #if CFG_SUPPORT_SOFT_ACM
 	struct SOFT_ACM_CTRL *prAcmCtrl = NULL;
 #endif
 	struct CMD_UPDATE_AC_PARAMS rCmdUpdateAcParam;
-	struct BSS_INFO *prAisBssInfo;
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
 
-	prAisBssInfo =
-		aisGetAisBssInfo(prAdapter,
-		ucBssIndex);
-	ASSERT(prAisBssInfo);
+	ASSERT(prAdapter->prAisBssInfo);
 #if CFG_SUPPORT_SOFT_ACM
-	prAcmCtrl = &prWmmInfo->arAcmCtrl[ucAc];
+	prAcmCtrl = &prAdapter->rWifiVar.rWmmInfo.arAcmCtrl[ucAc];
 /* admitted time is in unit 32-us */
 #if 0 /* UT/IT code */
 	if (u2MediumTime)
@@ -455,17 +409,22 @@ void wmmSyncAcParamWithFw(struct ADAPTER *prAdapter, uint8_t ucAc,
 #endif
 	kalMemZero(&rCmdUpdateAcParam, sizeof(rCmdUpdateAcParam));
 	rCmdUpdateAcParam.ucAcIndex = ucAc;
-	rCmdUpdateAcParam.ucBssIdx = prAisBssInfo->ucBssIndex;
+	rCmdUpdateAcParam.ucBssIdx = prAdapter->prAisBssInfo->ucBssIndex;
 	rCmdUpdateAcParam.u2MediumTime = u2MediumTime;
 	rCmdUpdateAcParam.u4PhyRate = u4PhyRate;
 	wlanSendSetQueryCmd(prAdapter, CMD_ID_UPDATE_AC_PARMS, TRUE, FALSE,
 		FALSE, NULL, NULL, sizeof(struct CMD_UPDATE_AC_PARAMS),
 		(uint8_t *)&rCmdUpdateAcParam, NULL, 0);
+	kalMemZero(&rSetWmmPsTestParam, sizeof(rSetWmmPsTestParam));
+	rSetWmmPsTestParam.ucBssIndex = prAdapter->prAisBssInfo->ucBssIndex;
+	rSetWmmPsTestParam.bmfgApsdEnAc = wmmCalculateUapsdSetting(prAdapter);
+	wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_WMM_PS_TEST_PARMS, TRUE,
+			    FALSE, FALSE, NULL, NULL,
+			    sizeof(struct CMD_SET_WMM_PS_TEST_STRUCT),
+			    (uint8_t *)&rSetWmmPsTestParam, NULL, 0);
 
-	DBGLOG(WMM, INFO, "Ac=%d, MediumTime=%d PhyRate=%u\n",
-	       ucAc, u2MediumTime, u4PhyRate);
-
-	wmmSyncPsParamWithFw(prAdapter, ucAc, ucBssIndex);
+	DBGLOG(WMM, INFO, "Ac=%d, MediumTime=%d PhyRate=%u Uapsd 0x%02x\n",
+	       ucAc, u2MediumTime, u4PhyRate, rSetWmmPsTestParam.bmfgApsdEnAc);
 }
 
 /* Return: AC List in bit map if this ac has active tspec */
@@ -473,11 +432,6 @@ uint8_t wmmHasActiveTspec(struct WMM_INFO *prWmmInfo)
 {
 	uint8_t ucTid = 0;
 	uint8_t ucACList = 0;
-
-	if (!prWmmInfo) {
-		DBGLOG(WMM, INFO, "prWmmInfo is null\n");
-		return 0;
-	}
 
 	/* if any tspec is active, it means */
 	for (; ucTid < WMM_TSPEC_ID_NUM; ucTid++)
@@ -491,29 +445,22 @@ void wmmRunEventTSOperate(IN struct ADAPTER *prAdapter,
 {
 	struct MSG_TS_OPERATE *prMsgTsOperate =
 		(struct MSG_TS_OPERATE *)prMsgHdr;
-	uint8_t ucBssIndex = prMsgTsOperate->ucBssIdx;
 
 	wmmTspecSteps(prAdapter, prMsgTsOperate->ucTid, prMsgTsOperate->eOpCode,
-		(void *)&prMsgTsOperate->rTspecParam,
-		ucBssIndex);
+		      (void *)&prMsgTsOperate->rTspecParam);
 	cnmMemFree(prAdapter, prMsgHdr);
 }
 
 void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
-	enum TSPEC_OP_CODE eOpCode, void *prStepParams,
-	uint8_t ucBssIndex)
+		   enum TSPEC_OP_CODE eOpCode, void *prStepParams)
 {
-	struct AIS_FSM_INFO *prAisFsmInfo =
-		aisGetAisFsmInfo(prAdapter, ucBssIndex);
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
+	struct AIS_FSM_INFO *prAisFsmInfo = &prAdapter->rWifiVar.rAisFsmInfo;
+	struct WMM_INFO *prWmmInfo = &prAdapter->rWifiVar.rWmmInfo;
 	struct TSPEC_INFO *prCurTs = NULL;
-	struct BSS_INFO *prAisBssInfo =
-		aisGetAisBssInfo(prAdapter, ucBssIndex);
 
-	ASSERT(prAisBssInfo);
-	if (prAisBssInfo->eConnectionState !=
-		    MEDIA_STATE_CONNECTED ||
+	ASSERT(prAdapter->prAisBssInfo);
+	if (prAdapter->prAisBssInfo->eConnectionState !=
+		    PARAM_MEDIA_STATE_CONNECTED ||
 	    prAisFsmInfo->eCurrentState == AIS_STATE_DISCONNECTING) {
 		DBGLOG(WMM, INFO,
 		       "ignore OP code %d when medium disconnected\n", eOpCode);
@@ -541,8 +488,7 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 			break;
 		}
 		/*Send ADDTS req Frame*/
-		wmmTxTspecFrame(prAdapter, ucTid, TX_ADDTS_REQ, prQosTspec,
-			ucBssIndex);
+		wmmTxTspecFrame(prAdapter, ucTid, TX_ADDTS_REQ, prQosTspec);
 
 		/*start ADDTS timer*/
 		cnmTimerStartTimer(prAdapter, &prCurTs->rAddTsTimer, 1000);
@@ -578,28 +524,25 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 			prCurTs->u4PhyRate = prParam->u4PhyRate;
 			wmmSyncAcParamWithFw(prAdapter, prCurTs->eAC,
 					     prParam->u2MediumTime,
-					     prParam->u4PhyRate,
-					     ucBssIndex);
-			wmmMayDoTsReplacement(prAdapter, ucTid, ucBssIndex);
+					     prParam->u4PhyRate);
+			wmmMayDoTsReplacement(prAdapter, ucTid);
 			/* start pending TSM if it was requested before admitted
 			 */
 			prActiveTsmReq = wmmGetActiveTsmReq(prAdapter, ucTid,
-				TRUE, FALSE, ucBssIndex);
+							    TRUE, FALSE);
 			if (prActiveTsmReq)
 				wmmStartTsmMeasurement(
 					prAdapter, (unsigned long)prActiveTsmReq
-							   ->prTsmReq,
-				ucBssIndex);
+							   ->prTsmReq);
 			prActiveTsmReq = wmmGetActiveTsmReq(prAdapter, ucTid,
-				FALSE, FALSE, ucBssIndex);
+							    FALSE, FALSE);
 			if (prActiveTsmReq)
 				wmmStartTsmMeasurement(
 					prAdapter, (unsigned long)prActiveTsmReq
-							   ->prTsmReq,
-				ucBssIndex);
+							   ->prTsmReq);
 
 			/* nicTxChangeDataPortByAc(
-			 ** prAisBssInfo->prStaRecOfAP,
+			 ** prAdapter->prAisBssInfo->prStaRecOfAP,
 			 ** prCurTs->eAC, TRUE);
 			 */
 		} else {
@@ -617,15 +560,13 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 		case RX_DELTS_REQ:
 		case DISC_DELTS_REQ:
 			prActiveTsm = wmmGetActiveTsmReq(prAdapter, ucTid, TRUE,
-				FALSE, ucBssIndex);
+							 FALSE);
 			if (prActiveTsm)
-				wmmRemoveTSM(prAdapter, prActiveTsm, TRUE,
-					ucBssIndex);
+				wmmRemoveTSM(prAdapter, prActiveTsm, TRUE);
 			prActiveTsm = wmmGetActiveTsmReq(prAdapter, ucTid,
-				FALSE, FALSE, ucBssIndex);
+							 FALSE, FALSE);
 			if (prActiveTsm)
-				wmmRemoveTSM(prAdapter, prActiveTsm, TRUE,
-					ucBssIndex);
+				wmmRemoveTSM(prAdapter, prActiveTsm, TRUE);
 			prCurTs->eState = QOS_TS_INACTIVE;
 #if CFG_SUPPORT_SOFT_ACM
 			/* Need to change tx queue, due to we do soft ACM */
@@ -633,21 +574,17 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 					 prAisFsmInfo->prTargetStaRec,
 					 prCurTs->eAC);
 #endif
-			wmmSyncAcParamWithFw(prAdapter, prCurTs->eAC, 0, 0,
-				ucBssIndex);
-			wmmDumpActiveTspecs(prAdapter, NULL, 0,
-				ucBssIndex);
+			wmmSyncAcParamWithFw(prAdapter, prCurTs->eAC, 0, 0);
+			wmmDumpActiveTspecs(prAdapter, NULL, 0);
 			if (eOpCode == TX_DELTS_REQ)
 				wmmTxTspecFrame(
 					prAdapter, ucTid, TX_DELTS_REQ,
-					(struct PARAM_QOS_TSPEC *)prStepParams,
-					ucBssIndex);
+					(struct PARAM_QOS_TSPEC *)prStepParams);
 			break;
 		case TX_ADDTS_REQ:
 			/*Send ADDTS req Frame*/
 			wmmTxTspecFrame(prAdapter, ucTid, TX_ADDTS_REQ,
-					(struct PARAM_QOS_TSPEC *)prStepParams,
-					ucBssIndex);
+					(struct PARAM_QOS_TSPEC *)prStepParams);
 			prCurTs->eAC =
 				aucUp2ACIMap[((struct PARAM_QOS_TSPEC *)
 						      prStepParams)
@@ -679,9 +616,8 @@ void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
 			prCurTs->u4PhyRate = prParam->u4PhyRate;
 			wmmSyncAcParamWithFw(prAdapter, prCurTs->eAC,
 					     prParam->u2MediumTime,
-					     prParam->u4PhyRate,
-					     ucBssIndex);
-			wmmMayDoTsReplacement(prAdapter, ucTid, ucBssIndex);
+					     prParam->u4PhyRate);
+			wmmMayDoTsReplacement(prAdapter, ucTid);
 			break;
 		}
 		default:
@@ -747,24 +683,18 @@ void DumpData(uint8_t *prAddr, uint8_t uLen, char *tag)
 }
 
 /* TSM related */
-static void wmmQueryTsmResult(struct ADAPTER *prAdapter,
-	unsigned long ulParam)
+
+static void wmmQueryTsmResult(struct ADAPTER *prAdapter, unsigned long ulParam)
 {
-	uint8_t ucBssIndex =
-		((struct ACTIVE_RM_TSM_REQ *)ulParam)->ucBssIdx;
 	struct RM_TSM_REQ *prTsmReq =
 		((struct ACTIVE_RM_TSM_REQ *)ulParam)->prTsmReq;
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct CMD_GET_TSM_STATISTICS rGetTsmStatistics = {0};
+	struct WMM_INFO *prWmmInfo = &prAdapter->rWifiVar.rWmmInfo;
+	struct CMD_GET_TSM_STATISTICS rGetTsmStatistics;
 
-	DBGLOG(WMM, INFO, "[%d] Query TSM statistics, tid = %d\n",
-		ucBssIndex,
-		prTsmReq->ucTID);
+	DBGLOG(WMM, INFO, "Query TSM statistics, tid = %d\n", prTsmReq->ucTID);
 	DBGLOG(WMM, INFO, "%p , aci %d, duration %d\n", prTsmReq,
-		prTsmReq->ucACI, prTsmReq->u2Duration);
-
-	rGetTsmStatistics.ucBssIdx = ucBssIndex;
+	       prTsmReq->ucACI, prTsmReq->u2Duration);
+	rGetTsmStatistics.ucBssIdx = prAdapter->prAisBssInfo->ucBssIndex;
 	rGetTsmStatistics.ucAcIndex = prTsmReq->ucACI;
 	rGetTsmStatistics.ucTid = prTsmReq->ucTID;
 	COPY_MAC_ADDR(rGetTsmStatistics.aucPeerAddr, prTsmReq->aucPeerAddr);
@@ -773,21 +703,17 @@ static void wmmQueryTsmResult(struct ADAPTER *prAdapter,
 			    FALSE, wmmComposeTsmRpt, NULL,
 			    sizeof(struct CMD_GET_TSM_STATISTICS),
 			    (uint8_t *)&rGetTsmStatistics, NULL, 0);
-	cnmTimerInitTimer(prAdapter, &prWmmInfo->rTsmTimer,
-		wmmGetTsmRptTimeout,
-		ulParam);
+	cnmTimerInitTimer(prAdapter, &prWmmInfo->rTsmTimer, wmmGetTsmRptTimeout,
+			  ulParam);
 	cnmTimerStartTimer(prAdapter, &prWmmInfo->rTsmTimer, 2000);
-
 }
 
 static struct ACTIVE_RM_TSM_REQ *wmmGetActiveTsmReq(struct ADAPTER *prAdapter,
 						    uint8_t ucTid,
 						    u_int8_t fgTriggered,
-						    u_int8_t fgAllocIfNotExist,
-						    uint8_t ucBssIndex)
+						    u_int8_t fgAllocIfNotExist)
 {
-	struct WMM_INFO *prWMMInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
+	struct WMM_INFO *prWMMInfo = &prAdapter->rWifiVar.rWmmInfo;
 	struct ACTIVE_RM_TSM_REQ *prActiveReq = NULL;
 	u_int8_t fgFound = FALSE;
 
@@ -804,8 +730,6 @@ static struct ACTIVE_RM_TSM_REQ *wmmGetActiveTsmReq(struct ADAPTER *prAdapter,
 		fgFound = TRUE;
 		prActiveReq = cnmMemAlloc(prAdapter, RAM_TYPE_BUF,
 					  sizeof(struct ACTIVE_RM_TSM_REQ));
-		if (!prActiveReq)
-			return NULL;
 		LINK_INSERT_TAIL(&prWMMInfo->rActiveTsmReq,
 				 &prActiveReq->rLinkEntry);
 	}
@@ -814,32 +738,24 @@ static struct ACTIVE_RM_TSM_REQ *wmmGetActiveTsmReq(struct ADAPTER *prAdapter,
 
 static void wmmRemoveTSM(struct ADAPTER *prAdapter,
 			 struct ACTIVE_RM_TSM_REQ *prActiveTsm,
-			 u_int8_t fgNeedStop,
-			 uint8_t ucBssIndex)
+			 u_int8_t fgNeedStop)
 {
-	struct WMM_INFO *prWMMInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
+	struct WMM_INFO *prWMMInfo = &prAdapter->rWifiVar.rWmmInfo;
 	struct LINK *prActiveTsmLink = &prWMMInfo->rActiveTsmReq;
 
 	LINK_REMOVE_KNOWN_ENTRY(prActiveTsmLink, prActiveTsm);
 	if (fgNeedStop) {
-		struct CMD_SET_TSM_STATISTICS_REQUEST rTsmStatistics = {0};
+		struct CMD_SET_TSM_STATISTICS_REQUEST rTsmStatistics;
 		struct STA_RECORD *prStaRec = NULL;
-		struct BSS_INFO *prAisBssInfo;
 
-		prAisBssInfo =
-			aisGetAisBssInfo(prAdapter,
-			ucBssIndex);
-		if (!prAisBssInfo) {
+		if (!prAdapter->prAisBssInfo) {
 			DBGLOG(WMM, ERROR, "prAisBssInfo is NULL\n");
 			return;
 		}
-		prStaRec = prAisBssInfo->prStaRecOfAP;
-		nicTxChangeDataPortByAc(prAdapter,
-					prStaRec,
-					prActiveTsm->prTsmReq->ucACI,
+		prStaRec = prAdapter->prAisBssInfo->prStaRecOfAP;
+		nicTxChangeDataPortByAc(prStaRec, prActiveTsm->prTsmReq->ucACI,
 					FALSE);
-		rTsmStatistics.ucBssIdx = prAisBssInfo->ucBssIndex;
+		rTsmStatistics.ucBssIdx = prAdapter->prAisBssInfo->ucBssIndex;
 		rTsmStatistics.ucEnabled = FALSE;
 		rTsmStatistics.ucAcIndex = prActiveTsm->prTsmReq->ucACI;
 		rTsmStatistics.ucTid = prActiveTsm->prTsmReq->ucTID;
@@ -855,40 +771,32 @@ static void wmmRemoveTSM(struct ADAPTER *prAdapter,
 	cnmMemFree(prAdapter, prActiveTsm);
 }
 
-void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
-	uint8_t ucBssIndex)
+void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam)
 {
-	struct WMM_INFO *prWMMInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
+	struct WMM_INFO *prWMMInfo = &prAdapter->rWifiVar.rWmmInfo;
 	struct CMD_SET_TSM_STATISTICS_REQUEST rTsmStatistics;
 	struct RM_TSM_REQ *prTsmReq = (struct RM_TSM_REQ *)ulParam;
 	uint8_t ucTid = prTsmReq->ucTID;
 	struct ACTIVE_RM_TSM_REQ *prActiveTsmReq = NULL;
 	struct STA_RECORD *prStaRec = NULL;
 	struct TSPEC_INFO *prCurTs = NULL;
-	struct BSS_INFO *prAisBssInfo;
 
-	prAisBssInfo =
-		aisGetAisBssInfo(prAdapter, ucBssIndex);
-
-	ASSERT(prAisBssInfo);
+	ASSERT(prAdapter->prAisBssInfo);
 	if (!prTsmReq->u2Duration &&
 	    !(prTsmReq->rTriggerCond.ucCondition & TSM_TRIGGER_CONDITION_ALL)) {
 		DBGLOG(WMM, WARN, "Duration is %d, Trigger Condition %d\n",
 		       prTsmReq->u2Duration,
 		       prTsmReq->rTriggerCond.ucCondition);
 		cnmMemFree(prAdapter, prTsmReq);
-		rrmScheduleNextRm(prAdapter,
-			ucBssIndex);
+		rlmScheduleNextRm(prAdapter);
 		return;
 	}
-	prStaRec = prAisBssInfo->prStaRecOfAP;
+	prStaRec = prAdapter->prAisBssInfo->prStaRecOfAP;
 	if (!prStaRec) {
-		DBGLOG(WMM, INFO, "No station record found for "MACSTR"\n",
-			MAC2STR(prTsmReq->aucPeerAddr));
+		DBGLOG(WMM, INFO, "No station record found for %pM\n",
+		       prTsmReq->aucPeerAddr);
 		cnmMemFree(prAdapter, prTsmReq);
-		rrmScheduleNextRm(prAdapter,
-			ucBssIndex);
+		rlmScheduleNextRm(prAdapter);
 		return;
 	}
 	/* if there's a active tspec, then TID means TS ID */
@@ -907,8 +815,7 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 			DBGLOG(WMM, INFO,
 			       "ACM is set for UP %d, but No tspec is setup\n",
 			       ucTid);
-			rrmScheduleNextRm(prAdapter,
-				ucBssIndex);
+			rlmScheduleNextRm(prAdapter);
 			return;
 		}
 	}
@@ -931,13 +838,10 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 			if (prActiveTsmReq->prTsmReq->u2Duration ||
 			    prActiveTsmReq->prTsmReq->ucACI != prTsmReq->ucACI)
 				continue;
-			nicTxChangeDataPortByAc(
-				prAdapter,
-				prStaRec,
-				prTsmReq->ucACI,
+			nicTxChangeDataPortByAc(prStaRec, prTsmReq->ucACI,
 						FALSE);
 			rTsmStatistics.ucBssIdx =
-				ucBssIndex;
+				prAdapter->prAisBssInfo->ucBssIndex;
 			rTsmStatistics.ucEnabled = FALSE;
 			rTsmStatistics.ucAcIndex = prTsmReq->ucACI;
 			rTsmStatistics.ucTid = prActiveTsmReq->prTsmReq->ucTID;
@@ -950,23 +854,20 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 				(uint8_t *)&rTsmStatistics, NULL, 0);
 		}
 		prActiveTsmReq = wmmGetActiveTsmReq(
-			prAdapter, ucTid, !!prTsmReq->u2Duration, TRUE,
-			ucBssIndex);
+			prAdapter, ucTid, !!prTsmReq->u2Duration, TRUE);
 		/* if exist normal tsm on the same ts, replace it */
 		if (prActiveTsmReq->prTsmReq)
 			cnmMemFree(prAdapter, prActiveTsmReq->prTsmReq);
 		DBGLOG(WMM, INFO, "%p tid %d, aci %d, duration %d\n", prTsmReq,
 		       prTsmReq->ucTID, prTsmReq->ucACI, prTsmReq->u2Duration);
-		prActiveTsmReq->ucBssIdx = ucBssIndex;
 		cnmTimerInitTimer(prAdapter, &prWMMInfo->rTsmTimer,
-			wmmQueryTsmResult,
-			(unsigned long)prActiveTsmReq);
+				  wmmQueryTsmResult,
+				  (unsigned long)prActiveTsmReq);
 		cnmTimerStartTimer(prAdapter, &prWMMInfo->rTsmTimer,
 				   TU_TO_MSEC(prTsmReq->u2Duration));
 	} else {
 		prActiveTsmReq = wmmGetActiveTsmReq(
-			prAdapter, ucTid, !prTsmReq->u2Duration, TRUE,
-			ucBssIndex);
+			prAdapter, ucTid, !prTsmReq->u2Duration, TRUE);
 		/* if exist triggered tsm on the same ts, replace it */
 		if (prActiveTsmReq->prTsmReq) {
 			cnmTimerStopTimer(prAdapter,
@@ -987,9 +888,9 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 			prTsmReq->rTriggerCond.ucDelayThreshold;
 		rTsmStatistics.ucBin0Range = prTsmReq->ucB0Range;
 	}
-	nicTxChangeDataPortByAc(prAdapter, prStaRec, prTsmReq->ucACI, TRUE);
+	nicTxChangeDataPortByAc(prStaRec, prTsmReq->ucACI, TRUE);
 	prActiveTsmReq->prTsmReq = prTsmReq;
-	rTsmStatistics.ucBssIdx = ucBssIndex;
+	rTsmStatistics.ucBssIdx = prAdapter->prAisBssInfo->ucBssIndex;
 	rTsmStatistics.ucAcIndex = prTsmReq->ucACI;
 	rTsmStatistics.ucTid = prTsmReq->ucTID;
 	rTsmStatistics.ucEnabled = TRUE;
@@ -1003,12 +904,10 @@ void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
 }
 
 void wmmRemoveAllTsmMeasurement(struct ADAPTER *prAdapter,
-	u_int8_t fgOnlyTriggered, uint8_t ucBssIndex)
+				u_int8_t fgOnlyTriggered)
 {
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
 	struct LINK *prActiveTsmLink =
-		&prWmmInfo->rActiveTsmReq;
+		&prAdapter->rWifiVar.rWmmInfo.rActiveTsmReq;
 	struct ACTIVE_RM_TSM_REQ *prActiveTsm = NULL;
 	struct ACTIVE_RM_TSM_REQ *prHead = LINK_PEEK_HEAD(
 		prActiveTsmLink, struct ACTIVE_RM_TSM_REQ, rLinkEntry);
@@ -1016,7 +915,7 @@ void wmmRemoveAllTsmMeasurement(struct ADAPTER *prAdapter,
 
 	if (!fgOnlyTriggered)
 		cnmTimerStopTimer(prAdapter,
-				  &prWmmInfo->rTsmTimer);
+				  &prAdapter->rWifiVar.rWmmInfo.rTsmTimer);
 	do {
 		prActiveTsm = LINK_PEEK_TAIL(
 			prActiveTsmLink, struct ACTIVE_RM_TSM_REQ, rLinkEntry);
@@ -1026,9 +925,9 @@ void wmmRemoveAllTsmMeasurement(struct ADAPTER *prAdapter,
 			fgFinished = TRUE;
 		if (fgOnlyTriggered && prActiveTsm->prTsmReq->u2Duration)
 			continue;
-		wmmRemoveTSM(prAdapter, prActiveTsm, TRUE, ucBssIndex);
+		wmmRemoveTSM(prAdapter, prActiveTsm, TRUE);
 	} while (!fgFinished);
-	prWmmInfo->rTriggeredTsmRptTime = 0;
+	prAdapter->rWifiVar.rWmmInfo.rTriggeredTsmRptTime = 0;
 }
 
 u_int8_t wmmParseQosAction(IN struct ADAPTER *prAdapter,
@@ -1042,13 +941,9 @@ u_int8_t wmmParseQosAction(IN struct ADAPTER *prAdapter,
 	uint8_t ucTid = WMM_TSPEC_ID_NUM;
 	struct WMM_ADDTS_RSP_STEP_PARAM rStepParam;
 	u_int8_t ret = FALSE;
-	uint8_t ucBssIndex = secGetBssIdxByRfb(prAdapter,
-		prSwRfb);
 
 	prWlanActionFrame = (struct WLAN_ACTION_FRAME *)prSwRfb->pvHeader;
-	DBGLOG(WMM, INFO, "[%d] Action=%d\n",
-		ucBssIndex,
-		prWlanActionFrame->ucAction);
+	DBGLOG(WMM, INFO, "Action=%d\n", prWlanActionFrame->ucAction);
 	switch (prWlanActionFrame->ucAction) {
 	case ACTION_ADDTS_RSP: {
 		kalMemZero(&rStepParam, sizeof(rStepParam));
@@ -1104,14 +999,14 @@ u_int8_t wmmParseQosAction(IN struct ADAPTER *prAdapter,
 				} else {
 					DBGLOG(WMM, INFO,
 					       "can't parse Tspec IE?!\n");
+					ASSERT(FALSE);
 				}
 				break;
 			default:
 				break;
 			}
 		}
-		wmmTspecSteps(prAdapter, ucTid, RX_ADDTS_RSP, &rStepParam,
-			ucBssIndex);
+		wmmTspecSteps(prAdapter, ucTid, RX_ADDTS_RSP, &rStepParam);
 		ret = TRUE;
 		break;
 	}
@@ -1145,8 +1040,7 @@ u_int8_t wmmParseQosAction(IN struct ADAPTER *prAdapter,
 			ucTid = WMM_TSINFO_TSID(prDelTs->aucTsInfo[0]);
 		}
 
-		wmmTspecSteps(prAdapter, ucTid, RX_DELTS_REQ, NULL,
-			ucBssIndex);
+		wmmTspecSteps(prAdapter, ucTid, RX_DELTS_REQ, NULL);
 		ret = TRUE;
 		break;
 	}
@@ -1175,12 +1069,6 @@ u_int8_t wmmParseTspecIE(struct ADAPTER *prAdapter, uint8_t *pucIE,
 		struct IE_WMM_TSPEC *prIeWmmTspec =
 			(struct IE_WMM_TSPEC *)pucIE;
 		uint8_t aucWfaOui[] = VENDOR_OUI_WFA;
-
-		/* WMM TSPEC length */
-		if (prIeWmmTspec->ucLength < ELEM_MAX_LEN_WMM_TSPEC) {
-			DBGLOG(WMM, INFO, "Abnormal IE length\n");
-			return FALSE;
-		}
 
 		if (prIeWmmTspec->ucId != ELEM_ID_VENDOR ||
 		    kalMemCmp(prIeWmmTspec->aucOui, aucWfaOui,
@@ -1242,46 +1130,37 @@ u_int8_t wmmParseTspecIE(struct ADAPTER *prAdapter, uint8_t *pucIE,
 }
 
 static void wmmGetTsmRptTimeout(struct ADAPTER *prAdapter,
-	unsigned long ulParam)
+				unsigned long ulParam)
 {
-	uint8_t ucBssIndex =
-		((struct ACTIVE_RM_TSM_REQ *)ulParam)->ucBssIdx;
-	DBGLOG(WMM, ERROR,
-		"[%d] timeout to get Tsm Rpt from firmware\n", ucBssIndex);
+	DBGLOG(WMM, ERROR, "timeout to get Tsm Rpt from firmware\n");
 	wlanReleasePendingCmdById(prAdapter, CMD_ID_GET_TSM_STATISTICS);
-	wmmRemoveTSM(prAdapter, (struct ACTIVE_RM_TSM_REQ *)ulParam, TRUE,
-		ucBssIndex);
+	wmmRemoveTSM(prAdapter, (struct ACTIVE_RM_TSM_REQ *)ulParam, TRUE);
 	/* schedule next measurement after a duration based TSM done */
-	rrmStartNextMeasurement(prAdapter, FALSE, ucBssIndex);
+	rlmStartNextMeasurement(prAdapter, FALSE);
 }
 
 void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		      uint8_t *pucEventBuf)
 {
-	struct CMD_GET_TSM_STATISTICS *prTsmStatistic =
-		(struct CMD_GET_TSM_STATISTICS *)pucEventBuf;
-	uint8_t ucBssIndex = prTsmStatistic->ucBssIdx;
 	struct RADIO_MEASUREMENT_REPORT_PARAMS *prRmRep =
-		aisGetRmReportParam(prAdapter, ucBssIndex);
+		&prAdapter->rWifiVar.rRmRepParams;
 	struct IE_MEASUREMENT_REPORT *prTsmRpt = NULL;
 	struct RM_TSM_REPORT *prTsmRptField = NULL;
+	struct CMD_GET_TSM_STATISTICS *prTsmStatistic =
+		(struct CMD_GET_TSM_STATISTICS *)pucEventBuf;
 	uint16_t u2IeSize =
 		OFFSET_OF(struct IE_MEASUREMENT_REPORT, aucReportFields) +
 		sizeof(*prTsmRptField);
 	struct ACTIVE_RM_TSM_REQ *prCurrentTsmReq = NULL;
-	struct WMM_INFO *prWMMInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct BSS_INFO *prAisBssInfo =
-		aisGetAisBssInfo(prAdapter, ucBssIndex);
+	struct WMM_INFO *prWMMInfo = &prAdapter->rWifiVar.rWmmInfo;
 
-	if (!prAisBssInfo) {
+	if (!prAdapter->prAisBssInfo) {
 		DBGLOG(WMM, ERROR, "prAisBssInfo is NULL\n");
 		return;
 	}
 	prCurrentTsmReq =
 		wmmGetActiveTsmReq(prAdapter, prTsmStatistic->ucTid,
-				   !prTsmStatistic->ucReportReason, FALSE,
-				   ucBssIndex);
+				   !prTsmStatistic->ucReportReason, FALSE);
 	/* prCmdInfo is not NULL or report reason is 0 means it is a command
 	 ** reply, so we need to stop the timer
 	 */
@@ -1291,14 +1170,13 @@ void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		DBGLOG(WMM, ERROR, "unexpected Tsm statistic event, tid %d\n",
 		       prTsmStatistic->ucTid);
 		/* schedule next measurement after a duration based TSM done */
-		rrmScheduleNextRm(prAdapter,
-			ucBssIndex);
+		rlmScheduleNextRm(prAdapter);
 		return;
 	}
 
 	/* Put the report IE into report frame */
 	if (u2IeSize + prRmRep->u2ReportFrameLen > RM_REPORT_FRAME_MAX_LENGTH)
-		rrmTxRadioMeasurementReport(prAdapter, ucBssIndex);
+		rlmTxRadioMeasurementReport(prAdapter);
 
 	DBGLOG(WMM, INFO, "tid %d, aci %d\n", prCurrentTsmReq->prTsmReq->ucTID,
 	       prCurrentTsmReq->prTsmReq->ucACI);
@@ -1334,7 +1212,7 @@ void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		struct RM_TSM_REQ *prTsmReq = NULL;
 		struct CMD_SET_TSM_STATISTICS_REQUEST rTsmStatistics;
 
-		wmmRemoveTSM(prAdapter, prCurrentTsmReq, FALSE, ucBssIndex);
+		wmmRemoveTSM(prAdapter, prCurrentTsmReq, FALSE);
 		/* Resume all triggered tsm whose TC is same with this normal
 		 ** tsm
 		 */
@@ -1347,12 +1225,11 @@ void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 				continue;
 
 			nicTxChangeDataPortByAc(
-				prAdapter,
-				prAisBssInfo->prStaRecOfAP,
+				prAdapter->prAisBssInfo->prStaRecOfAP,
 				prTsmReq->ucACI, TRUE);
 			kalMemZero(&rTsmStatistics, sizeof(rTsmStatistics));
 			rTsmStatistics.ucBssIdx =
-				ucBssIndex;
+				prAdapter->prAisBssInfo->ucBssIndex;
 			rTsmStatistics.ucEnabled = TRUE;
 			rTsmStatistics.ucAcIndex = prTsmReq->ucACI;
 			rTsmStatistics.ucTid = prTsmReq->ucTID;
@@ -1378,7 +1255,7 @@ void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 				(uint8_t *)&rTsmStatistics, NULL, 0);
 		}
 		/* schedule next measurement after a duration based TSM done */
-		rrmScheduleNextRm(prAdapter, ucBssIndex);
+		rlmScheduleNextRm(prAdapter);
 	} else {
 		/* Triggered TSM, we should send TSM report to peer if the first
 		 ** report time to now more than 10 second
@@ -1390,37 +1267,28 @@ void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		else if (CHECK_FOR_TIMEOUT(rCurrent,
 					   prWMMInfo->rTriggeredTsmRptTime,
 					   10000)) {
-			rrmTxRadioMeasurementReport(prAdapter, ucBssIndex);
+			rlmTxRadioMeasurementReport(prAdapter);
 			prWMMInfo->rTriggeredTsmRptTime = 0;
 		}
 	}
 }
 
-void wmmNotifyDisconnected(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex)
+void wmmNotifyDisconnected(struct ADAPTER *prAdapter)
 {
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
 	uint8_t ucTid = 0;
 
 	for (; ucTid < WMM_TSPEC_ID_NUM; ucTid++)
-		wmmTspecSteps(prAdapter, ucTid, DISC_DELTS_REQ, NULL,
-			ucBssIndex);
-	wmmRemoveAllTsmMeasurement(prAdapter, FALSE,
-		ucBssIndex);
+		wmmTspecSteps(prAdapter, ucTid, DISC_DELTS_REQ, NULL);
+	wmmRemoveAllTsmMeasurement(prAdapter, FALSE);
 #if CFG_SUPPORT_SOFT_ACM
-	kalMemZero(&prWmmInfo->arAcmCtrl[0],
-		   sizeof(prWmmInfo->arAcmCtrl));
+	kalMemZero(&prAdapter->rWifiVar.rWmmInfo.arAcmCtrl[0],
+		   sizeof(prAdapter->rWifiVar.rWmmInfo.arAcmCtrl));
 #endif
 }
 
-u_int8_t wmmTsmIsOngoing(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex)
+u_int8_t wmmTsmIsOngoing(struct ADAPTER *prAdapter)
 {
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-
-	return !LINK_IS_EMPTY(&prWmmInfo->rActiveTsmReq);
+	return !LINK_IS_EMPTY(&prAdapter->rWifiVar.rWmmInfo.rActiveTsmReq);
 }
 
 /* This function implements TS replacement rule
@@ -1430,12 +1298,9 @@ u_int8_t wmmTsmIsOngoing(struct ADAPTER *prAdapter,
  ** 3. old: two diff Uni-dir; New: Bi-dir
  ** for detail, see WMM spec V1.2.0, section 3.5
  */
-static void wmmMayDoTsReplacement(struct ADAPTER *prAdapter,
-	uint8_t ucNewTid, uint8_t ucBssIndex)
+static void wmmMayDoTsReplacement(struct ADAPTER *prAdapter, uint8_t ucNewTid)
 {
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct TSPEC_INFO *prTspec = &prWmmInfo->arTsInfo[0];
+	struct TSPEC_INFO *prTspec = &prAdapter->rWifiVar.rWmmInfo.arTsInfo[0];
 	uint8_t ucTid = 0;
 
 	for (; ucTid < WMM_TSPEC_ID_NUM; ucTid++) {
@@ -1451,17 +1316,15 @@ static void wmmMayDoTsReplacement(struct ADAPTER *prAdapter,
 		prTspec[ucTid].eAC = ACI_NUM;
 		prTspec[ucTid].eState = QOS_TS_INACTIVE;
 	}
-	wmmDumpActiveTspecs(prAdapter, NULL, 0, ucBssIndex);
+	wmmDumpActiveTspecs(prAdapter, NULL, 0);
 }
 
 uint32_t wmmDumpActiveTspecs(struct ADAPTER *prAdapter, uint8_t *pucBuffer,
-	uint16_t u2BufferLen, uint8_t ucBssIndex)
+			     uint16_t u2BufferLen)
 {
 	uint8_t ucTid = 0;
 	int32_t i4BytesWritten = 0;
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
-	struct TSPEC_INFO *prTspec = &prWmmInfo->arTsInfo[0];
+	struct TSPEC_INFO *prTspec = &prAdapter->rWifiVar.rWmmInfo.arTsInfo[0];
 
 	for (; ucTid < WMM_TSPEC_ID_NUM; ucTid++, prTspec++) {
 		if (prTspec->eState != QOS_TS_ACTIVE)
@@ -1484,15 +1347,15 @@ uint32_t wmmDumpActiveTspecs(struct ADAPTER *prAdapter, uint8_t *pucBuffer,
 			       prTspec->u4PhyRate);
 	}
 	if (u2BufferLen > 0 && pucBuffer) {
-		struct STA_RECORD *prStaRec =
-			aisGetStaRecOfAP(prAdapter, ucBssIndex);
+		struct STA_RECORD *prStaRec = NULL;
 
-		if (prStaRec) {
+		if (prAdapter->prAisBssInfo &&
+		    prAdapter->prAisBssInfo->prStaRecOfAP) {
+			prStaRec = prAdapter->prAisBssInfo->prStaRecOfAP;
 			i4BytesWritten += kalSnprintf(
 				pucBuffer + i4BytesWritten, u2BufferLen,
-				"\nACM status for AP "MACSTR
-				":\nBE %d; BK %d; VI %d; VO %d\n",
-				MAC2STR(prStaRec->aucMacAddr),
+				"\nACM status for AP %pM:\nBE %d; BK %d; VI %d; VO %d\n",
+				prStaRec->aucMacAddr,
 				prStaRec->afgAcmRequired[ACI_BE],
 				prStaRec->afgAcmRequired[ACI_BK],
 				prStaRec->afgAcmRequired[ACI_VI],
@@ -1597,30 +1460,17 @@ uint32_t wmmCalculatePktUsedTime(struct BSS_INFO *prBssInfo,
  ** FALSE: No time to dequeue
  */
 u_int8_t wmmAcmCanDequeue(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint32_t u4PktTxTime, uint8_t ucBssIndex)
+			  uint32_t u4PktTxTime)
 {
 	struct SOFT_ACM_CTRL *prAcmCtrl = NULL;
-	struct WMM_INFO *prWmmInfo =
-		aisGetWMMInfo(prAdapter, ucBssIndex);
+	struct WMM_INFO *prWmmInfo = &prAdapter->rWifiVar.rWmmInfo;
 	uint32_t u4CurTime = 0;
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
-	struct timespec64 ts;
-#else
 	struct timespec ts;
-#endif
-	if (!prWmmInfo) {
-		DBGLOG(WMM, INFO, "prWmmInfo is null %d\n", ucBssIndex);
-		return FALSE;
-	}
 
 	prAcmCtrl = &prWmmInfo->arAcmCtrl[ucAc];
 	if (!prAcmCtrl->u4AdmittedTime)
 		return FALSE;
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
-	ktime_get_boottime_ts64(&ts);
-#else
 	get_monotonic_boottime(&ts);
-#endif
 	u4CurTime = ts.tv_sec;
 	if (!TIME_BEFORE(u4CurTime, prAcmCtrl->u4IntervalEndSec)) {
 		u4CurTime++;
@@ -1670,11 +1520,8 @@ u_int8_t wmmAcmCanDequeue(struct ADAPTER *prAdapter, uint8_t ucAc,
 	 */
 	if (!timerPendingTimer(&prWmmInfo->rAcmDeqTimer)) {
 		uint32_t u4EndMsec = prAcmCtrl->u4IntervalEndSec * 1000;
-#if KERNEL_VERSION(5, 4, 0) <= LINUX_VERSION_CODE
-		ktime_get_boottime_ts64(&ts);
-#else
+
 		get_monotonic_boottime(&ts);
-#endif
 		u4CurTime = ts.tv_sec * MSEC_PER_SEC;
 		u4CurTime += ts.tv_nsec / NSEC_PER_MSEC;
 		/* It is impossible that u4EndMsec is less than u4CurTime */

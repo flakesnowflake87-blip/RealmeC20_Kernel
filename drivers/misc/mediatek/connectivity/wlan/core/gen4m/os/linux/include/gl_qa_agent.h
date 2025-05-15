@@ -67,9 +67,9 @@
  *                    E X T E R N A L   R E F E R E N C E S
  *******************************************************************************
  */
-#if CFG_MTK_ANDROID_EMI
-extern phys_addr_t gConEmiPhyBaseFinal;
-extern unsigned long long gConEmiSizeFinal;
+#ifdef CONFIG_MTK_EMI
+extern phys_addr_t gConEmiPhyBase;
+extern unsigned long long gConEmiSize;
 #endif
 
 /*******************************************************************************
@@ -103,8 +103,8 @@ extern unsigned long long gConEmiSizeFinal;
 #define HQA_CHIP_ID_6632	0x6632
 #define HQA_CHIP_ID_7668	0x7668
 
-/*soc5_0 EMI size= 256KB, 1 Sample Count (IQ) =4B (32bit) */
-#define MAX_ICAP_IQ_DATA_CNT					(256 * 256)
+/* (4096(Samples/Bank) * 6Banks * 3(IQSamples/Sample) * 32bits)/96bits */
+#define MAX_ICAP_IQ_DATA_CNT					(4096 * 8)
 #define ICAP_EVENT_DATA_SAMPLE					256
 
 
@@ -118,10 +118,6 @@ extern unsigned long long gConEmiSizeFinal;
 #undef MAX_EEPROM_BUFFER_SIZE
 #endif
 #define MAX_EEPROM_BUFFER_SIZE	1200
-
-#define HQA_DBDC_BAND_NUM 2
-#define HQA_ANT_NUM 4
-#define HQA_USER_NUM	16
 
 /*******************************************************************************
  *                    E X T E R N A L   R E F E R E N C E S
@@ -287,97 +283,7 @@ struct PARAM_RX_STAT {
 	uint32_t PER1;
 };
 extern struct PARAM_RX_STAT g_HqaRxStat;
-
-struct hqa_rx_stat_resp_field {
-	uint32_t type;
-	uint32_t version;
-	uint32_t item_mask;
-	uint32_t blk_cnt;
-	uint32_t blk_size;
-};
-
-struct hqa_rx_stat_band_format {
-	u_int32_t mac_rx_fcs_err_cnt;
-	u_int32_t mac_rx_mdrdy_cnt;
-	u_int32_t mac_rx_len_mismatch;
-	u_int32_t mac_rx_fcs_ok_cnt;
-	u_int32_t phy_rx_fcs_err_cnt_cck;
-	u_int32_t phy_rx_fcs_err_cnt_ofdm;
-	u_int32_t phy_rx_pd_cck;
-	u_int32_t phy_rx_pd_ofdm;
-	u_int32_t phy_rx_sig_err_cck;
-	u_int32_t phy_rx_sfd_err_cck;
-	u_int32_t phy_rx_sig_err_ofdm;
-	u_int32_t phy_rx_tag_err_ofdm;
-	u_int32_t phy_rx_mdrdy_cnt_cck;
-	u_int32_t phy_rx_mdrdy_cnt_ofdm;
-};
-
-struct hqa_rx_stat_path_format {
-	u_int32_t rcpi;
-	u_int32_t rssi;
-	u_int32_t fagc_ib_rssi;
-	u_int32_t fagc_wb_rssi;
-	u_int32_t inst_ib_rssi;
-	u_int32_t inst_wb_rssi;
-};
-
-struct hqa_rx_stat_user_format {
-	int32_t freq_offset_from_rx;
-	u_int32_t snr;
-	u_int32_t fcs_error_cnt;
-};
-
-struct hqa_rx_stat_comm_format {
-	u_int32_t rx_fifo_full;
-	u_int32_t aci_hit_low;
-	u_int32_t aci_hit_high;
-	u_int32_t mu_pkt_count;
-	u_int32_t sig_mcs;
-	u_int32_t sinr;
-	u_int32_t driver_rx_count;
-};
-
-
-struct hqa_rx_stat_u {
-	union {
-		struct hqa_rx_stat_band_format rx_st_band;
-		struct hqa_rx_stat_path_format rx_st_path;
-		struct hqa_rx_stat_user_format rx_st_user;
-		struct hqa_rx_stat_comm_format rx_st_comm;
-	} u;
-};
-
-enum {
-	HQA_SERV_RX_STAT_TYPE_BAND = 0,
-	HQA_SERV_RX_STAT_TYPE_PATH,
-	HQA_SERV_RX_STAT_TYPE_USER,
-	HQA_SERV_RX_STAT_TYPE_COMM,
-	HQA_SERV_RX_STAT_TYPE_NUM
-};
-
-enum {
-	HQA_ANT_WF0 = 0,
-	HQA_ANT_WF1 = 1,
-	HQA_MAX_ANT_NUM
-};
-
-enum {
-	HQA_M_BAND_0 = 0,
-	HQA_M_BAND_1 = 1,
-	HQA_M_BAND_NUM
-};
-
-enum {
-	HQA_RX_STAT_BAND = 0,
-	HQA_RX_STAT_PATH,
-	HQA_RX_STAT_USER,
-	HQA_RX_STAT_COMM,
-	HQA_RX_STAT_NUM
-};
 #endif
-
-#define HQA_CMD_FRAME_DATA_SIZE	4096
 
 struct HQA_CMD_FRAME {
 	uint32_t MagicNo;
@@ -385,7 +291,7 @@ struct HQA_CMD_FRAME {
 	uint16_t Id;
 	uint16_t Length;
 	uint16_t Sequence;
-	uint8_t Data[HQA_CMD_FRAME_DATA_SIZE];
+	uint8_t Data[2048];
 } __KAL_ATTRIB_PACKED__;
 
 typedef int32_t(*HQA_CMD_HANDLER) (struct net_device
@@ -398,17 +304,6 @@ struct HQA_CMD_TABLE {
 	uint32_t CmdSetSize;
 	uint32_t CmdOffset;
 };
-
-struct PARAM_LIST_MODE_STATUS {
-	uint16_t    u2Status;
-	uint32_t    u4ExtId;
-	uint32_t    u4SegNum;
-	union {
-		uint32_t u4TxStatus[LIST_SEG_MAX];
-	} u;
-};
-
-extern struct list_mode_event g_HqaListModeStatus;
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
@@ -441,6 +336,8 @@ int32_t connacSetICapStart(struct GLUE_INFO *prGlueInfo,
 			   uint32_t u4SourceAddrMSB, uint32_t u4Band);
 int32_t connacGetICapStatus(struct GLUE_INFO *prGlueInfo);
 
+int32_t commonGetICapIQData(struct GLUE_INFO *prGlueInfo,
+			uint8_t *pData, uint32_t u4IQType, uint32_t u4WFNum);
 int32_t connacGetICapIQData(struct GLUE_INFO *prGlueInfo,
 			uint8_t *pData, uint32_t u4IQType, uint32_t u4WFNum);
 

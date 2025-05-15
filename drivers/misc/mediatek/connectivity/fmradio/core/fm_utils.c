@@ -392,23 +392,10 @@ signed int fm_spin_lock_put(struct fm_lock *thiz)
  * fm timer
  *
  */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
-static signed int fm_timer_init(struct fm_timer *thiz, void (*timeout) (struct timer_list *timer),
-			    unsigned long data, signed long time, signed int flag)
-#else
 static signed int fm_timer_init(struct fm_timer *thiz, void (*timeout) (unsigned long data),
 			    unsigned long data, signed long time, signed int flag)
-#endif
 {
 	struct timer_list *timerlist = (struct timer_list *)thiz->priv;
-
-	if (FM_LOCK(thiz->lock))
-		return -FM_ELOCK;
-
-	if (thiz->flag & FM_TIMER_FLAG_ACTIVATED) {
-		thiz->flag &= ~FM_TIMER_FLAG_ACTIVATED;
-		del_timer(timerlist);
-	}
 
 	thiz->flag = flag;
 	thiz->flag &= ~FM_TIMER_FLAG_ACTIVATED;
@@ -416,16 +403,10 @@ static signed int fm_timer_init(struct fm_timer *thiz, void (*timeout) (unsigned
 	thiz->data = data;
 	thiz->timeout_ms = time;
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
-	timer_setup(timerlist, thiz->timeout_func, 0);
-#else
-	init_timer(timerlist);
+	timerlist->expires = jiffies + (thiz->timeout_ms) / (1000 / HZ);
 	timerlist->function = thiz->timeout_func;
 	timerlist->data = (unsigned long)thiz->data;
-#endif
-	timerlist->expires = jiffies + (thiz->timeout_ms) / (1000 / HZ);
 
-	FM_UNLOCK(thiz->lock);
 	return 0;
 }
 
@@ -433,16 +414,9 @@ static signed int fm_timer_start(struct fm_timer *thiz)
 {
 	struct timer_list *timerlist = (struct timer_list *)thiz->priv;
 
-	if (FM_LOCK(thiz->lock))
-		return -FM_ELOCK;
+	thiz->flag |= FM_TIMER_FLAG_ACTIVATED;
+	mod_timer(timerlist, jiffies + (thiz->timeout_ms) / (1000 / HZ));
 
-	if (!(thiz->flag & FM_TIMER_FLAG_ACTIVATED)) {
-		thiz->flag |= FM_TIMER_FLAG_ACTIVATED;
-		timerlist->expires = jiffies + (thiz->timeout_ms) / (1000 / HZ);
-		add_timer(timerlist);
-	}
-
-	FM_UNLOCK(thiz->lock);
 	return 0;
 }
 
@@ -450,14 +424,10 @@ static signed int fm_timer_update(struct fm_timer *thiz)
 {
 	struct timer_list *timerlist = (struct timer_list *)thiz->priv;
 
-	if (FM_LOCK(thiz->lock))
-		return -FM_ELOCK;
 	if (thiz->flag & FM_TIMER_FLAG_ACTIVATED) {
 		mod_timer(timerlist, jiffies + (thiz->timeout_ms) / (1000 / HZ));
-		FM_UNLOCK(thiz->lock);
 		return 0;
 	} else {
-		FM_UNLOCK(thiz->lock);
 		return 1;
 	}
 }
@@ -466,14 +436,9 @@ static signed int fm_timer_stop(struct fm_timer *thiz)
 {
 	struct timer_list *timerlist = (struct timer_list *)thiz->priv;
 
-	if (FM_LOCK(thiz->lock))
-		return -FM_ELOCK;
-	if (thiz->flag & FM_TIMER_FLAG_ACTIVATED) {
-		thiz->flag &= ~FM_TIMER_FLAG_ACTIVATED;
-		del_timer(timerlist);
-	}
+	thiz->flag &= ~FM_TIMER_FLAG_ACTIVATED;
+	del_timer(timerlist);
 
-	FM_UNLOCK(thiz->lock);
 	return 0;
 }
 
@@ -487,7 +452,6 @@ struct fm_timer *fm_timer_create(const signed char *name)
 {
 	struct fm_timer *tmp;
 	struct timer_list *timerlist;
-	struct fm_lock *lock;
 
 	tmp = fm_zalloc(sizeof(struct fm_timer));
 	if (!tmp) {
@@ -502,20 +466,11 @@ struct fm_timer *fm_timer_create(const signed char *name)
 		return NULL;
 	}
 
-	lock = fm_spin_lock_create(name);
-	if (!lock) {
-		WCN_DBG(FM_ALT | MAIN, "fm_zalloc(struct fm_lock) -ENOMEM\n");
-		fm_free(timerlist);
-		fm_free(tmp);
-		return NULL;
-	}
-	fm_spin_lock_get(lock);
+	init_timer(timerlist);
 
 	fm_memcpy(tmp->name, name, (strlen(name) > FM_NAME_MAX) ? (FM_NAME_MAX) : (strlen(name)));
 	tmp->priv = timerlist;
 	tmp->ref = 0;
-	tmp->flag = 0;
-	tmp->lock = lock;
 	tmp->init = fm_timer_init;
 	tmp->start = fm_timer_start;
 	tmp->stop = fm_timer_stop;
@@ -541,11 +496,9 @@ signed int fm_timer_put(struct fm_timer *thiz)
 		WCN_DBG(FM_ERR | MAIN, "%s,invalid pointer\n", __func__);
 		return -FM_EPARA;
 	}
-
-	del_timer(thiz->priv);
 	thiz->ref--;
+
 	if (thiz->ref == 0) {
-		fm_spin_lock_put(thiz->lock);
 		fm_free(thiz->priv);
 		fm_free(thiz);
 		return 0;
@@ -559,7 +512,7 @@ signed int fm_timer_put(struct fm_timer *thiz)
 /*
  * FM work thread mechanism
  */
-static signed int fm_work_init(struct fm_work *thiz, work_func_t work_func, unsigned long data)
+static signed int fm_work_init(struct fm_work *thiz, void (*work_func) (unsigned long data), unsigned long data)
 {
 	struct work_struct *sys_work = (struct work_struct *)thiz->priv;
 	work_func_t func;
@@ -692,57 +645,6 @@ signed int fm_workthread_put(struct fm_workthread *thiz)
 	}
 }
 
-FM_WAKE_LOCK_T *fm_wakelock_create(const signed char *name)
-{
-	FM_WAKE_LOCK_T *lock;
-#if (KERNEL_VERSION(4, 14, 149) <= LINUX_VERSION_CODE)
-	lock = wakeup_source_register(NULL, name);
-#elif (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-	lock = fm_zalloc(sizeof(FM_WAKE_LOCK_T));
-	if (lock)
-		wakeup_source_init(lock, name);
-#else
-	lock = fm_zalloc(sizeof(FM_WAKE_LOCK_T));
-	if (lock)
-		wake_lock_init(lock, WAKE_LOCK_SUSPEND, name);
-#endif
-	return lock;
-}
-
-void fm_wakelock_destroy(FM_WAKE_LOCK_T *lock)
-{
-#if (KERNEL_VERSION(4, 14, 149) <= LINUX_VERSION_CODE)
-	wakeup_source_unregister(lock);
-#elif (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-	wakeup_source_trash(lock);
-	fm_free(lock);
-#else
-	wake_lock_destroy(lock);
-	fm_free(lock);
-#endif
-	lock = NULL;
-}
-
-void fm_wakelock_get(FM_WAKE_LOCK_T *lock)
-{
-	if (lock)
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-		__pm_stay_awake(lock);
-#else
-		wake_lock(lock);
-#endif
-}
-
-void fm_wakelock_put(FM_WAKE_LOCK_T *lock)
-{
-	if (lock)
-#if (KERNEL_VERSION(4, 9, 0) <= LINUX_VERSION_CODE)
-		__pm_relax(lock);
-#else
-		wake_unlock(lock);
-#endif
-}
-
 signed int fm_fifo_in(struct fm_fifo *thiz, void *item)
 {
 	if (item == NULL) {
@@ -870,29 +772,4 @@ signed int fm_fifo_release(struct fm_fifo *fifo)
 	}
 
 	return 0;
-}
-
-unsigned short fm_get_u16_from_auc(unsigned char *buf)
-{
-	return (unsigned short)((unsigned short)buf[0] + ((unsigned short) buf[1] << 8));
-}
-
-void fm_set_u16_to_auc(unsigned char *buf, unsigned short val)
-{
-	buf[0] = (unsigned char)(val & 0xFF);
-	buf[1] = (unsigned char)(val >> 8);
-}
-
-unsigned int fm_get_u32_from_auc(unsigned char *buf)
-{
-	return ((unsigned int)(*buf) + ((unsigned int)(*(buf + 1)) << 8) +
-		((unsigned int)(*(buf + 2)) << 16) + ((unsigned int)(*(buf + 3)) << 24));
-}
-
-void fm_set_u32_to_auc(unsigned char *buf, unsigned int val)
-{
-	buf[0] = (unsigned char)val;
-	buf[1] = (unsigned char)(val >> 8);
-	buf[2] = (unsigned char)(val >> 16);
-	buf[3] = (unsigned char)(val >> 24);
 }

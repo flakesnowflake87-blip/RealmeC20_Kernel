@@ -150,7 +150,6 @@ int qosHandleQosMapConfigure(IN struct ADAPTER *prAdapter,
 {
 	struct _ACTION_QOS_MAP_CONFIGURE_FRAME *prRxFrame = NULL;
 	struct STA_RECORD *prStaRec;
-	uint16_t u2IELength = 0;
 
 	prRxFrame =
 		(struct _ACTION_QOS_MAP_CONFIGURE_FRAME *) prSwRfb->pvHeader;
@@ -164,18 +163,6 @@ int qosHandleQosMapConfigure(IN struct ADAPTER *prAdapter,
 	log_dbg(INIT, INFO,
 	"IEEE 802.11: Received Qos Map Configure Frame from " MACSTR "\n",
 		MAC2STR(prStaRec->aucMacAddr));
-
-	u2IELength = (prSwRfb->u2PacketLen - prSwRfb->u2HeaderLen) -
-		(uint16_t)
-		(OFFSET_OF(struct _ACTION_QOS_MAP_CONFIGURE_FRAME, qosMapSet[0])
-			- WLAN_MAC_HEADER_LEN);
-
-	if (u2IELength < ELEM_HDR_LEN ||
-		u2IELength < ELEM_HDR_LEN + IE_LEN(prRxFrame->qosMapSet)) {
-		DBGLOG(INIT, WARN, "QosMapSet IE: insufficient length %d\n",
-			u2IELength);
-		return -1;
-	}
 
 	qosParseQosMapSet(prAdapter, prStaRec, prRxFrame->qosMapSet);
 
@@ -233,7 +220,7 @@ void qosParseQosMapSet(IN struct ADAPTER *prAdapter,
 			continue;
 		}
 
-		for (dscp = lDscp; dscp < 64 && dscp <= hDscp; dscp++) {
+		for (dscp = lDscp; dscp < 64 && dscp < hDscp; dscp++) {
 			if (!excTable[dscp])
 				qosmapping[dscp] = i;
 		}
@@ -279,14 +266,13 @@ uint8_t getUpFromDscp(IN struct GLUE_INFO *prGlueInfo, IN int type, IN int dscp)
 	struct BSS_INFO *prAisBssInfo;
 	struct STA_RECORD *prStaRec;
 
-	prAisBssInfo = aisGetAisBssInfo(
-		prGlueInfo->prAdapter, type);
+	prAisBssInfo = prGlueInfo->prAdapter->prAisBssInfo;
 	if (prAisBssInfo)
 		prStaRec = prAisBssInfo->prStaRecOfAP;
 	else
 		return 0xFF;
 
-	if (prStaRec && dscp >= 0 && dscp < 64)
+	if (prStaRec && dscp < 64)
 		return prStaRec->qosMapSet[dscp];
 
 	return 0xFF;

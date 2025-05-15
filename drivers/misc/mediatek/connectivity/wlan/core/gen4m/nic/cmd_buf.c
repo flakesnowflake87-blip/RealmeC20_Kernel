@@ -141,7 +141,6 @@ void cmdBufInitialize(IN struct ADAPTER *prAdapter)
 
 }				/* end of cmdBufInitialize() */
 
-#define CMD_DUMP_NUM_PER_LINE 5
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief dump CMD queue and print to trace, for debug use only
@@ -153,31 +152,49 @@ void cmdBufDumpCmdQueue(struct QUE *prQueue,
 			int8_t *queName)
 {
 	struct CMD_INFO *prCmdInfo = (struct CMD_INFO *)
-			QUEUE_GET_HEAD(prQueue);
-	uint8_t i = 1, pos = 0;
-	char buf[500] = {0};
+				     QUEUE_GET_HEAD(prQueue);
 
-	DBGLOG(NIC, INFO, "Dump CMD info for %s, Elem number:%u\n",
-			queName, prQueue->u4NumElem);
-	kalMemZero(buf, sizeof(buf));
+	DBGLOG_LIMITED(NIC, INFO, "Dump CMD info for %s, Elem number:%u\n",
+	       queName, prQueue->u4NumElem);
 	while (prCmdInfo) {
-		u_int8_t fgEndLine = i == prQueue->u4NumElem ||
-				i % CMD_DUMP_NUM_PER_LINE == 0;
+		struct CMD_INFO *prCmdInfo1, *prCmdInfo2, *prCmdInfo3;
 
-		pos += kalSnprintf(buf + pos, 30,
-				"CID:0x%02x,SEQ:%d,Type:%d%s",
-				prCmdInfo->ucCID,
-				prCmdInfo->ucCmdSeqNum,
-				prCmdInfo->eCmdType,
-				fgEndLine ? "\n" : "; ");
-		if (fgEndLine) {
-			DBGLOG(NIC, INFO, "%s", buf);
-			kalMemZero(buf, sizeof(buf));
-			pos = 0;
+		prCmdInfo1 = (struct CMD_INFO *)QUEUE_GET_NEXT_ENTRY((
+					struct QUE_ENTRY *)prCmdInfo);
+		if (!prCmdInfo1) {
+			DBGLOG_LIMITED(NIC, INFO, "CID:%d SEQ:%d\n",
+			    prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum);
+			break;
 		}
-		prCmdInfo = (struct CMD_INFO *) QUEUE_GET_NEXT_ENTRY((
-					struct QUE_ENTRY *) prCmdInfo);
-		i++;
+		prCmdInfo2 = (struct CMD_INFO *)QUEUE_GET_NEXT_ENTRY((
+					struct QUE_ENTRY *)prCmdInfo1);
+		if (!prCmdInfo2) {
+			DBGLOG_LIMITED(NIC, INFO,
+				   "CID:%d, SEQ:%d; CID:%d, SEQ:%d\n",
+			       prCmdInfo->ucCID,
+			       prCmdInfo->ucCmdSeqNum, prCmdInfo1->ucCID,
+			       prCmdInfo1->ucCmdSeqNum);
+			break;
+		}
+		prCmdInfo3 = (struct CMD_INFO *)QUEUE_GET_NEXT_ENTRY((
+					struct QUE_ENTRY *)prCmdInfo2);
+		if (!prCmdInfo3) {
+			DBGLOG_LIMITED(NIC, INFO,
+			       "CID:%d, SEQ:%d; CID:%d, SEQ:%d; CID:%d, SEQ:%d\n",
+			       prCmdInfo->ucCID,
+			       prCmdInfo->ucCmdSeqNum, prCmdInfo1->ucCID,
+			       prCmdInfo1->ucCmdSeqNum,
+			       prCmdInfo2->ucCID, prCmdInfo2->ucCmdSeqNum);
+			break;
+		}
+		DBGLOG_LIMITED(NIC, INFO,
+		       "CID:%d, SEQ:%d; CID:%d, SEQ:%d; CID:%d, SEQ:%d; CID:%d, SEQ:%d\n",
+		       prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum,
+		       prCmdInfo1->ucCID, prCmdInfo1->ucCmdSeqNum,
+		       prCmdInfo2->ucCID, prCmdInfo2->ucCmdSeqNum,
+		       prCmdInfo3->ucCID, prCmdInfo3->ucCmdSeqNum);
+		prCmdInfo = (struct CMD_INFO *)QUEUE_GET_NEXT_ENTRY((
+					struct QUE_ENTRY *)prCmdInfo3);
 	}
 }
 
@@ -192,14 +209,8 @@ void cmdBufDumpCmdQueue(struct QUE *prQueue,
  * @retval !NULL     Fail to allocat CMD Packet
  */
 /*----------------------------------------------------------------------------*/
-#if CFG_DBG_MGT_BUF
-struct CMD_INFO *cmdBufAllocateCmdInfoX(IN struct ADAPTER
-					   *prAdapter, IN uint32_t u4Length,
-					   uint8_t *fileAndLine)
-#else
 struct CMD_INFO *cmdBufAllocateCmdInfo(IN struct ADAPTER
 				       *prAdapter, IN uint32_t u4Length)
-#endif
 {
 	struct CMD_INFO *prCmdInfo;
 
@@ -215,7 +226,6 @@ struct CMD_INFO *cmdBufAllocateCmdInfo(IN struct ADAPTER
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_RESOURCE);
 
 	if (prCmdInfo) {
-		kalMemZero(prCmdInfo, sizeof(struct CMD_INFO));
 		/* Setup initial value in CMD_INFO_T */
 		prCmdInfo->u2InfoBufLen = 0;
 		prCmdInfo->fgIsOid = FALSE;
@@ -224,13 +234,8 @@ struct CMD_INFO *cmdBufAllocateCmdInfo(IN struct ADAPTER
 			/* Start address of allocated memory */
 			u4Length = TFCB_FRAME_PAD_TO_DW(u4Length);
 
-#if CFG_DBG_MGT_BUF
-			prCmdInfo->pucInfoBuffer = cnmMemAllocX(prAdapter,
-				RAM_TYPE_BUF, u4Length, fileAndLine);
-#else
 			prCmdInfo->pucInfoBuffer = cnmMemAlloc(prAdapter,
 				RAM_TYPE_BUF, u4Length);
-#endif
 
 			if (prCmdInfo->pucInfoBuffer == NULL) {
 				KAL_ACQUIRE_SPIN_LOCK(prAdapter,
@@ -252,35 +257,21 @@ struct CMD_INFO *cmdBufAllocateCmdInfo(IN struct ADAPTER
 		struct GLUE_INFO *prGlueInfo = prAdapter->prGlueInfo;
 		struct QUE *prCmdQue = &prGlueInfo->rCmdQueue;
 		struct QUE *prPendingCmdQue = &prAdapter->rPendingCmdQueue;
-#if CFG_SUPPORT_MULTITHREAD
-		struct QUE *prTxCmdQueue = &prAdapter->rTxCmdQueue;
-		struct QUE *prTxCmdDoneQueue = &prAdapter->rTxCmdDoneQueue;
-#endif
 		struct TX_TCQ_STATUS *prTc = &prAdapter->rTxCtrl.rTc;
 
 		fgCmdDumpIsDone = TRUE;
-		cmdBufDumpCmdQueue(prCmdQue, "waiting CMD queue");
+		cmdBufDumpCmdQueue(prCmdQue, "waiting Tx CMD queue");
 		cmdBufDumpCmdQueue(prPendingCmdQue,
 				   "waiting response CMD queue");
-#if CFG_SUPPORT_MULTITHREAD
-		cmdBufDumpCmdQueue(prTxCmdQueue, "waiting Tx CMD queue");
-		cmdBufDumpCmdQueue(prTxCmdDoneQueue,
-				   "waiting Tx CMD Done queue");
-#endif
 		DBGLOG(NIC, INFO, "Tc4 number:%d\n",
 		       prTc->au4FreeBufferCount[TC4_INDEX]);
 	}
 
 	if (prCmdInfo) {
-		DBGLOG(MEM, TRACE,
+		DBGLOG(MEM, LOUD,
 		       "CMD[0x%p] allocated! LEN[%04u], Rest[%u]\n",
 		       prCmdInfo, u4Length, prAdapter->rFreeCmdList.u4NumElem);
-
 	} else {
-		/* dump debug log */
-		prAdapter->u4HifDbgFlag |= DEG_HIF_DEFAULT_DUMP;
-		kalSetHifDbgEvent(prAdapter->prGlueInfo);
-
 		DBGLOG(MEM, ERROR,
 		       "CMD allocation failed! LEN[%04u], Rest[%u]\n",
 		       u4Length, prAdapter->rFreeCmdList.u4NumElem);

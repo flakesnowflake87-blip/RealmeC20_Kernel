@@ -1,4 +1,4 @@
-/*******************************************************************************
+/******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
  * distribute this software, you may choose to be licensed under
@@ -48,75 +48,14 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  *
- ******************************************************************************/
+ *****************************************************************************/
 
 #ifndef _AP_SELECTION_H
 #define _AP_SELECTION_H
 
 /* Support AP Selection */
-#if (CFG_SUPPORT_802_11AX == 1)
-#define AX_SEL_DEF_WEIGHT		(0)
-#define AX_SEL_DEF_DIVIDER		(1)
+struct BSS_DESC *scanSearchBssDescByScoreForAis(struct ADAPTER *prAdapter);
+void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter);
+/* end Support AP Selection */
+
 #endif
-
-#define AP_SELECTION_AMSDU_HT_3K	(3839)
-#define AP_SELECTION_AMSDU_HT_8K	(7935)
-#define AP_SELECTION_AMSDU_VHT_HE_3K	(3895)
-#define AP_SELECTION_AMSDU_VHT_HE_8K	(7991)
-#define AP_SELECTION_AMSDU_VHT_HE_11K	(11454)
-
-enum ROAM_TYPE {
-	ROAM_TYPE_RCPI,
-	ROAM_TYPE_PER,
-	ROAM_TYPE_NUM
-};
-
-typedef uint8_t(*PFN_SELECTION_POLICY_FUNC) (
-	enum ENUM_BAND eCurrentBand,
-	int8_t cCandidateRssi,
-	int8_t cCurrentRssi
-);
-
-struct NETWORK_SELECTION_POLICY_BY_BAND {
-	enum ENUM_BAND eCandidateBand;
-	PFN_SELECTION_POLICY_FUNC pfnNetworkSelection;
-};
-
-struct CU_INFO_BY_FREQ {
-	uint32_t ucTotalApHaveCu;
-	uint32_t ucTotalCu;
-	enum ENUM_BAND eBand;
-};
-
-#if (CFG_SUPPORT_AVOID_DESENSE == 1)
-struct WFA_DESENSE_CHANNEL_LIST {
-	int8_t ucChLowerBound;
-	int8_t ucChUpperBound;
-};
-
-extern const struct WFA_DESENSE_CHANNEL_LIST desenseChList[BAND_NUM];
-
-#define IS_CHANNEL_IN_DESENSE_RANGE(_prAdapter, _ch, _band) \
-	(!!(_prAdapter->fgIsNeedAvoidDesenseFreq && (_band != BAND_2G4) && \
-	(_ch >= desenseChList[_band].ucChLowerBound) && \
-	(_ch <= desenseChList[_band].ucChUpperBound)))
-#endif
-
-struct BSS_DESC *scanSearchBssDescByScoreForAis(struct ADAPTER *prAdapter,
-	enum ENUM_ROAMING_REASON eRoamReason, uint8_t ucBssIndex);
-void scanGetCurrentEssChnlList(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
-uint8_t scanCheckNeedDriverRoaming(
-	struct ADAPTER *prAdapter, uint8_t ucBssIndex);
-uint8_t scanBeaconTimeoutFilterPolicyForAis(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex);
-u_int8_t scanApOverload(uint16_t status, uint16_t reason);
-uint8_t scanNetworkReplaceHandler2G4(enum ENUM_BAND eCurrentBand,
-	int8_t cCandidateRssi, int8_t cCurrentRssi);
-uint8_t scanNetworkReplaceHandler5G(enum ENUM_BAND eCurrentBand,
-	int8_t cCandidateRssi, int8_t cCurrentRssi);
-#if (CFG_SUPPORT_WIFI_6G == 1)
-uint8_t scanNetworkReplaceHandler6G(enum ENUM_BAND eCurrentBand,
-	int8_t cCandidateRssi, int8_t cCurrentRssi);
-#endif
-#endif
-

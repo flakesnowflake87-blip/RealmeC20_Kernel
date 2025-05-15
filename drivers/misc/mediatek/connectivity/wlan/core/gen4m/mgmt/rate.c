@@ -93,8 +93,7 @@ const uint8_t aucDataRate[] = {
 	RATE_48M,		/* RATE_48M_INDEX */
 	RATE_54M,		/* RATE_54M_INDEX */
 	RATE_VHT_PHY,		/* RATE_VHT_PHY_INDEX */
-	RATE_HT_PHY,		/* RATE_HT_PHY_INDEX */
-	RATE_H2E_ONLY		/* RATE_H2E_ONLY_INDEX */
+	RATE_HT_PHY		/* RATE_HT_PHY_INDEX */
 };
 
 static const uint8_t aucDefaultAckCtsRateIndex[RATE_NUM_SW] = {
@@ -170,16 +169,14 @@ const u_int8_t afgIsOFDMRate[RATE_NUM_SW] = {
  * @param[in] prIeExtSupportedRate       Pointer to the Ext Supported Rate IE
  * @param[out] pu2OperationalRateSet     Pointer to the Operational Rate Set
  * @param[out] pu2BSSBasicRateSet        Pointer to the Basic Rate Set
- * @param[out] pfgIsUnknownBSSBasicRate  Pointer to a Flag to indicate
- that
+ * @param[out] pfgIsUnknownBSSBasicRate  Pointer to a Flag to indicate that
  *                                       Basic Rate Set has unknown Rate Code
  *
  * \return (none)
  */
 /*----------------------------------------------------------------------------*/
 void
-rateGetRateSetFromIEs(
-		      IN struct IE_SUPPORTED_RATE_IOT *prIeSupportedRate,
+rateGetRateSetFromIEs(IN struct IE_SUPPORTED_RATE *prIeSupportedRate,
 		      IN struct IE_EXT_SUPPORTED_RATE *prIeExtSupportedRate,
 		      OUT uint16_t *pu2OperationalRateSet,
 		      OUT uint16_t *pu2BSSBasicRateSet,
@@ -190,6 +187,10 @@ rateGetRateSetFromIEs(
 	u_int8_t fgIsUnknownBSSBasicRate = FALSE;
 	uint8_t ucRate;
 	uint32_t i, j;
+
+	ASSERT(pu2OperationalRateSet);
+	ASSERT(pu2BSSBasicRateSet);
+	ASSERT(pfgIsUnknownBSSBasicRate);
 
 	if (prIeSupportedRate) {
 		/* NOTE(Kevin): Buffalo WHR-G54S's supported rate set
@@ -202,12 +203,6 @@ rateGetRateSetFromIEs(
 		 */
 		ASSERT(prIeSupportedRate->ucLength <= RATE_NUM_SW);
 
-		if (aucDebugModule[DBG_P2P_IDX] & DBG_CLASS_TRACE) {
-			DBGLOG(RLM, TRACE, "Dump supported rate\n");
-			dumpMemory8((uint8_t *) prIeSupportedRate,
-				(uint32_t) prIeSupportedRate->ucLength);
-		}
-
 		for (i = 0; i < prIeSupportedRate->ucLength; i++) {
 			ucRate =
 			    prIeSupportedRate->aucSupportedRates[i] & RATE_MASK;
@@ -219,7 +214,7 @@ rateGetRateSetFromIEs(
 					u2OperationalRateSet |= BIT(j);
 
 					if (prIeSupportedRate->aucSupportedRates
-						[i] & RATE_BASIC_BIT)
+					    [i] & RATE_BASIC_BIT)
 						u2BSSBasicRateSet |= BIT(j);
 
 					break;
@@ -273,11 +268,6 @@ rateGetRateSetFromIEs(
 	*pu2BSSBasicRateSet = u2BSSBasicRateSet;
 	*pfgIsUnknownBSSBasicRate = fgIsUnknownBSSBasicRate;
 
-	DBGLOG(RLM, TRACE, "OP rate:%d, Basic rate:%d, Unknown rate:%d\n",
-		u2OperationalRateSet,
-		u2BSSBasicRateSet,
-		fgIsUnknownBSSBasicRate);
-
 	return;
 
 }				/* end of rateGetRateSetFromIEs() */
@@ -302,6 +292,11 @@ rateGetDataRatesFromRateSet(IN uint16_t u2OperationalRateSet,
 			    OUT uint8_t *pucDataRatesLen)
 {
 	uint32_t i, j;
+
+	ASSERT(pucDataRates);
+	ASSERT(pucDataRatesLen);
+
+	ASSERT(u2BSSBasicRateSet == (u2OperationalRateSet & u2BSSBasicRateSet));
 
 	for (i = RATE_1M_SW_INDEX, j = 0; i < RATE_NUM_SW; i++) {
 		if (u2OperationalRateSet & BIT(i)) {
@@ -337,6 +332,8 @@ u_int8_t rateGetHighestRateIndexFromRateSet(IN uint16_t u2RateSet,
 {
 	int32_t i;
 
+	ASSERT(pucHighestRateIndex);
+
 	for (i = RATE_54M_SW_INDEX; i >= RATE_1M_SW_INDEX; i--) {
 		if (u2RateSet & BIT(i)) {
 			*pucHighestRateIndex = (uint8_t) i;
@@ -363,6 +360,8 @@ u_int8_t rateGetLowestRateIndexFromRateSet(IN uint16_t u2RateSet,
 					   OUT uint8_t *pucLowestRateIndex)
 {
 	uint32_t i;
+
+	ASSERT(pucLowestRateIndex);
 
 	for (i = RATE_1M_SW_INDEX; i <= RATE_54M_SW_INDEX; i++) {
 		if (u2RateSet & BIT(i)) {

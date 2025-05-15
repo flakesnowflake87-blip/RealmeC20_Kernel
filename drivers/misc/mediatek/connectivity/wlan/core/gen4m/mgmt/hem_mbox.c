@@ -123,7 +123,6 @@ static uint8_t *apucDebugMsg[] = {
 	(uint8_t *) DISP_STRING("MID_OID_AIS_FSM_ABORT"),
 	(uint8_t *) DISP_STRING("MID_AIS_SAA_FSM_START"),
 	(uint8_t *) DISP_STRING("MID_OID_SAA_FSM_CONTINUE"),
-	(uint8_t *) DISP_STRING("MID_OID_SAA_FSM_EXTERNAL_AUTH"),
 	(uint8_t *) DISP_STRING("MID_AIS_SAA_FSM_ABORT"),
 	(uint8_t *) DISP_STRING("MID_SAA_AIS_JOIN_COMPLETE"),
 
@@ -147,7 +146,6 @@ static uint8_t *apucDebugMsg[] = {
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_CHNL_REQ"),
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_CHNL_ABORT"),
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_MGMT_TX"),
-	(uint8_t *) DISP_STRING("MID_MNY_P2P_MGMT_TX_CANCEL_WAIT"),
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_GROUP_DISSOLVE"),
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_MGMT_FRAME_REGISTER"),
 	(uint8_t *) DISP_STRING("MID_MNY_P2P_NET_DEV_REGISTER"),
@@ -172,26 +170,10 @@ static uint8_t *apucDebugMsg[] = {
 	(uint8_t *) DISP_STRING("MID_MNY_AIS_REMAIN_ON_CHANNEL"),
 	(uint8_t *) DISP_STRING("MID_MNY_AIS_CANCEL_REMAIN_ON_CHANNEL"),
 	(uint8_t *) DISP_STRING("MID_MNY_AIS_MGMT_TX"),
-	(uint8_t *) DISP_STRING("MID_MNY_AIS_MGMT_TX_CANCEL_WAIT"),
 	(uint8_t *) DISP_STRING("MID_WNM_AIS_BSS_TRANSITION"),
 #if CFG_SUPPORT_NCHO
 	(uint8_t *) DISP_STRING("MID_MNY_AIS_NCHO_ACTION_FRAME")
 #endif
-	(uint8_t *) DISP_STRING("MID_MNY_P2P_ACS"),
-
-#if (CFG_SUPPORT_TWT == 1)
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_FSM_START"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_FSM_TEARDOWN"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_FSM_SUSPEND"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_FSM_RESUME"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_IND_RESULT"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_IND_SUSPEND_DONE"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_IND_RESUME_DONE"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_IND_TEARDOWN_DONE"),
-	(uint8_t *) DISP_STRING("MID_TWT_REQ_IND_INFOFRM"),
-	(uint8_t *) DISP_STRING("MID_TWT_PARAMS_SET"),
-#endif
-
 };
 
 /*lint -restore */
@@ -259,7 +241,6 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 	{MID_OID_AIS_FSM_ABORT, aisFsmRunEventAbort},
 	{MID_AIS_SAA_FSM_START, saaFsmRunEventStart},
 	{MID_OID_SAA_FSM_CONTINUE, saaFsmRunEventFTContinue},
-	{MID_OID_SAA_FSM_EXTERNAL_AUTH, saaFsmRunEventExternalAuthDone},
 	{MID_AIS_SAA_FSM_ABORT, saaFsmRunEventAbort},
 	{MID_SAA_AIS_JOIN_COMPLETE, aisFsmRunEventJoinComplete},
 
@@ -285,13 +266,12 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 	{MID_MNY_P2P_STOP_AP, p2pRoleFsmRunEventStopAP},
 	{MID_MNY_P2P_CHNL_REQ, p2pDevFsmRunEventChannelRequest},	/* V */
 	{MID_MNY_P2P_CHNL_ABORT, p2pDevFsmRunEventChannelAbort},	/* V */
-	{MID_MNY_P2P_MGMT_TX, p2pFsmRunEventMgmtFrameTx},	/* V */
-	{MID_MNY_P2P_MGMT_TX_CANCEL_WAIT, p2pFsmRunEventTxCancelWait},
+	{MID_MNY_P2P_MGMT_TX, p2pDevFsmRunEventMgmtTx},	/* V */
 	{MID_MNY_P2P_GROUP_DISSOLVE, p2pRoleFsmRunEventDissolve},
 	{MID_MNY_P2P_MGMT_FRAME_REGISTER,
 		p2pDevFsmRunEventMgmtFrameRegister},
 	{MID_MNY_P2P_NET_DEV_REGISTER, p2pFsmRunEventNetDeviceRegister},
-	{MID_MNY_P2P_START_AP, p2pRoleFsmRunEventPreStartAP},
+	{MID_MNY_P2P_START_AP, p2pRoleFsmRunEventStartAP},
 	{MID_MNY_P2P_DEL_IFACE, p2pRoleFsmRunEventDelIface},
 	{MID_MNY_P2P_MGMT_FRAME_UPDATE, p2pFsmRunEventUpdateMgmtFrame},
 #if (CFG_SUPPORT_DFS_MASTER == 1)
@@ -314,31 +294,12 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 	{MID_MNY_AIS_CANCEL_REMAIN_ON_CHANNEL,
 		aisFsmRunEventCancelRemainOnChannel},
 	{MID_MNY_AIS_MGMT_TX, aisFsmRunEventMgmtFrameTx},
-	{MID_MNY_AIS_MGMT_TX_CANCEL_WAIT, aisFsmRunEventCancelTxWait},
 	{MID_WNM_AIS_BSS_TRANSITION, aisFsmRunEventBssTransition},
 	{MID_OID_WMM_TSPEC_OPERATE, wmmRunEventTSOperate},
-	{MID_RRM_REQ_SCHEDULE, rrmRunEventProcessNextRm},
+	{MID_RLM_RM_SCHEDULE, rlmRunEventProcessNextRm},
 #if CFG_SUPPORT_NCHO
 	{MID_MNY_AIS_NCHO_ACTION_FRAME,
 		aisFsmRunEventNchoActionFrameTx},
-#endif
-	{MID_MNY_P2P_ACS, p2pRoleFsmRunEventAcs},
-
-#if (CFG_SUPPORT_TWT == 1)
-	{MID_TWT_REQ_FSM_START, twtReqFsmRunEventStart},
-	{MID_TWT_REQ_FSM_TEARDOWN, twtReqFsmRunEventTeardown},
-	{MID_TWT_REQ_FSM_SUSPEND, twtReqFsmRunEventSuspend},
-	{MID_TWT_REQ_FSM_RESUME, twtReqFsmRunEventResume},
-	{MID_TWT_REQ_IND_RESULT, twtPlannerRxNegoResult},
-	{MID_TWT_REQ_IND_SUSPEND_DONE, twtPlannerSuspendDone},
-	{MID_TWT_REQ_IND_RESUME_DONE, twtPlannerResumeDone},
-	{MID_TWT_REQ_IND_TEARDOWN_DONE, twtPlannerTeardownDone},
-	{MID_TWT_REQ_IND_INFOFRM, twtPlannerRxInfoFrm},
-	{MID_TWT_PARAMS_SET, twtPlannerSetParams},
-#endif
-
-#if (CFG_SUPPORT_NAN == 1)
-	{MID_CNM_NAN_CH_GRANT, nanDevSendEnableRequest},
 #endif
 };
 
@@ -349,44 +310,28 @@ static struct MSG_HNDL_ENTRY arMsgMapTable[] = {
 
 #if DBG
 #define MBOX_HNDL_MSG(prAdapter, prMsg) do { \
-	if (prMsg->eMsgId >= 0 && prMsg->eMsgId < MID_TOTAL_NUM) { \
-		ASSERT(arMsgMapTable[prMsg->eMsgId].pfMsgHndl); \
-		if (arMsgMapTable[prMsg->eMsgId].pfMsgHndl) { \
-			DBGLOG(CNM, LOUD, \
-			"DO MSG [%d: %s]\n", \
-			prMsg->eMsgId, apucDebugMsg[prMsg->eMsgId]); \
-			arMsgMapTable[prMsg->eMsgId].pfMsgHndl( \
-				prAdapter, prMsg); \
-		} \
-		else { \
-		    DBGLOG(CNM, ERROR, "NULL fptr for MSG [%d]\n", \
-			prMsg->eMsgId); \
-		    cnmMemFree(prAdapter, prMsg); \
-		} \
+	ASSERT(arMsgMapTable[prMsg->eMsgId].pfMsgHndl); \
+	if (arMsgMapTable[prMsg->eMsgId].pfMsgHndl) { \
+		DBGLOG(CNM, LOUD, \
+		"DO MSG [%d: %s]\n", \
+		prMsg->eMsgId, apucDebugMsg[prMsg->eMsgId]); \
+		arMsgMapTable[prMsg->eMsgId].pfMsgHndl(prAdapter, prMsg); \
 	} \
 	else { \
-		DBGLOG(CNM, ERROR, "Invalid MSG ID [%d]\n", prMsg->eMsgId); \
-		cnmMemFree(prAdapter, prMsg); \
+	    DBGLOG(CNM, ERROR, "NULL fptr for MSG [%d]\n", prMsg->eMsgId); \
+	    cnmMemFree(prAdapter, prMsg); \
 	} \
 } while (0)
 #else
 #define MBOX_HNDL_MSG(prAdapter, prMsg) do { \
-	if (prMsg->eMsgId >= 0 && prMsg->eMsgId < MID_TOTAL_NUM) { \
-		ASSERT(arMsgMapTable[prMsg->eMsgId].pfMsgHndl); \
-		if (arMsgMapTable[prMsg->eMsgId].pfMsgHndl) { \
-			DBGLOG(CNM, LOUD, "DO MSG [%d]\n", prMsg->eMsgId); \
-			arMsgMapTable[prMsg->eMsgId].pfMsgHndl( \
-				prAdapter, prMsg); \
-		} \
-		else { \
-		    DBGLOG(CNM, ERROR, "NULL fptr for MSG [%d]\n", \
-			prMsg->eMsgId); \
-		    cnmMemFree(prAdapter, prMsg); \
-		} \
+	ASSERT(arMsgMapTable[prMsg->eMsgId].pfMsgHndl); \
+	if (arMsgMapTable[prMsg->eMsgId].pfMsgHndl) { \
+		DBGLOG(CNM, LOUD, "DO MSG [%d]\n", prMsg->eMsgId); \
+		arMsgMapTable[prMsg->eMsgId].pfMsgHndl(prAdapter, prMsg); \
 	} \
 	else { \
-		DBGLOG(CNM, ERROR, "Invalid MSG ID [%d]\n", prMsg->eMsgId); \
-		cnmMemFree(prAdapter, prMsg); \
+	    DBGLOG(CNM, ERROR, "NULL fptr for MSG [%d]\n", prMsg->eMsgId); \
+	    cnmMemFree(prAdapter, prMsg); \
 	} \
 } while (0)
 #endif

@@ -90,7 +90,6 @@
 #define CONSYS_HIF_PDMA_BUSY_STATUS     0x00000168
 
 /*CONN_HIF_ON_BASE*/
-#define CONN_HIF_ON_BASE_ADDR           (0x18007000)
 #define CONSYS_BUSY_OFFSET              0x110
 #define CONSYS_BUSY_BIT                 (0x1 << 27)
 #define CONSYS_CLOCK_CHECK_VALUE        0x30000
@@ -165,9 +164,7 @@
 #define CONSYS_WD_SYS_RST_BIT		(0x1 << 9)
 
 /*CONSYS_MCU_CFG_ACR_REG*/
-#define CONSYS_MCU_CFG_ACR_MBIST_OFFSET	(0x10)
-#define CONSYS_MCU_CFG_ACR_MBIST_MASK	(0xfffffffc)
-#define CONSYS_MCU_CFG_ACR_MBIST_VAL	(0x3)
+#define CONSYS_MCU_CFG_ACR_MBIST_BIT	(0x1 << 0 | 0x1 << 1)
 
 /*control app2cnn_osc_en*/
 #define CONSYS_AP2CONN_OSC_EN_BIT	(0x1 << 10)
@@ -182,18 +179,6 @@
 #define CONSYS_EMI_PAGED_DUMP_OFFSET	(0x8400)
 #define CONSYS_EMI_FULL_DUMP_OFFSET	(0x10400)
 #define CONSYS_EMI_MET_DATA_OFFSET	(0x0)
-
-#define CONSYS_EMI_RAM_BT_BUILDTIME_OFFSET	(0x68300)
-#define CONSYS_EMI_RAM_WIFI_BUILDTIME_OFFSET	(0x68310)
-#define CONSYS_EMI_RAM_MCU_BUILDTIME_OFFSET	(0x68320)
-#define CONSYS_EMI_PATCH_MCU_BUILDTIME_OFFSET	(0x68330)
-
-/*CONSYS_MCU_CFG_DBG_LP_INFO*/
-#define CONN_CFG_ON_CONN_ON_HOST_MAILBOX_MCU_ADDR           (conn_reg.mcu_cfg_on_base + 0x104)
-#define CONN_CFG_ON_CONN_ON_MON_CTL_ADDR                    (conn_reg.mcu_top_misc_on_base + 0x320)
-#define CONN_CFG_ON_CONN_ON_DBGSEL_ADDR                     (conn_reg.mcu_top_misc_on_base + 0x310)
-#define CONN_CFG_ON_CONN_ON_MON_FLAG_RECORD_ADDR            (conn_reg.mcu_top_misc_on_base + 0x340)
-#define CONN_CFG_ON_CONN_ON_MON_FLAG_RECORD_MAPPING_AP_ADDR (0x180c1340)
 
 /* default coex wmt ant_sel cr address */
 #define DEFAULT_COEX_WMT_ANTSEL_0_POLARITY_CR 0x80025310
@@ -254,20 +239,6 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-extern INT32 dump_conn_debug_dump_mt6761(const char *trg_str);
-extern INT32 dump_conn_mcu_debug_flag_mt6761(const char *trg_str);
-extern INT32 dump_conn_mcu_apb0_bus_mt6761(const char *trg_str);
-extern INT32 dump_conn_mcu_apb1_bus_mt6761(const char *trg_str);
-extern INT32 dump_conn_bus_timeout_mt6761(const char *trg_str);
-extern INT32 dump_conn_mcu_pc_log_mt6761(const char *trg_str);
-extern INT32 dump_conn_cfg_on_debug_signal_mt6761(const char *trg_str);
-extern INT32 dump_conn_cfg_on_register_mt6761(const char *trg_str);
-extern INT32 dump_conn_cmdbt_debug_signal_mt6761(const char *trg_str);
-extern INT32 dump_conn_emi_detect_mt6761(const char *trg_str);
-extern INT32 dump_conn_slp_protect_debug_mt6761(const char *trg_str);
-extern INT32 dump_conn_spm_r13_mt6761(const char *trg_str);
-extern INT32 dump_conn_bus_timeout_debug_mt6761(const char *trg_str);
-extern INT32 dump_conn_ILM_corrupt_issue_debug_mt6761(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S

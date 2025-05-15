@@ -1,13 +1,54 @@
-/*
+/******************************************************************************
+ *
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
+ *
+ * GPLv2 License
+ *
+ * Copyright(C) 2016 MediaTek Inc.
+ *
  * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
+ * it under the terms of version 2 of the GNU General Public License as
  * published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
  * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
- */
+ *
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 
 /*******************************************************************************
  *                         C O M P I L E R   F L A G S
@@ -64,8 +105,7 @@ static u_int8_t isMediaConnected(struct GL_SCAN_CACHE_INFO *prScanCache);
 static u_int8_t isScanCacheChannels(struct GL_SCAN_CACHE_INFO *prScanCache);
 
 static u_int8_t isScanCacheTimeReady(struct GL_SCAN_CACHE_INFO *prScanCache);
-static u_int8_t isScanCacheLowSpanScan(struct GL_SCAN_CACHE_INFO *prScanCache);
-static u_int8_t isFull2PartialTimeout(struct GL_SCAN_CACHE_INFO *prScanCache);
+
 static u_int8_t isScanCacheTimeOverflow(struct GL_SCAN_CACHE_INFO *prScanCache,
 	OS_SYSTIME rCurrentTime);
 
@@ -115,9 +155,8 @@ static uint32_t getNumberOfScanChannels(struct GL_SCAN_CACHE_INFO *prScanCache)
 
 static u_int8_t isMediaConnected(struct GL_SCAN_CACHE_INFO *prScanCache)
 {
-	return MEDIA_STATE_CONNECTED ==
-		kalGetMediaStateIndicated(prScanCache->prGlueInfo,
-		prScanCache->ucBssIndex);
+	return PARAM_MEDIA_STATE_CONNECTED ==
+		kalGetMediaStateIndicated(prScanCache->prGlueInfo);
 }
 
 static u_int8_t isScanCacheChannels(struct GL_SCAN_CACHE_INFO *prScanCache)
@@ -129,51 +168,6 @@ static u_int8_t isScanCacheChannels(struct GL_SCAN_CACHE_INFO *prScanCache)
 static u_int8_t isScanCacheTimeReady(struct GL_SCAN_CACHE_INFO *prScanCache)
 {
 	return prScanCache->u4LastScanTime != 0;
-}
-
-static u_int8_t isScanCacheLowSpanScan(struct GL_SCAN_CACHE_INFO *prScanCache)
-{
-	return (prScanCache->u4Flags & NL80211_SCAN_FLAG_LOW_SPAN) >> 8;
-}
-
-/*
- * @brief This routine is to check the interval of full scan
- *
- * @param prScanCache - pointer of struct GL_SCAN_CACHE_INFO
- *
- * @retval TRUE: time diff between now and last full scan >=
- *		 CFG_SCAN_FULL2PARTIAL_PERIOD
- *         FALSE: time diff between now and last full scan <
- *		 CFG_SCAN_FULL2PARTIAL_PERIOD
- */
-static u_int8_t isFull2PartialTimeout(struct GL_SCAN_CACHE_INFO *prScanCache)
-{
-	struct ADAPTER *prAdapter = NULL;
-	struct SCAN_INFO *prScanInfo;
-	u_int8_t fgLastFullScanTimeout = FALSE;
-	OS_SYSTIME rCurrentTime;
-
-	GET_CURRENT_SYSTIME(&rCurrentTime);
-
-	prAdapter = prScanCache->prGlueInfo->prAdapter;
-	if (prAdapter == NULL) {
-		DBGLOG(REQ, ERROR, "prScanCache->prGlueInfo->prAdapter NULL");
-		return FALSE;
-	}
-
-	prScanInfo = &(prAdapter->rWifiVar.rScanInfo);
-	if (prScanInfo == NULL) {
-		DBGLOG(REQ, ERROR, "prAdapter->rWifiVar.rScanInfo NULL");
-		return FALSE;
-	}
-
-#if CFG_SUPPORT_FULL2PARTIAL_SCAN
-	if (CHECK_FOR_TIMEOUT(rCurrentTime, prScanInfo->u4LastFullScanTime,
-		SEC_TO_SYSTIME(CFG_SCAN_FULL2PARTIAL_PERIOD)))
-		fgLastFullScanTimeout = TRUE;
-#endif
-
-	return fgLastFullScanTimeout;
 }
 
 static u_int8_t isScanCacheTimeOverflow(struct GL_SCAN_CACHE_INFO *prScanCache,
@@ -223,19 +217,11 @@ static u_int8_t inScanCachePeriod(struct GL_SCAN_CACHE_INFO *prScanCache,
 static u_int8_t matchScanCache(struct GL_SCAN_CACHE_INFO *prScanCache,
 	OS_SYSTIME rCurrentTime)
 {
+	if (isMediaConnected(prScanCache) == TRUE &&
+		inScanCachePeriod(prScanCache, rCurrentTime) == TRUE &&
+		isScanCacheChannels(prScanCache) == TRUE)
+		return TRUE;
 
-	if (isMediaConnected(prScanCache) == TRUE) {
-		/* If scan not triggered by APP and it has been >
-		 * CFG_SCAN_FULL2PARTIAL_PERIOD for last full scan,
-		 * not to do scan cache
-		*/
-		if (!isScanCacheLowSpanScan(prScanCache) &&
-			isFull2PartialTimeout(prScanCache))
-			return FALSE;
-		else if (inScanCachePeriod(prScanCache, rCurrentTime) == TRUE &&
-				isScanCacheChannels(prScanCache) == TRUE)
-			return TRUE;
-	}
 	return FALSE;
 }
 

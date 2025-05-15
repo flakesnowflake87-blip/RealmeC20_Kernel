@@ -89,7 +89,6 @@
  *                           P R I V A T E   D A T A
  *******************************************************************************
  */
-static bool gDoTimeOut = FALSE;
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -100,94 +99,11 @@ static bool gDoTimeOut = FALSE;
  *                   F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
  */
-static void cnmTimerStopTimer_impl(IN struct ADAPTER *prAdapter,
-		IN struct TIMER *prTimer, IN u_int8_t fgAcquireSpinlock);
-static u_int8_t cnmTimerIsTimerValid(IN struct ADAPTER *prAdapter,
-		IN struct TIMER *prTimer);
 
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************
  */
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine dump timer list for debug purpose
- *
- * \param[in]
- *
- * \retval
- *
- */
-/*----------------------------------------------------------------------------*/
-#if 0
-static void cnmTimerDumpTimer(IN struct ADAPTER *prAdapter)
-{
-	struct ROOT_TIMER *prRootTimer;
-	struct LINK_ENTRY *prLinkEntry;
-	struct TIMER *prTimerEntry;
-	struct LINK *prTimerList;
-
-	prRootTimer = &prAdapter->rRootTimer;
-	prTimerList = &prRootTimer->rLinkHead;
-
-	log_dbg(CNM, INFO, "Current time:%u\n", kalGetTimeTick());
-
-	LINK_FOR_EACH(prLinkEntry, prTimerList) {
-		if (prLinkEntry == NULL)
-			break;
-
-		prTimerEntry = LINK_ENTRY(prLinkEntry,
-			struct TIMER, rLinkEntry);
-
-		log_dbg(CNM, INFO, "timer:%p, func:%ps, ExpiredSysTime:%u\n",
-			prTimerEntry,
-			prTimerEntry->pfMgmtTimeOutFunc,
-			prTimerEntry->rExpiredSysTime);
-	}
-}
-#endif
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to check if a timer exists in timer list.
- *
- * \param[in] prTimer The timer to check
- *
- * \retval TRUE Valid timer
- *         FALSE Invalid timer
- *
- */
-/*----------------------------------------------------------------------------*/
-static u_int8_t cnmTimerIsTimerValid(IN struct ADAPTER *prAdapter,
-		IN struct TIMER *prTimer)
-{
-	struct ROOT_TIMER *prRootTimer;
-	struct LINK *prTimerList;
-	struct LINK_ENTRY *prLinkEntry;
-	struct TIMER *prPendingTimer;
-
-	ASSERT(prAdapter);
-
-	prRootTimer = &prAdapter->rRootTimer;
-
-	/* Check if the timer is in timer list */
-	prTimerList = &(prAdapter->rRootTimer.rLinkHead);
-
-	LINK_FOR_EACH(prLinkEntry, prTimerList) {
-		if (prLinkEntry == NULL)
-			break;
-
-		prPendingTimer = LINK_ENTRY(prLinkEntry,
-			struct TIMER, rLinkEntry);
-
-		if (prPendingTimer == prTimer)
-			return TRUE;
-	}
-
-	log_dbg(CNM, WARN, "invalid pending timer %p func %ps\n",
-			prTimer, prTimer->pfMgmtTimeOutFunc);
-	return FALSE;
-}
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -218,7 +134,7 @@ static u_int8_t cnmTimerSetTimer(IN struct ADAPTER *prAdapter,
 		fgNeedWakeLock = TRUE;
 
 		if (!prRootTimer->fgWakeLocked) {
-			KAL_WAKE_LOCK(prAdapter, prRootTimer->rWakeLock);
+			KAL_WAKE_LOCK(prAdapter, &prRootTimer->rWakeLock);
 			prRootTimer->fgWakeLocked = TRUE;
 		}
 	} else {
@@ -240,9 +156,6 @@ static u_int8_t cnmTimerSetTimer(IN struct ADAPTER *prAdapter,
 void cnmTimerInitialize(IN struct ADAPTER *prAdapter)
 {
 	struct ROOT_TIMER *prRootTimer;
-	struct LINK *prTimerList;
-	struct LINK_ENTRY *prLinkEntry;
-	struct TIMER *prPendingTimer;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -253,27 +166,10 @@ void cnmTimerInitialize(IN struct ADAPTER *prAdapter)
 	/* Note: glue layer have configured timer */
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
-
-	log_dbg(CNM, WARN, "reset timer list\n");
-
-	/* Remove all pending timers */
-	prTimerList = &(prAdapter->rRootTimer.rLinkHead);
-
-	LINK_FOR_EACH(prLinkEntry, prTimerList) {
-		if (prLinkEntry == NULL)
-			break;
-
-		prPendingTimer = LINK_ENTRY(prLinkEntry,
-			struct TIMER, rLinkEntry);
-
-		/* Remove timer to prevent collapsing timer structure */
-		cnmTimerStopTimer_impl(prAdapter, prPendingTimer, FALSE);
-	}
-
 	LINK_INITIALIZE(&prRootTimer->rLinkHead);
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
 
-	KAL_WAKE_LOCK_INIT(prAdapter, prRootTimer->rWakeLock, "WLAN Timer");
+	KAL_WAKE_LOCK_INIT(prAdapter, &prRootTimer->rWakeLock, "WLAN Timer");
 	prRootTimer->fgWakeLocked = FALSE;
 }
 
@@ -298,10 +194,10 @@ void cnmTimerDestroy(IN struct ADAPTER *prAdapter)
 	prRootTimer = &prAdapter->rRootTimer;
 
 	if (prRootTimer->fgWakeLocked) {
-		KAL_WAKE_UNLOCK(prAdapter, prRootTimer->rWakeLock);
+		KAL_WAKE_UNLOCK(prAdapter, &prRootTimer->rWakeLock);
 		prRootTimer->fgWakeLocked = FALSE;
 	}
-	KAL_WAKE_LOCK_DESTROY(prAdapter, prRootTimer->rWakeLock);
+	KAL_WAKE_LOCK_DESTROY(prAdapter, &prRootTimer->rWakeLock);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
 	LINK_INITIALIZE(&prRootTimer->rLinkHead);
@@ -328,42 +224,37 @@ cnmTimerInitTimerOption(IN struct ADAPTER *prAdapter,
 			IN unsigned long ulDataPtr,
 			IN enum ENUM_TIMER_WAKELOCK_TYPE_T eType)
 {
-	struct LINK *prTimerList;
-	struct LINK_ENTRY *prLinkEntry;
-	struct TIMER *prPendingTimer;
-
-	KAL_SPIN_LOCK_DECLARATION();
 	ASSERT(prAdapter);
 
 	ASSERT(prTimer);
 
 	ASSERT((eType >= TIMER_WAKELOCK_AUTO) && (eType < TIMER_WAKELOCK_NUM));
 
-	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
+#if DBG
+	/* Note: NULL function pointer is permitted for HEM POWER */
+	if (pfFunc == NULL)
+		log_dbg(CNM, WARN, "Init timer with NULL callback function!\n");
 
-	/* Remove pending timer */
-	prTimerList = &(prAdapter->rRootTimer.rLinkHead);
+	ASSERT(prAdapter->rRootTimer.rLinkHead.prNext);
+	{
+		struct LINK *prTimerList;
+		struct LINK_ENTRY *prLinkEntry;
+		struct TIMER *prPendingTimer;
 
-	LINK_FOR_EACH(prLinkEntry, prTimerList) {
-		if (prLinkEntry == NULL)
-			break;
+		prTimerList = &(prAdapter->rRootTimer.rLinkHead);
 
-		prPendingTimer = LINK_ENTRY(prLinkEntry,
-			struct TIMER, rLinkEntry);
-
-		if (prPendingTimer == prTimer) {
-			log_dbg(CNM, WARN, "re-init timer, timer %p func %ps\n",
-				prTimer, pfFunc);
-
-			if (timerPendingTimer(prTimer)) {
-				/* Remove pending timer to prevent
-				 * collapsing timer list.
-				 */
-				cnmTimerStopTimer_impl(prAdapter,
-					prTimer, FALSE);
-			}
-			break;
+		LINK_FOR_EACH(prLinkEntry, prTimerList) {
+			prPendingTimer = LINK_ENTRY(prLinkEntry,
+				struct TIMER, rLinkEntry);
+			ASSERT(prPendingTimer);
+			ASSERT(prPendingTimer != prTimer);
 		}
+	}
+#endif
+	if (prTimer->pfMgmtTimeOutFunc == pfFunc
+		&& prTimer->rLinkEntry.prNext) {
+		log_dbg(CNM, WARN, "re-init timer, func %p\n", pfFunc);
+		kal_show_stack(NULL, NULL);
 	}
 
 	LINK_ENTRY_INITIALIZE(&prTimer->rLinkEntry);
@@ -371,8 +262,6 @@ cnmTimerInitTimerOption(IN struct ADAPTER *prAdapter,
 	prTimer->pfMgmtTimeOutFunc = pfFunc;
 	prTimer->ulDataPtr = ulDataPtr;
 	prTimer->eType = eType;
-
-	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -403,20 +292,46 @@ static void cnmTimerStopTimer_impl(IN struct ADAPTER *prAdapter,
 		LINK_REMOVE_KNOWN_ENTRY(&prRootTimer->rLinkHead,
 			&prTimer->rLinkEntry);
 
+		if (LINK_IS_EMPTY(&prRootTimer->rLinkHead)) {
+		       /* kalCancelTimer(prAdapter->prGlueInfo); */
+
+		       /* Violate rule of del_timer_sync which cause DeadLock
+			* If no pending timer, let the dummpy timeout happen
+			* It would happen only one time
+			* Prevent call del_timer_sync with SPIN_LOCK_TIMER hold
+			* ===================================================
+			* Function: del_timer_sync
+			* Note: For !irqsafe timers, you must not hold locks
+			* that are held in interrupt context while calling
+			* this function. Even if the lock has nothing to do
+			* with the timer in question.
+			* Here's why:
+			*
+			* CPU0                    CPU1
+			* ----                    ----
+			*                         <SOFTIRQ>
+			*                         call_timer_fn();
+			*                         base->running_timer = mytimer;
+			*  spin_lock_irq(somelock);
+			*                         <IRQ>
+			*                         spin_lock(somelock);
+			*  del_timer_sync(mytimer);
+			*   while (base->running_timer == mytimer);
+			* ==================================================
+			*/
+
+			if (fgAcquireSpinlock && prRootTimer->fgWakeLocked) {
+				KAL_WAKE_UNLOCK(prAdapter,
+					&prRootTimer->rWakeLock);
+				prRootTimer->fgWakeLocked = FALSE;
+			}
+		}
+
 		/* Reduce dummy timeout for power saving,
 		 * especially HIF activity. If two or more timers
 		 * exist and being removed timer is smallest,
 		 * this dummy timeout will still happen, but it is OK.
 		 */
-		if (LINK_IS_EMPTY(&prRootTimer->rLinkHead)) {
-			kalCancelTimer(prAdapter->prGlueInfo);
-
-			if (fgAcquireSpinlock && prRootTimer->fgWakeLocked) {
-				KAL_WAKE_UNLOCK(prAdapter,
-					prRootTimer->rWakeLock);
-				prRootTimer->fgWakeLocked = FALSE;
-			}
-		}
 	}
 
 	if (fgAcquireSpinlock)
@@ -437,9 +352,6 @@ void cnmTimerStopTimer(IN struct ADAPTER *prAdapter, IN struct TIMER *prTimer)
 	ASSERT(prAdapter);
 	ASSERT(prTimer);
 
-	log_dbg(CNM, TRACE, "stop timer, timer %p func %ps\n",
-		prTimer, prTimer->pfMgmtTimeOutFunc);
-
 	cnmTimerStopTimer_impl(prAdapter, prTimer, TRUE);
 }
 
@@ -459,42 +371,17 @@ void cnmTimerStartTimer(IN struct ADAPTER *prAdapter, IN struct TIMER *prTimer,
 {
 	struct ROOT_TIMER *prRootTimer;
 	struct LINK *prTimerList;
-	OS_SYSTIME rCurSysTime, rExpiredSysTime, rTimeoutSystime;
+	OS_SYSTIME rExpiredSysTime, rTimeoutSystime;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
 	ASSERT(prAdapter);
 	ASSERT(prTimer);
 
-	log_dbg(CNM, TRACE, "start timer, timer %p func %ps %d ms\n",
-		prTimer, prTimer->pfMgmtTimeOutFunc, u4TimeoutMs);
-
-#if (CFG_SUPPORT_STATISTICS == 1)
-	/* Do not print oid timer to avoid log too much.
-	 * We can deduce existence of OID timer from cmd and event.
-	 */
-	if ((prTimer != NULL) && (&(prAdapter->rOidTimeoutTimer) != prTimer)
-		&& (wlan_fb_power_down == TRUE)) {
-		DBGLOG_LIMITED(CNM, INFO,
-			"[WLAN-LP] Start timer %p %u ms -handler(%ps)\n",
-			prTimer,
-			u4TimeoutMs,
-			prTimer->pfMgmtTimeOutFunc);
-	}
-#endif
-
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
 
 	prRootTimer = &prAdapter->rRootTimer;
 	prTimerList = &prRootTimer->rLinkHead;
-
-	if (gDoTimeOut) {
-		/* monitor the timer start in callback */
-		log_dbg(CNM, INFO,
-			"In DoTimeOut, timer %p func %ps %d ms timercount %d\n",
-			prTimer, prTimer->pfMgmtTimeOutFunc,
-			u4TimeoutMs, prTimerList->u4NumElem);
-	}
 
 	/* If timeout interval is larger than 1 minute, the mod value is set
 	 * to the timeout value first, then per minutue.
@@ -517,19 +404,7 @@ void cnmTimerStartTimer(IN struct ADAPTER *prAdapter, IN struct TIMER *prTimer,
 	rTimeoutSystime = MSEC_TO_SYSTIME(u4TimeoutMs);
 	if (rTimeoutSystime == 0)
 		rTimeoutSystime = 1;
-
-	rCurSysTime = kalGetTimeTick();
-	rExpiredSysTime = rCurSysTime + rTimeoutSystime;
-
-	/* Check if root timer expired but not timeout. */
-	if (TIME_BEFORE(prRootTimer->rNextExpiredSysTime, rCurSysTime) &&
-		!test_bit(GLUE_FLAG_TIMEOUT_BIT,
-				       &prAdapter->prGlueInfo->ulFlag)) {
-		log_dbg(CNM, WARN, "Invalid NextExpiredSysTime: %u, currentSysTime: %u\n",
-			prRootTimer->rNextExpiredSysTime, rCurSysTime);
-		set_bit(GLUE_FLAG_TIMEOUT_BIT,
-				       &prAdapter->prGlueInfo->ulFlag);
-	}
+	rExpiredSysTime = kalGetTimeTick() + rTimeoutSystime;
 
 	/* If no timer pending or the fast time interval is used. */
 	if (LINK_IS_EMPTY(prTimerList)
@@ -543,16 +418,8 @@ void cnmTimerStartTimer(IN struct ADAPTER *prAdapter, IN struct TIMER *prTimer,
 	/* Add this timer to checking list */
 	prTimer->rExpiredSysTime = rExpiredSysTime;
 
-	if (!timerPendingTimer(prTimer)) {
+	if (!timerPendingTimer(prTimer))
 		LINK_INSERT_TAIL(prTimerList, &prTimer->rLinkEntry);
-	} else {
-		/* If the pending timer is not in timer list, we will have
-		 * to add the timer to timer list anyway. Otherwise, the timer
-		 * will never timeout.
-		 */
-		if (!cnmTimerIsTimerValid(prAdapter, prTimer))
-			LINK_INSERT_TAIL(prTimerList, &prTimer->rLinkEntry);
-	}
 
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TIMER);
 }
@@ -594,53 +461,42 @@ void cnmTimerDoTimeOutCheck(IN struct ADAPTER *prAdapter)
 	prRootTimer->rNextExpiredSysTime
 		= rCurSysTime + MGMT_MAX_TIMEOUT_INTERVAL;
 
-	log_dbg(CNM, INFO, "loop start [%d]\n", prTimerList->u4NumElem);
-	gDoTimeOut = TRUE;
-
 	LINK_FOR_EACH(prLinkEntry, prTimerList) {
 		if (prLinkEntry == NULL)
 			break;
 
 		prTimer = LINK_ENTRY(prLinkEntry, struct TIMER, rLinkEntry);
 		ASSERT(prTimer);
+		if (prLinkEntry->prNext == NULL)
+			log_dbg(CNM, WARN, "timer was re-inited, func %p\n",
+				prTimer->pfMgmtTimeOutFunc);
 
 		/* Check if this entry is timeout. */
 		if (!TIME_BEFORE(rCurSysTime, prTimer->rExpiredSysTime)) {
-			if (timerPendingTimer(prTimer)) {
-				cnmTimerStopTimer_impl(prAdapter,
-					prTimer, FALSE);
+			cnmTimerStopTimer_impl(prAdapter, prTimer, FALSE);
 
-				pfMgmtTimeOutFunc = prTimer->pfMgmtTimeOutFunc;
-				ulTimeoutDataPtr = prTimer->ulDataPtr;
+			pfMgmtTimeOutFunc = prTimer->pfMgmtTimeOutFunc;
+			ulTimeoutDataPtr = prTimer->ulDataPtr;
 
-				if (prTimer->u2Minutes > 0) {
-					prTimer->u2Minutes--;
-					prTimer->rExpiredSysTime = rCurSysTime +
-						MSEC_TO_SYSTIME(MSEC_PER_MIN);
-					LINK_INSERT_TAIL(prTimerList,
-						&prTimer->rLinkEntry);
-				} else if (pfMgmtTimeOutFunc) {
-					KAL_RELEASE_SPIN_LOCK(prAdapter,
-						SPIN_LOCK_TIMER);
-				#ifdef UT_TEST_MODE
+			if (prTimer->u2Minutes > 0) {
+				prTimer->u2Minutes--;
+				prTimer->rExpiredSysTime
+					= rCurSysTime
+						+ MSEC_TO_SYSTIME(MSEC_PER_MIN);
+				LINK_INSERT_TAIL(prTimerList,
+					&prTimer->rLinkEntry);
+			} else if (pfMgmtTimeOutFunc) {
+				KAL_RELEASE_SPIN_LOCK(prAdapter,
+					SPIN_LOCK_TIMER);
+			#ifdef UT_TEST_MODE
 				if (testTimerTimeout(prAdapter,
 						     pfMgmtTimeOutFunc,
 						     ulTimeoutDataPtr))
-				#endif
-				log_dbg(CNM, INFO,
-					"timer timeout, timer %p func %ps\n",
-					prTimer, prTimer->pfMgmtTimeOutFunc);
-
-					(pfMgmtTimeOutFunc) (prAdapter,
-						ulTimeoutDataPtr);
-					KAL_ACQUIRE_SPIN_LOCK(prAdapter,
-						SPIN_LOCK_TIMER);
-				}
-			} else {
-				log_dbg(CNM, WARN,
-					"timer re-inited, timer %p func %ps\n",
-					prTimer, prTimer->pfMgmtTimeOutFunc);
-				break;
+			#endif
+				(pfMgmtTimeOutFunc) (prAdapter,
+					ulTimeoutDataPtr);
+				KAL_ACQUIRE_SPIN_LOCK(prAdapter,
+					SPIN_LOCK_TIMER);
 			}
 
 			/* Search entire list again because of nest del and add
@@ -648,8 +504,6 @@ void cnmTimerDoTimeOutCheck(IN struct ADAPTER *prAdapter)
 			 * stopped
 			 */
 			prLinkEntry = (struct LINK_ENTRY *) prTimerList;
-			if (prLinkEntry == NULL)
-				break;
 
 			prRootTimer->rNextExpiredSysTime
 				= rCurSysTime + MGMT_MAX_TIMEOUT_INTERVAL;
@@ -666,9 +520,6 @@ void cnmTimerDoTimeOutCheck(IN struct ADAPTER *prAdapter)
 		}
 	}	/* end of for loop */
 
-	log_dbg(CNM, INFO, "loop end");
-	gDoTimeOut = false;
-
 	/* Setup the prNext timeout event. It is possible the timer was already
 	 * set in the above timeout callback function.
 	 */
@@ -684,7 +535,7 @@ void cnmTimerDoTimeOutCheck(IN struct ADAPTER *prAdapter)
 	}
 
 	if (prRootTimer->fgWakeLocked && !fgNeedWakeLock) {
-		KAL_WAKE_UNLOCK(prAdapter, prRootTimer->rWakeLock);
+		KAL_WAKE_UNLOCK(prAdapter, &prRootTimer->rWakeLock);
 		prRootTimer->fgWakeLocked = FALSE;
 	}
 

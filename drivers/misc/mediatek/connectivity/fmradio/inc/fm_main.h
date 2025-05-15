@@ -27,6 +27,7 @@
 #define FM_NAME             "fm"
 #define FM_DEVICE_NAME      "/dev/fm"
 
+#define FM_VOL_MAX           0x2B	/* 43 volume(0-15) */
 #define FM_TIMER_TIMEOUT_DEFAULT 1000
 #define FM_TIMER_TIMEOUT_MIN 1000
 #define FM_TIMER_TIMEOUT_MAX 1000000
@@ -83,14 +84,6 @@ struct fm_tune_parm {
 	unsigned short freq;		/* IN/OUT parameter */
 };
 
-struct fm_tune_parm_old {
-	unsigned char err;
-	unsigned char band;
-	unsigned char space;
-	unsigned char hilo;
-	unsigned short freq;		/* IN/OUT parameter */
-};
-
 struct fm_seek_parm {
 	unsigned char err;
 	unsigned char band;
@@ -101,6 +94,7 @@ struct fm_seek_parm {
 	unsigned short freq;		/* IN/OUT parameter */
 };
 
+#ifdef CONFIG_MTK_FM_50KHZ_SUPPORT
 struct fm_scan_parm {
 	unsigned char err;
 	unsigned char band;
@@ -110,6 +104,17 @@ struct fm_scan_parm {
 	unsigned short ScanTBL[26];	/* need no less than the chip */
 	unsigned short ScanTBLSize;	/* IN/OUT parameter */
 };
+#else
+struct fm_scan_parm {
+	unsigned char err;
+	unsigned char band;
+	unsigned char space;
+	unsigned char hilo;
+	unsigned short freq;		/* OUT parameter */
+	unsigned short ScanTBL[16];	/* need no less than the chip */
+	unsigned short ScanTBLSize;	/* IN/OUT parameter */
+};
+#endif
 
 struct fm_cqi {
 	signed int ch;
@@ -174,11 +179,19 @@ struct fm_tune_t {
 	void *priv;
 };
 
+#ifdef CONFIG_MTK_FM_50KHZ_SUPPORT
 struct fm_rssi_req {
 	unsigned short num;
 	unsigned short read_cnt;
 	struct fm_ch_rssi cr[26 * 16];
 };
+#else
+struct fm_rssi_req {
+	unsigned short num;
+	unsigned short read_cnt;
+	struct fm_ch_rssi cr[16 * 16];
+};
+#endif
 
 struct fm_rds_tx_parm {
 	unsigned char err;
@@ -223,12 +236,12 @@ struct fm_gps_rtc_info {
 	signed int retryCnt;	/* GPS mnl can decide retry times */
 	signed int ageThd;		/* GPS 3D fix time diff threshold */
 	signed int driftThd;	/* GPS RTC drift threshold */
-	struct timespec64 tvThd;	/* time value diff threshold */
+	struct timeval tvThd;	/* time value diff threshold */
 	signed int age;		/* GPS 3D fix time diff */
 	signed int drift;		/* GPS RTC drift */
 	union {
 		unsigned long stamp;	/* time stamp in jiffies */
-		struct timespec64 tv;	/* time stamp value in RTC */
+		struct timeval tv;	/* time stamp value in RTC */
 	};
 	signed int flag;		/* rw flag */
 };
@@ -383,7 +396,6 @@ extern signed int fm_cqi_log(void);
 extern signed int fm_soft_mute_tune(struct fm *fm, struct fm_softmute_tune_t *parm);
 extern signed int fm_pre_search(struct fm *fm);
 extern signed int fm_restore_search(struct fm *fm);
-extern signed int fm_atj_set(signed int freq, unsigned short value);
 
 extern signed int fm_dump_reg(void);
 extern signed int fm_get_gps_rtc_info(struct fm_gps_rtc_info *src);
@@ -401,6 +413,6 @@ extern signed int fm_rdstx_support(struct fm *fm, signed int *support);
 extern signed int fm_rdstx_enable(struct fm *fm, signed int enable);
 extern signed int fm_tx_scan(struct fm *fm, struct fm_tx_scan_parm *parm);
 signed int fm_full_cqi_logger(struct fm_full_cqi_log_t *setting);
-signed int fm_rds_parser(struct rds_rx_t *rds_raw, signed int rds_size);
+
 
 #endif /* __FM_MAIN_H__ */

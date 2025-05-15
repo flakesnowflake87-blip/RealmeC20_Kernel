@@ -52,7 +52,6 @@ wmt_wlan_remove_cb mtk_wcn_wlan_remove;
 wmt_wlan_bus_cnt_get_cb mtk_wcn_wlan_bus_tx_cnt;
 wmt_wlan_bus_cnt_clr_cb mtk_wcn_wlan_bus_tx_cnt_clr;
 wmt_wlan_emi_mpu_set_protection_cb mtk_wcn_wlan_emi_mpu_set_protection;
-wmt_wlan_is_wifi_drv_own_cb mtk_wcn_wlan_is_wifi_drv_own;
 
 /*******************************************************************************
 *                             D A T A   T Y P E S
@@ -61,7 +60,7 @@ wmt_wlan_is_wifi_drv_own_cb mtk_wcn_wlan_is_wifi_drv_own;
 OSAL_BIT_OP_VAR gBtWifiGpsState;
 OSAL_BIT_OP_VAR gGpsFmState;
 UINT32 gWifiProbed;
-INT32 gWmtDbgLvl = WMT_LOG_INFO;
+UINT32 gWmtDbgLvl = WMT_LOG_INFO;
 MTK_WCN_BOOL g_pwr_off_flag = MTK_WCN_BOOL_TRUE;
 
 /*******************************************************************************
@@ -81,7 +80,6 @@ MTK_WCN_BOOL g_pwr_off_flag = MTK_WCN_BOOL_TRUE;
 
 static MTK_WCN_BOOL mtk_wcn_wmt_pwr_on(VOID);
 static MTK_WCN_BOOL mtk_wcn_wmt_func_ctrl(ENUM_WMTDRV_TYPE_T type, ENUM_WMT_OPID_T opId);
-static MTK_WCN_BOOL mtk_wmt_gps_suspend_ctrl_by_type(MTK_WCN_BOOL gps_l1, MTK_WCN_BOOL gps_l5, MTK_WCN_BOOL suspend);
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -162,15 +160,18 @@ static MTK_WCN_BOOL mtk_wcn_wmt_func_ctrl(ENUM_WMTDRV_TYPE_T type, ENUM_WMT_OPID
 	/*do not check return value, we will do this either way */
 	wmt_lib_host_awake_get();
 	/* wake up chip first */
-	if (DISABLE_PSM_MONITOR()) {
-		WMT_ERR_FUNC("wake up failed,OPID(%d) type(%zu) abort\n", pOp->op.opId, pOp->op.au4OpData[0]);
-		wmt_lib_put_op_to_free_queue(pOp);
-		wmt_lib_host_awake_put();
-		return MTK_WCN_BOOL_FALSE;
+	if (!bOffload) {
+		if (DISABLE_PSM_MONITOR()) {
+			WMT_ERR_FUNC("wake up failed,OPID(%d) type(%zu) abort\n", pOp->op.opId, pOp->op.au4OpData[0]);
+			wmt_lib_put_op_to_free_queue(pOp);
+			wmt_lib_host_awake_put();
+			return MTK_WCN_BOOL_FALSE;
+		}
 	}
 
 	bRet = wmt_lib_put_act_op(pOp);
-	ENABLE_PSM_MONITOR();
+	if (!bOffload)
+		ENABLE_PSM_MONITOR();
 	wmt_lib_host_awake_put();
 
 	if (bRet == MTK_WCN_BOOL_FALSE)
@@ -227,14 +228,10 @@ EXPORT_SYMBOL(mtk_wcn_wmt_func_on);
 */
 VOID mtk_wcn_wmt_func_ctrl_for_plat(UINT32 on, ENUM_WMTDRV_TYPE_T type)
 {
-	MTK_WCN_BOOL ret;
-
 	if (on)
-		ret = mtk_wcn_wmt_func_on(type);
+		mtk_wcn_wmt_func_on(type);
 	else
-		ret = mtk_wcn_wmt_func_off(type);
-
-	WMT_INFO_FUNC("on=%d type=%d ret=%d\n", on, type, ret);
+		mtk_wcn_wmt_func_off(type);
 }
 
 INT8 mtk_wcn_wmt_therm_ctrl(ENUM_WMTTHERM_TYPE_T eType)
@@ -311,12 +308,6 @@ UINT32 mtk_wcn_wmt_ic_info_get(ENUM_WMT_CHIPINFO_TYPE_T type)
 	return wmt_lib_get_icinfo(type);
 }
 EXPORT_SYMBOL(mtk_wcn_wmt_ic_info_get);
-
-UINT32 mtk_wcn_wmt_adie_workable(VOID)
-{
-	return wmt_lib_get_adie_workable();
-}
-EXPORT_SYMBOL(mtk_wcn_wmt_adie_workable);
 
 MTK_WCN_BOOL mtk_wcn_wmt_dsns_ctrl(ENUM_WMTDSNS_TYPE_T eType)
 {
@@ -584,7 +575,6 @@ INT32 mtk_wcn_wmt_wlan_reg(P_MTK_WCN_WMT_WLAN_CB_INFO pWmtWlanCbInfo)
 	mtk_wcn_wlan_bus_tx_cnt = pWmtWlanCbInfo->wlan_bus_cnt_get_cb;
 	mtk_wcn_wlan_bus_tx_cnt_clr = pWmtWlanCbInfo->wlan_bus_cnt_clr_cb;
 	mtk_wcn_wlan_emi_mpu_set_protection = pWmtWlanCbInfo->wlan_emi_mpu_set_protection_cb;
-	mtk_wcn_wlan_is_wifi_drv_own = pWmtWlanCbInfo->wlan_is_wifi_drv_own_cb;
 
 	if (gWifiProbed) {
 		WMT_INFO_FUNC("wlan has been done power on,call probe directly\n");
@@ -609,7 +599,6 @@ INT32 mtk_wcn_wmt_wlan_unreg(void)
 	mtk_wcn_wlan_bus_tx_cnt = NULL;
 	mtk_wcn_wlan_bus_tx_cnt_clr = NULL;
 	mtk_wcn_wlan_emi_mpu_set_protection = NULL;
-	mtk_wcn_wlan_is_wifi_drv_own = NULL;
 
 	return 0;
 }
@@ -713,19 +702,13 @@ MTK_WCN_BOOL mtk_wcn_wmt_do_reset(ENUM_WMTDRV_TYPE_T type)
 {
 	INT32 iRet = -1;
 	UINT8 *drv_name[] = {
-		[0] = "DRV_TYPE_BT",
-		[1] = "DRV_TYPE_FM",
-		[2] = "DRV_TYPE_GPS",
-		[3] = "DRV_TYPE_WIFI",
-		[4] = "DRV_TYPE_WMT",
-		[5] = "DRV_TYPE_ANT",
-		[11] = "DRV_TYPE_GPSL5",
+		"DRV_TYPE_BT",
+		"DRV_TYPE_FM",
+		"DRV_TYPE_GPS",
+		"DRV_TYPE_WIFI",
+		"DRV_TYPE_WMT",
+		"DRV_TYPE_ANT"
 	};
-
-	if ((type < WMTDRV_TYPE_BT) || (type > WMTDRV_TYPE_ANT)) {
-		WMT_INFO_FUNC("Wrong driver type: %d, do not trigger reset.\n", type);
-		return MTK_WCN_BOOL_FALSE;
-	}
 
 	WMT_INFO_FUNC("Subsystem trigger whole chip reset, reset source: %s\n", drv_name[type]);
 	if (mtk_wcn_stp_get_wmt_trg_assert() == 0)
@@ -738,23 +721,6 @@ MTK_WCN_BOOL mtk_wcn_wmt_do_reset(ENUM_WMTDRV_TYPE_T type)
 	return iRet == 0 ? MTK_WCN_BOOL_TRUE : MTK_WCN_BOOL_FALSE;
 }
 EXPORT_SYMBOL(mtk_wcn_wmt_do_reset);
-
-MTK_WCN_BOOL mtk_wcn_wmt_do_reset_only(ENUM_WMTDRV_TYPE_T type)
-{
-	INT32 iRet = -1;
-
-	WMT_INFO_FUNC("Whole chip reset without trigger assert\n");
-	if (mtk_wcn_stp_get_wmt_trg_assert() == 0) {
-		chip_reset_only = 1;
-		iRet = wmt_lib_trigger_reset();
-	} else {
-		WMT_INFO_FUNC("assert has been triggered already\n");
-		iRet = 0;
-	}
-
-	return iRet == 0 ? MTK_WCN_BOOL_TRUE : MTK_WCN_BOOL_FALSE;
-}
-EXPORT_SYMBOL(mtk_wcn_wmt_do_reset_only);
 
 VOID mtk_wcn_wmt_set_wifi_ver(UINT32 Value)
 {
@@ -796,110 +762,3 @@ INT32 mtk_wmt_gps_mcu_ctrl(PUINT8 p_tx_data_buf, UINT32 tx_data_len, PUINT8 p_rx
 				    p_rx_data_len);
 }
 EXPORT_SYMBOL(mtk_wmt_gps_mcu_ctrl);
-
-VOID mtk_wcn_wmt_set_mcif_mpu_protection(MTK_WCN_BOOL enable)
-{
-	mtk_consys_set_mcif_mpu_protection(enable);
-}
-EXPORT_SYMBOL(mtk_wcn_wmt_set_mcif_mpu_protection);
-
-static MTK_WCN_BOOL mtk_wmt_gps_suspend_ctrl_by_type(MTK_WCN_BOOL gps_l1, MTK_WCN_BOOL gps_l5, MTK_WCN_BOOL suspend)
-{
-	P_OSAL_OP pOp;
-	MTK_WCN_BOOL bRet;
-	P_OSAL_SIGNAL pSignal;
-
-	pOp = wmt_lib_get_free_op();
-	if (!pOp) {
-		WMT_DBG_FUNC("get_free_lxop fail\n");
-		return MTK_WCN_BOOL_FALSE;
-	}
-
-	pSignal = &pOp->signal;
-
-	pOp->op.opId = WMT_OPID_GPS_SUSPEND;
-	pOp->op.au4OpData[0] = (MTK_WCN_BOOL_FALSE == suspend ? 0 : 1);
-	pOp->op.au4OpData[1] = (MTK_WCN_BOOL_FALSE == gps_l1 ? 0 : 1);
-	pOp->op.au4OpData[2] = (MTK_WCN_BOOL_FALSE == gps_l5 ? 0 : 1);
-	pSignal->timeoutValue = (MTK_WCN_BOOL_FALSE == suspend) ? MAX_FUNC_ON_TIME : MAX_FUNC_OFF_TIME;
-
-	WMT_INFO_FUNC("wmt-exp: OPID(%d) type(%zu) start\n", pOp->op.opId, pOp->op.au4OpData[0]);
-
-	/*do not check return value, we will do this either way */
-	wmt_lib_host_awake_get();
-	/* wake up chip first */
-	if (DISABLE_PSM_MONITOR()) {
-		WMT_ERR_FUNC("wake up failed,OPID(%d) type(%zu) abort\n", pOp->op.opId, pOp->op.au4OpData[0]);
-		wmt_lib_put_op_to_free_queue(pOp);
-		wmt_lib_host_awake_put();
-		return MTK_WCN_BOOL_FALSE;
-	}
-
-	bRet = wmt_lib_put_act_op(pOp);
-	ENABLE_PSM_MONITOR();
-	wmt_lib_host_awake_put();
-
-	if (bRet == MTK_WCN_BOOL_FALSE)
-		WMT_WARN_FUNC("OPID(%d) type(%zu) fail\n", pOp->op.opId, pOp->op.au4OpData[0]);
-	else
-		WMT_INFO_FUNC("OPID(%d) type(%zu) ok\n", pOp->op.opId, pOp->op.au4OpData[0]);
-
-	return bRet;
-}
-
-MTK_WCN_BOOL mtk_wmt_gps_suspend_ctrl(MTK_WCN_BOOL suspend)
-{
-	return mtk_wmt_gps_suspend_ctrl_by_type(MTK_WCN_BOOL_TRUE, MTK_WCN_BOOL_TRUE, suspend);
-}
-EXPORT_SYMBOL(mtk_wmt_gps_suspend_ctrl);
-
-MTK_WCN_BOOL mtk_wmt_gps_l1_suspend_ctrl(MTK_WCN_BOOL suspend)
-{
-	return mtk_wmt_gps_suspend_ctrl_by_type(MTK_WCN_BOOL_TRUE, MTK_WCN_BOOL_FALSE, suspend);
-}
-EXPORT_SYMBOL(mtk_wmt_gps_l1_suspend_ctrl);
-
-MTK_WCN_BOOL mtk_wmt_gps_l5_suspend_ctrl(MTK_WCN_BOOL suspend)
-{
-	return mtk_wmt_gps_suspend_ctrl_by_type(MTK_WCN_BOOL_FALSE, MTK_WCN_BOOL_TRUE, suspend);
-}
-EXPORT_SYMBOL(mtk_wmt_gps_l5_suspend_ctrl);
-
-INT32 mtk_wcn_wmt_mpu_lock_aquire(VOID)
-{
-	return wmt_lib_mpu_lock_aquire();
-}
-EXPORT_SYMBOL(mtk_wcn_wmt_mpu_lock_aquire);
-
-VOID mtk_wcn_wmt_mpu_lock_release(VOID)
-{
-	wmt_lib_mpu_lock_release();
-}
-EXPORT_SYMBOL(mtk_wcn_wmt_mpu_lock_release);
-
-INT32 mtk_wcn_get_reset_info(PUINT8 pBuff, INT32 buffLen)
-{
-	INT32 len = 0;
-	PUINT8 buf;
-
-	if (!pBuff) {
-		WMT_INFO_FUNC("pBuff is NULL\n");
-		return -1;
-	}
-
-	buf = wmt_lib_get_cpupcr_xml_format(&len);
-	if (!buf) {
-		WMT_INFO_FUNC("buf is NULL\n");
-		return -1;
-	}
-	snprintf(pBuff, buffLen, "%s", buf);
-
-	return 0;
-}
-EXPORT_SYMBOL(mtk_wcn_get_reset_info);
-
-INT32 mtk_wcn_get_host_assert_info(PUINT32 type, PUINT32 reason, PUINT32 en)
-{
-	return wmt_lib_get_host_assert_info(type, reason, en);
-}
-EXPORT_SYMBOL(mtk_wcn_get_host_assert_info);

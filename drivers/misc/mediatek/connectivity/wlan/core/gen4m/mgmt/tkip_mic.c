@@ -57,15 +57,6 @@
 /*! \file tkip_sw.c
  *    \brief This file include the tkip encrypted / decrypted mic function.
  */
-/*******************************************************************************
- * Copyright (c) 2003-2004 Inprocomm, Inc.
- *
- * All rights reserved. Copying, compilation, modification, distribution
- * or any other use whatsoever of this material is strictly prohibited
- * except in accordance with a Software License Agreement with
- * Inprocomm, Inc.
- *******************************************************************************
- */
 
 /*******************************************************************************
  *                     C O M P I L E R   F L A G S
@@ -216,6 +207,9 @@ const uint16_t tkipSBOX2[256] = {
 /*----------------------------------------------------------------------------*/
 void tkipMicB(IN OUT uint32_t *pu4L, IN OUT uint32_t *pu4R)
 {
+	ASSERT(pu4L);
+	ASSERT(pu4R);
+
 	*pu4R = *pu4R ^ ROTL32(*pu4L, 17);	/* r <- r ^ (l<<<17)    */
 	*pu4L = (*pu4L + *pu4R);	/* l <- (l+r) mod 2^32  */
 	*pu4R = *pu4R ^ XSWAP32(*pu4L);	/* r <- r ^ XSWAP(l)    */
@@ -251,6 +245,12 @@ tkipMicGen(IN uint8_t *pucMickey,
 	uint32_t i;
 	uint32_t l, r;
 	uint32_t au4Msg[3];
+
+	ASSERT(pucMickey);
+	ASSERT(pucData);
+	ASSERT(pucSa);
+	ASSERT(pucDa);
+	ASSERT(pucMic);
 
 	WLAN_GET_FIELD_32(pucMickey, &l);
 	WLAN_GET_FIELD_32(pucMickey + 4, &r);
@@ -343,6 +343,13 @@ tkipMicEncapsulate(IN uint8_t *pucDa,
 	uint8_t aucMic[8];	/* MIC' */
 
 	DEBUGFUNC("tkipSwMsduEncapsulate");
+
+	ASSERT(pucDa);
+	ASSERT(pucSa);
+	ASSERT(pucPayload);
+	ASSERT(pucMic);
+	ASSERT(pucMicKey);
+
 	DBGLOG(RSN, LOUD,
 	       "MIC key %02x-%02x-%02x-%02x %02x-%02x-%02x-%02x\n",
 	       pucMicKey[0], pucMicKey[1], pucMicKey[2], pucMicKey[3],
@@ -377,6 +384,9 @@ u_int8_t tkipMicDecapsulate(IN struct SW_RFB *prSwRfb,
 
 	DEBUGFUNC("tkipMicDecapsulate");
 
+	ASSERT(prSwRfb);
+	ASSERT(pucMicKey);
+
 	/* prRxStatus = prSwRfb->prRxStatus; */
 	pucFrameBody = prSwRfb->pucPayload;
 	u2FrameBodyLen = prSwRfb->u2PayloadLength;
@@ -391,6 +401,8 @@ u_int8_t tkipMicDecapsulate(IN struct SW_RFB *prSwRfb,
 	/* DBGLOG_MEM8(RSN, LOUD, pucMicKey, 8); */
 
 	prMacHeader = (struct WLAN_MAC_HEADER *) prSwRfb->pvHeader;
+	ASSERT(prMacHeader);
+
 	pucDa = prMacHeader->aucAddr1;
 	pucSa = prMacHeader->aucAddr3;
 
@@ -469,6 +481,9 @@ u_int8_t tkipMicDecapsulateInRxHdrTransMode(
 #endif
 
 	DEBUGFUNC("tkipMicDecapsulateInRxHdrTransMode");
+
+	ASSERT(prSwRfb);
+	ASSERT(pucMicKey);
 
 	/* prRxStatus = prSwRfb->prRxStatus; */
 	pucFrameBody = prSwRfb->pucPayload;

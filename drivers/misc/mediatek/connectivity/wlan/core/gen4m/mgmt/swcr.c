@@ -307,9 +307,8 @@ void dumpSTA(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec)
 	       prStaRec->u2HtCapInfo);
 
 	for (i = 0; i < NUM_OF_PER_STA_TX_QUEUES; i++)
-		if (prStaRec->aprTargetQueue[i])
-			DBGLOG(SW4, INFO, "TC %u Queue Len %u\n", i,
-			       prStaRec->aprTargetQueue[i]->u4NumElem);
+		DBGLOG(SW4, INFO, "TC %u Queue Len %u\n", i,
+		       prStaRec->aprTargetQueue[i]->u4NumElem);
 
 	DBGLOG(SW4, INFO, "BmpDeliveryAC %x\n",
 	       prStaRec->ucBmpDeliveryAC);
@@ -372,7 +371,7 @@ void dumpBss(struct ADAPTER *prAdapter,
 	     struct BSS_INFO *prBssInfo)
 {
 
-	DBGLOG(SW4, INFO, "SSID %s\n", HIDE(prBssInfo->aucSSID));
+	DBGLOG(SW4, INFO, "SSID %s\n", prBssInfo->aucSSID);
 	DBGLOG(SW4, INFO, "OWN " MACSTR "\n",
 	       MAC2STR(prBssInfo->aucOwnMacAddr));
 	DBGLOG(SW4, INFO, "BSSID " MACSTR "\n",
@@ -690,11 +689,6 @@ void swCtrlCmdCategory0(struct ADAPTER *prAdapter,
 			switch (ucOpt0) {
 			case 0:
 #if QM_ADAPTIVE_TC_RESOURCE_CTRL
-				if (ucOpt1 >= TC_NUM) {
-					DBGLOG(SW4, WARN, "ucOpt1 %u invalid\n",
-					   ucOpt1);
-					break;
-				}
 				g_au4SwCr[1] =
 					(QM_GET_TX_QUEUE_LEN(prAdapter,
 						ucOpt1));
@@ -709,11 +703,6 @@ void swCtrlCmdCategory0(struct ADAPTER *prAdapter,
 
 			case 1:
 #if QM_FORWARDING_FAIRNESS
-				if (ucOpt1 >= NUM_OF_PER_STA_TX_QUEUES) {
-					DBGLOG(SW4, WARN, "ucOpt1 %u invalid\n",
-					   ucOpt1);
-					break;
-				}
 				g_au4SwCr[1] =
 					prQM->au4ResourceUsedCount[ucOpt1];
 				g_au4SwCr[2] = prQM->au4HeadStaRecIndex[ucOpt1];
@@ -722,11 +711,6 @@ void swCtrlCmdCategory0(struct ADAPTER *prAdapter,
 
 			case 2:
 				/* only one */
-				if (ucOpt1 >= NUM_OF_PER_TYPE_TX_QUEUES) {
-					DBGLOG(SW4, WARN, "ucOpt1 %u invalid\n",
-					   ucOpt1);
-					break;
-				}
 				g_au4SwCr[1] =
 					prQM->arTxQueue[ucOpt1].u4NumElem;
 
@@ -740,11 +724,6 @@ void swCtrlCmdCategory0(struct ADAPTER *prAdapter,
 			prTxCtrl = &prAdapter->rTxCtrl;
 			switch (ucOpt0) {
 			case 0:
-				if (ucOpt1 >= TC_NUM) {
-					DBGLOG(SW4, WARN, "ucOpt1 %u invalid\n",
-					   ucOpt1);
-					break;
-				}
 				g_au4SwCr[1] =
 					prAdapter->rTxCtrl.rTc.
 					au4FreeBufferCount[ucOpt1];
@@ -809,11 +788,6 @@ void swCtrlCmdCategory1(struct ADAPTER *prAdapter,
 		/* Read */
 		switch (ucIndex) {
 		case SWCTRL_STA_QUE_INFO: {
-			if (ucOpt1 >= NUM_OF_PER_STA_TX_QUEUES) {
-				DBGLOG(SW4, WARN, "ucOpt1 %u invalid\n",
-				   ucOpt1);
-				break;
-			}
 			g_au4SwCr[1] = prStaRec->arTxQueue[ucOpt1].u4NumElem;
 		}
 		break;
@@ -909,12 +883,6 @@ void testPsSetupBss(IN struct ADAPTER *prAdapter,
 	DEBUGFUNC("testPsSetupBss()");
 	DBGLOG(SW4, INFO, "index %d\n", ucBssIndex);
 
-	if (!IS_BSS_INDEX_VALID(ucBssIndex)) {
-		DBGLOG(RLM, ERROR,
-			"Invalid bssidx:%d\n", ucBssIndex);
-		return;
-	}
-
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
 
 	/* 4 <1.2> Initiate PWR STATE */
@@ -924,9 +892,9 @@ void testPsSetupBss(IN struct ADAPTER *prAdapter,
 	BSS_INFO_INIT(prAdapter, prBssInfo);
 
 	prBssInfo->eConnectionState =
-		MEDIA_STATE_DISCONNECTED;
+		PARAM_MEDIA_STATE_DISCONNECTED;
 	prBssInfo->eConnectionStateIndicated =
-		MEDIA_STATE_DISCONNECTED;
+		PARAM_MEDIA_STATE_DISCONNECTED;
 	prBssInfo->eCurrentOPMode = OP_MODE_ACCESS_POINT;
 	prBssInfo->fgIsNetActive = TRUE;
 	prBssInfo->ucBssIndex = ucBssIndex;
@@ -1052,8 +1020,7 @@ void testPsCmdCategory0(struct ADAPTER *prAdapter,
 			/* txmForwardQueuedBmcPkts (ucOpt0); */
 			break;
 		case TEST_PS_SEND_NULL: {
-			if (prStaRec == NULL)
-				break;
+
 			testPsSendQoSNullFrame(prAdapter, prStaRec,
 				/* UP */
 				(uint8_t) (g_au4SwCr[1] & 0xFF),
@@ -1225,7 +1192,7 @@ void swCrReadWriteCmd(struct ADAPTER *prAdapter,
 	/* Address [7:0] OFFSET */
 
 	DEBUGFUNC("swCrReadWriteCmd");
-	DBGLOG(SW4, INFO, "%u addr 0x%x data 0x%x\n", ucRead,
+	DBGLOG_LIMITED(SW4, INFO, "%u addr 0x%x data 0x%x\n", ucRead,
 	       u2Addr, *pu4Data);
 
 	if (ucMod < (ARRAY_SIZE(g_arSwCrModHandle))) {
@@ -1461,7 +1428,7 @@ void swCrDebugCheck(struct ADAPTER *prAdapter,
 void swCrDebugCheckTimeout(IN struct ADAPTER *prAdapter,
 			   unsigned long ulParamPtr)
 {
-	struct CMD_SW_DBG_CTRL rCmdSwCtrl = {0};
+	struct CMD_SW_DBG_CTRL rCmdSwCtrl;
 	uint32_t rStatus;
 
 	rCmdSwCtrl.u4Id = (0xb000 << 16) + g_ucSwcrDebugCheckType;

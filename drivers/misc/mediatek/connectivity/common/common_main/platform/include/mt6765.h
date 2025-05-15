@@ -50,15 +50,8 @@
 #define CONSYS_IF_PINMUX_02_OFFSET	0x000003E0
 #define CONSYS_IF_PINMUX_02_MASK	0x8888888F
 #define CONSYS_IF_PINMUX_02_VALUE	0x11111110
-
-/* A-Die interface pinmux driving base */
-#define CONSYS_IF_PINMUX_DRIVING_BASE	0x10002C00
-#define CONSYS_IF_PINMUX_DRIVING_OFFSET_1	0x0
-#define CONSYS_IF_PINMUX_DRIVING_MASK_1		0xc703ffff
-#define CONSYS_IF_PINMUX_DRIVING_VALUE_1	0x8240000
-#define CONSYS_IF_PINMUX_DRIVING_OFFSET_2	0x10
-#define CONSYS_IF_PINMUX_DRIVING_MASK_2		0xfffffff8
-#define CONSYS_IF_PINMUX_DRIVING_VALUE_2	0x1
+#define CONSYS_IF_DRV_PINMUX_REG_BASE	0x10420000
+#define CONSYS_IF_DRV_PINMUX_MASK	0xF8FFFFFF
 
 /*TOPCKGEN_BASE*/
 #define CONSYS_AP2CONN_OSC_EN_OFFSET	0x00000f00
@@ -90,7 +83,6 @@
 #define CONSYS_HIF_PDMA_AXI_RREADY      0x00000154
 
 /*CONN_HIF_ON_BASE*/
-#define CONN_HIF_ON_BASE_ADDR           (0x18007000)
 #define CONSYS_BUSY_OFFSET              0x110
 #define CONSYS_BUSY_BIT                 (0x1 << 27)
 #define CONSYS_CLOCK_CHECK_VALUE        0x30000
@@ -100,17 +92,12 @@
 
 /*AXI bus*/
 #define CONSYS_AHBAXI_PROT_EN_OFFSET	0x220
-#define CONSYS_AHBAXI_PROT_STA0_OFFSET	0x224
-#define CONSYS_AHBAXI_PROT_STA1_OFFSET	0x228
+#define CONSYS_AHBAXI_PROT_STA_OFFSET	0x228
 #define CONSYS_AXI_TX_PROT_EN_OFFSET	0x250
 #define CONSYS_AXI_TX_PROT_STA_OFFSET	0x258
 #define CONSYS_PROT_MASK		((0x1<<13) | (0x1<<14))	/* bit 13, 14 */
 #define CONSYS_TX_PROT_MASK		(0x1<<18)	/* bit 18 */
 #define CONSYS_PDMA_AXI_RREADY_MASK	(0x1 << 1)	/* bit 1 */
-
-/* INFRACFG_REG_BASE */
-#define INFRAGCFG_REG_TOPAXI_SI3_STA_OFFSET	0x02C
-#define INFRAGCFG_REG_TOPAXI_MI_STA_OFFSET	0x008
 
 /*SPM clock gating control register */
 #define CONSYS_PWRON_CONFG_EN_VALUE	(0x0b160001)
@@ -160,9 +147,7 @@
 #define CONSYS_WD_SYS_RST_BIT		(0x1 << 9)
 
 /*CONSYS_MCU_CFG_ACR_REG*/
-#define CONSYS_MCU_CFG_ACR_MBIST_OFFSET	(0x10)
-#define CONSYS_MCU_CFG_ACR_MBIST_MASK	(0xfffffffc)
-#define CONSYS_MCU_CFG_ACR_MBIST_VAL	(0x3)
+#define CONSYS_MCU_CFG_ACR_MBIST_BIT	(0x1 << 0 | 0x1 << 1)
 
 /*control app2cnn_osc_en*/
 #define CONSYS_AP2CONN_OSC_EN_BIT	(0x1 << 10)
@@ -176,18 +161,6 @@
 #define CONSYS_EMI_PAGED_DUMP_OFFSET	(0x8400)
 #define CONSYS_EMI_FULL_DUMP_OFFSET	(0x10400)
 #define CONSYS_EMI_MET_DATA_OFFSET	(0x2e500)
-
-#define CONSYS_EMI_RAM_BT_BUILDTIME_OFFSET	(0x68300)
-#define CONSYS_EMI_RAM_WIFI_BUILDTIME_OFFSET	(0x68310)
-#define CONSYS_EMI_RAM_MCU_BUILDTIME_OFFSET	(0x68320)
-#define CONSYS_EMI_PATCH_MCU_BUILDTIME_OFFSET	(0x68330)
-
-/*CONSYS_MCU_CFG_DBG_LP_INFO*/
-#define CONN_CFG_ON_CONN_ON_HOST_MAILBOX_MCU_ADDR           (conn_reg.mcu_cfg_on_base + 0x104)
-#define CONN_CFG_ON_CONN_ON_MON_CTL_ADDR                    (conn_reg.mcu_top_misc_on_base + 0x320)
-#define CONN_CFG_ON_CONN_ON_DBGSEL_ADDR                     (conn_reg.mcu_top_misc_on_base + 0x310)
-#define CONN_CFG_ON_CONN_ON_MON_FLAG_RECORD_ADDR            (conn_reg.mcu_top_misc_on_base + 0x340)
-#define CONN_CFG_ON_CONN_ON_MON_FLAG_RECORD_MAPPING_AP_ADDR (0x180c1340)
 
 /* default coex wmt ant_sel cr address */
 #define DEFAULT_COEX_WMT_ANTSEL_0_POLARITY_CR 0x80025310
@@ -248,20 +221,6 @@ extern struct bt_wifi_v33_status gBtWifiV33;
 *                  F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-extern INT32 dump_conn_debug_dump_mt6765(const char *trg_str);
-extern INT32 dump_conn_mcu_debug_flag_mt6765(const char *trg_str);
-extern INT32 dump_conn_mcu_apb0_bus_mt6765(const char *trg_str);
-extern INT32 dump_conn_mcu_apb1_bus_mt6765(const char *trg_str);
-extern INT32 dump_conn_bus_timeout_mt6765(const char *trg_str);
-extern INT32 dump_conn_mcu_pc_log_mt6765(const char *trg_str);
-extern INT32 dump_conn_cfg_on_debug_signal_mt6765(const char *trg_str);
-extern INT32 dump_conn_cfg_on_register_mt6765(const char *trg_str);
-extern INT32 dump_conn_cmdbt_debug_signal_mt6765(const char *trg_str);
-extern INT32 dump_conn_emi_detect_mt6765(const char *trg_str);
-extern INT32 dump_conn_slp_protect_debug_mt6765(const char *trg_str);
-extern INT32 dump_conn_spm_r13_mt6765(const char *trg_str);
-extern INT32 dump_conn_bus_timeout_debug_mt6765(const char *trg_str);
-extern INT32 dump_conn_ILM_corrupt_issue_debug_mt6765(const char *trg_str);
 
 /*******************************************************************************
 *                              F U N C T I O N S

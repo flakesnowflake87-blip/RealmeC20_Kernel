@@ -71,6 +71,7 @@
 
 #if CFG_SUPPORT_TDLS
 #include "tdls.h"
+#include "gl_cfg80211.h"
 #include "queue.h"
 
 /*******************************************************************************
@@ -99,7 +100,6 @@ uint8_t g_arTdlsLink[MAXNUM_TDLS_PEER] = {
  *******************************************************************************
  */
 static u_int8_t fgIsPtiTimeoutSkip = FALSE;
-static u_int8_t fgIsWaitForTxDone = FALSE;
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -109,6 +109,7 @@ static u_int8_t fgIsWaitForTxDone = FALSE;
 
 #define	TDLS_KEY_TIMEOUT_INTERVAL 43200
 
+#define UNREACH_ABLE 25
 #define TDLS_REASON_CODE_UNREACHABLE  25
 #define TDLS_REASON_CODE_UNSPECIFIED  26
 
@@ -142,19 +143,14 @@ uint32_t TdlsexLinkMgt(struct ADAPTER *prAdapter,
 		       void *pvSetBuffer, uint32_t u4SetBufferLen,
 		       uint32_t *pu4SetInfoLen)
 {
-	uint32_t rResult = TDLS_STATUS_SUCCESS;
+	/* from supplicant -- wpa_supplicant_tdls_peer_addset() */
+
 	struct STA_RECORD *prStaRec;
 	struct BSS_INFO *prBssInfo;
 	struct TDLS_CMD_LINK_MGT *prCmd;
 
 	prCmd = (struct TDLS_CMD_LINK_MGT *) pvSetBuffer;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prCmd->ucBssIdx);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prCmd->ucBssIdx);
-		return -EINVAL;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;
 
 	DBGLOG(TDLS, INFO, "u4SetBufferLen=%d", u4SetBufferLen);
 
@@ -177,33 +173,43 @@ uint32_t TdlsexLinkMgt(struct ADAPTER *prAdapter,
 	switch (prCmd->ucActionCode) {
 
 	case TDLS_FRM_ACTION_DISCOVERY_REQ:
+		/* printk("\n\n\n  TDLS_FRM_ACTION_DISCOVERY_REQ\n\n\n"); */
 		if (prStaRec == NULL)
 			return 0;
-		rResult = TdlsDataFrameSend_DISCOVERY_REQ(prAdapter,
+		if (TdlsDataFrameSend_DISCOVERY_REQ(prAdapter,
 					    prStaRec,
 					    prCmd->aucPeer,
 					    prCmd->ucActionCode,
 					    prCmd->ucDialogToken,
 					    prCmd->u2StatusCode,
 					    (uint8_t *) (prCmd->aucSecBuf),
-					    prCmd->u4SecBufLen);
+					    prCmd->u4SecBufLen)
+						    != TDLS_STATUS_SUCCESS) {
+			return -1;
+		}
+
 		break;
 
 	case TDLS_FRM_ACTION_SETUP_REQ:
+		/* printk("\n\n\n  TDLS_FRM_ACTION_SETUP_REQ\n\n\n"); */
 		if (prStaRec == NULL)
 			return 0;
 		prStaRec = cnmGetTdlsPeerByAddress(prAdapter,
-				prBssInfo->ucBssIndex,
+				prAdapter->prAisBssInfo->ucBssIndex,
 				prCmd->aucPeer);
 		g_arTdlsLink[prStaRec->ucTdlsIndex] = 0;
-		rResult = TdlsDataFrameSend_SETUP_REQ(prAdapter,
+		if (TdlsDataFrameSend_SETUP_REQ(prAdapter,
 					prStaRec,
 					prCmd->aucPeer,
 					prCmd->ucActionCode,
 					prCmd->ucDialogToken,
 					prCmd->u2StatusCode,
 					(uint8_t *) (prCmd->aucSecBuf),
-					prCmd->u4SecBufLen);
+					prCmd->u4SecBufLen)
+						!= TDLS_STATUS_SUCCESS) {
+			return -1;
+		}
+
 		break;
 
 	case TDLS_FRM_ACTION_SETUP_RSP:
@@ -214,66 +220,81 @@ uint32_t TdlsexLinkMgt(struct ADAPTER *prAdapter,
 		if (prBssInfo->fgTdlsIsProhibited)
 			return 0;
 
-		rResult = TdlsDataFrameSend_SETUP_RSP(prAdapter,
+		/* printk("\n\n\n  TDLS_FRM_ACTION_SETUP_RSP\n\n\n"); */
+		if (TdlsDataFrameSend_SETUP_RSP(prAdapter,
 					prStaRec,
 					prCmd->aucPeer,
 					prCmd->ucActionCode,
 					prCmd->ucDialogToken,
 					prCmd->u2StatusCode,
 					(uint8_t *) (prCmd->aucSecBuf),
-					prCmd->u4SecBufLen);
+					prCmd->u4SecBufLen)
+						!= TDLS_STATUS_SUCCESS) {
+			return -1;
+		}
+
 		break;
 
 	case TDLS_FRM_ACTION_DISCOVERY_RSP:
-		rResult = TdlsDataFrameSend_DISCOVERY_RSP(prAdapter,
-					prStaRec,
-					prCmd->aucPeer,
-					prCmd->ucActionCode,
-					prCmd->ucDialogToken,
-					prCmd->u2StatusCode,
-					(uint8_t *) (prCmd->aucSecBuf),
-					prCmd->u4SecBufLen);
+		/* printk("\n\n\n  TDLS_FRM_ACTION_DISCOVERY_RSP\n\n\n"); */
+		if (TdlsDataFrameSend_DISCOVERY_RSP(prAdapter,
+					    prStaRec,
+					    prCmd->aucPeer,
+					    prCmd->ucActionCode,
+					    prCmd->ucDialogToken,
+					    prCmd->u2StatusCode,
+					    (uint8_t *) (prCmd->aucSecBuf),
+					    prCmd->u4SecBufLen)
+						!= TDLS_STATUS_SUCCESS) {
+			return -1;
+		}
+
 		break;
 
 	case TDLS_FRM_ACTION_CONFIRM:
-		rResult = TdlsDataFrameSend_CONFIRM(prAdapter,
-					prStaRec,
-					prCmd->aucPeer,
-					prCmd->ucActionCode,
-					prCmd->ucDialogToken,
-					prCmd->u2StatusCode,
-					(uint8_t *) (prCmd->aucSecBuf),
-					prCmd->u4SecBufLen);
+		/* printk("\n\n\n  TDLS_FRM_ACTION_CONFIRM\n\n\n"); */
+		if (TdlsDataFrameSend_CONFIRM(prAdapter,
+					      prStaRec,
+					      prCmd->aucPeer,
+					      prCmd->ucActionCode,
+					      prCmd->ucDialogToken,
+					      prCmd->u2StatusCode,
+					      (uint8_t *) (prCmd->aucSecBuf),
+					      prCmd->u4SecBufLen)
+						!= TDLS_STATUS_SUCCESS) {
+			return -1;
+		}
 		break;
 
 	case TDLS_FRM_ACTION_TEARDOWN:
+
 		prStaRec = cnmGetTdlsPeerByAddress(prAdapter,
-				prBssInfo->ucBssIndex,
+				prAdapter->prAisBssInfo->ucBssIndex,
 				prCmd->aucPeer);
 		if (prCmd->u2StatusCode == TDLS_REASON_CODE_UNREACHABLE)
 			g_arTdlsLink[prStaRec->ucTdlsIndex] = 0;
 
-		rResult = TdlsDataFrameSend_TearDown(prAdapter,
-					prStaRec,
-					prCmd->aucPeer,
-					prCmd->ucActionCode,
-					prCmd->ucDialogToken,
-					prCmd->u2StatusCode,
-					(uint8_t *) (prCmd->aucSecBuf),
-					prCmd->u4SecBufLen);
+		if (TdlsDataFrameSend_TearDown(prAdapter,
+					       prStaRec,
+					       prCmd->aucPeer,
+					       prCmd->ucActionCode,
+					       prCmd->ucDialogToken,
+					       prCmd->u2StatusCode,
+					       (uint8_t *) (prCmd->aucSecBuf),
+					       prCmd->u4SecBufLen)
+						!= TDLS_STATUS_SUCCESS) {
+			/* printk("\n teardown frrame  send failure\n"); */
+			return -1;
+		}
 		break;
 
 	default:
-		DBGLOG(TDLS, INFO, "default=%d", prCmd->ucActionCode);
+		/* printk("\n\n\n  default\n\n\n"); */
 		return -EINVAL;
 	}
 
-	if (rResult == TDLS_STATUS_PENDING)
-		fgIsWaitForTxDone = TRUE;
+	return 0;
 
-	DBGLOG(TDLS, INFO, "rResult=%d", rResult);
-
-	return rResult;
 }
 
 /*----------------------------------------------------------------------------*/
@@ -299,17 +320,7 @@ uint32_t TdlsexLinkOper(struct ADAPTER *prAdapter,
 
 	struct TDLS_CMD_LINK_OPER *prCmd;
 
-	struct BSS_INFO *prBssInfo;
-
 	prCmd = (struct TDLS_CMD_LINK_OPER *) pvSetBuffer;
-
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prCmd->ucBssIdx);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prCmd->ucBssIdx);
-		return 0;
-	}
 
 	DBGLOG(TDLS, INFO, "prCmd->oper=%d, u4SetBufferLen=%d",
 		prCmd->oper, u4SetBufferLen);
@@ -323,7 +334,7 @@ uint32_t TdlsexLinkOper(struct ADAPTER *prAdapter,
 				g_arTdlsLink[i] = 1;
 				prStaRec =
 				cnmGetTdlsPeerByAddress(prAdapter,
-					prBssInfo->ucBssIndex,
+					prAdapter->prAisBssInfo->ucBssIndex,
 					prCmd->aucPeerMac);
 				prStaRec->ucTdlsIndex = i;
 				break;
@@ -335,7 +346,7 @@ uint32_t TdlsexLinkOper(struct ADAPTER *prAdapter,
 	case TDLS_DISABLE_LINK:
 
 		prStaRec = cnmGetTdlsPeerByAddress(prAdapter,
-				prBssInfo->ucBssIndex,
+				prAdapter->prAisBssInfo->ucBssIndex,
 				prCmd->aucPeerMac);
 
 		/* printk("TDLS_ENABLE_LINK %d\n", prStaRec->ucTdlsIndex); */
@@ -367,6 +378,7 @@ uint32_t TdlsFrameGeneralIeAppend(struct ADAPTER *prAdapter,
 	struct GLUE_INFO *prGlueInfo;
 	struct BSS_INFO *prBssInfo;
 	struct PM_PROFILE_SETUP_INFO *prPmProfSetupInfo;
+	uint32_t u4NonHTPhyType;
 	uint16_t u2SupportedRateSet;
 	uint8_t aucAllSupportedRates[RATE_NUM_SW] = { 0 };
 	uint8_t ucAllSupportedRatesLen;
@@ -376,20 +388,16 @@ uint32_t TdlsFrameGeneralIeAppend(struct ADAPTER *prAdapter,
 
 	/* init */
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prStaRec->ucBssIndex);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prStaRec->ucBssIndex);
-		return 0;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;	/* AIS only */
 
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 	u4PktLen = 0;
 
 	/* 3. Frame Formation - (5) Supported Rates element */
 	/* use all sup rate we can support */
-	u2SupportedRateSet = prStaRec->u2OperationalRateSet;
+	u4NonHTPhyType = prStaRec->ucNonHTBasicPhyType;
+	u2SupportedRateSet =
+		rNonHTPhyAttributes[u4NonHTPhyType].u2SupportedRateSet;
 	rateGetDataRatesFromRateSet(u2SupportedRateSet, 0,
 				    aucAllSupportedRates,
 				    &ucAllSupportedRatesLen);
@@ -482,13 +490,7 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 
 	/* allocate/init packet */
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prStaRec->ucBssIndex);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prStaRec->ucBssIndex);
-		return 0;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;	/* AIS only */
 
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 	u4PktLen = 0;
@@ -498,8 +500,7 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 	if (prMsduInfo == NULL)
 		return TDLS_STATUS_RESOURCES;
 
-	prMsduInfo->dev = wlanGetNetDev(prGlueInfo,
-		prStaRec->ucBssIndex);
+	prMsduInfo->dev = prGlueInfo->prDevHandler;
 	if (prMsduInfo->dev == NULL) {
 		kalPacketFree(prGlueInfo, prMsduInfo);
 		return TDLS_STATUS_FAIL;
@@ -509,7 +510,7 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 	/* 1. 802.3 header */
 	kalMemCopy(pPkt, pPeerMac, TDLS_FME_MAC_ADDR_LEN);
 	pPkt += TDLS_FME_MAC_ADDR_LEN;
-	kalMemCopy(pPkt, prBssInfo->aucOwnMacAddr,
+	kalMemCopy(pPkt, prAdapter->rMyMacAddr,
 		   TDLS_FME_MAC_ADDR_LEN);
 	pPkt += TDLS_FME_MAC_ADDR_LEN;
 	*(uint16_t *) pPkt = htons(TDLS_FRM_PROT_TYPE);
@@ -542,8 +543,12 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 	u4PktLen = u4PktLen + 2;
 
 	if (pAppendIe != NULL) {
-		kalMemCopy(pPkt, pAppendIe, AppendIeLen);
-		LR_TDLS_FME_FIELD_FILL(AppendIeLen);
+		if ((ucActionCode != TDLS_FRM_ACTION_TEARDOWN) ||
+		    ((ucActionCode == TDLS_FRM_ACTION_TEARDOWN)
+		     && (prStaRec != NULL))) {
+			kalMemCopy(pPkt, pAppendIe, AppendIeLen);
+			LR_TDLS_FME_FIELD_FILL(AppendIeLen);
+		}
 	}
 
 	/* 7. Append Supported Operating Classes IE */
@@ -563,7 +568,7 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aBSSID,
 		   prBssInfo->aucBSSID, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aInitiator,
-		   prBssInfo->aucOwnMacAddr, 6);
+		   prAdapter->rMyMacAddr, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aResponder,
 		   pPeerMac, 6);
 
@@ -574,12 +579,16 @@ TdlsDataFrameSend_TearDown(struct ADAPTER *prAdapter,
 	/* 5. Update packet length */
 	prMsduInfo->len = u4PktLen;
 
+	/* if(u2StatusCode == UNREACH_ABLE ){ */
+	/* g_arTdlsLink[prStaRec->ucTdlsIndex] = FALSE; */
+	/* } */
+
 	/* printk(" TdlsDataFrameSend_TearDown !!\n"); */
 
 	/* 5. send the data frame */
 	wlanHardStartXmit(prMsduInfo, prMsduInfo->dev);
 
-	return TDLS_STATUS_PENDING;
+	return TDLS_STATUS_SUCCESS;
 }
 
 /*!
@@ -613,23 +622,19 @@ TdlsDataFrameSend_SETUP_REQ(struct ADAPTER *prAdapter,
 
 	/* allocate/init packet */
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prStaRec->ucBssIndex);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prStaRec->ucBssIndex);
-		return 0;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;
 
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 	u4PktLen = 0;
+
+	if (prStaRec == NULL)
+		return TDLS_STATUS_FAIL;
 
 	prMsduInfo = kalPacketAllocWithHeadroom(prGlueInfo, 512, &pPkt);
 	if (prMsduInfo == NULL)
 		return TDLS_STATUS_RESOURCES;
 
-	prMsduInfo->dev = wlanGetNetDev(prGlueInfo,
-		prStaRec->ucBssIndex);
+	prMsduInfo->dev = prGlueInfo->prDevHandler;
 	if (prMsduInfo->dev == NULL) {
 		kalPacketFree(prGlueInfo, prMsduInfo);
 		return TDLS_STATUS_FAIL;
@@ -746,14 +751,12 @@ TdlsDataFrameSend_SETUP_REQ(struct ADAPTER *prAdapter,
 		u4IeLen = rlmFillHtCapIEByAdapter(prAdapter, prBssInfo, pPkt);
 		LR_TDLS_FME_FIELD_FILL(u4IeLen);
 	}
-#if 0 /* TODO: VHT support */
 #if CFG_SUPPORT_802_11AC
 	if (prAdapter->rWifiVar.ucAvailablePhyTypeSet &
 		PHY_TYPE_SET_802_11AC) {
 		u4IeLen = rlmFillVhtCapIEByAdapter(prAdapter, prBssInfo, pPkt);
 		LR_TDLS_FME_FIELD_FILL(u4IeLen);
 	}
-#endif
 #endif
 
 	/* 3.16 20/40 BSS Coexistence */
@@ -768,7 +771,7 @@ TdlsDataFrameSend_SETUP_REQ(struct ADAPTER *prAdapter,
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aBSSID,
 		prBssInfo->aucBSSID, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aInitiator,
-		prBssInfo->aucOwnMacAddr, 6);
+		prAdapter->rMyMacAddr, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aResponder,
 		pPeerMac, 6);
 
@@ -783,7 +786,7 @@ TdlsDataFrameSend_SETUP_REQ(struct ADAPTER *prAdapter,
 	/* 5. send the data frame */
 	wlanHardStartXmit(prMsduInfo, prMsduInfo->dev);
 
-	return TDLS_STATUS_PENDING;
+	return TDLS_STATUS_SUCCESS;
 }
 
 uint32_t
@@ -804,22 +807,18 @@ TdlsDataFrameSend_SETUP_RSP(struct ADAPTER *prAdapter,
 
 	/* allocate/init packet */
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prStaRec->ucBssIndex);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prStaRec->ucBssIndex);
-		return 0;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 	u4PktLen = 0;
+
+	if (prStaRec == NULL)
+		return TDLS_STATUS_FAIL;
 
 	prMsduInfo = kalPacketAllocWithHeadroom(prGlueInfo, 512, &pPkt);
 	if (prMsduInfo == NULL)
 		return TDLS_STATUS_RESOURCES;
 
-	prMsduInfo->dev = wlanGetNetDev(prGlueInfo,
-		prStaRec->ucBssIndex);
+	prMsduInfo->dev = prGlueInfo->prDevHandler;
 	if (prMsduInfo->dev == NULL) {
 		kalPacketFree(prGlueInfo, prMsduInfo);
 		return TDLS_STATUS_FAIL;
@@ -934,7 +933,6 @@ TdlsDataFrameSend_SETUP_RSP(struct ADAPTER *prAdapter,
 							  pPkt);
 			LR_TDLS_FME_FIELD_FILL(u4IeLen);
 		}
-#if 0 /* TODO: VHT support */
 #if CFG_SUPPORT_802_11AC
 		if (prAdapter->rWifiVar.ucAvailablePhyTypeSet &
 		    PHY_TYPE_SET_802_11AC) {
@@ -942,7 +940,6 @@ TdlsDataFrameSend_SETUP_RSP(struct ADAPTER *prAdapter,
 							   pPkt);
 			LR_TDLS_FME_FIELD_FILL(u4IeLen);
 		}
-#endif
 #endif
 
 		/* 3.17 20/40 BSS Coexistence */
@@ -961,7 +958,7 @@ TdlsDataFrameSend_SETUP_RSP(struct ADAPTER *prAdapter,
 		kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aInitiator,
 			   pPeerMac, 6);
 		kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aResponder,
-			   prBssInfo->aucOwnMacAddr, 6);
+			   prAdapter->rMyMacAddr, 6);
 
 		u4IeLen = IE_SIZE(pPkt);
 		LR_TDLS_FME_FIELD_FILL(u4IeLen);
@@ -984,7 +981,7 @@ TdlsDataFrameSend_SETUP_RSP(struct ADAPTER *prAdapter,
 	/* 5. send the data frame */
 	wlanHardStartXmit(prMsduInfo, prMsduInfo->dev);
 
-	return TDLS_STATUS_PENDING;
+	return TDLS_STATUS_SUCCESS;
 }
 
 uint32_t
@@ -1005,13 +1002,7 @@ TdlsDataFrameSend_CONFIRM(struct ADAPTER *prAdapter,
 
 	/* allocate/init packet */
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-		prStaRec->ucBssIndex);
-	if (prBssInfo == NULL) {
-		DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-			, prStaRec->ucBssIndex);
-		return 0;
-	}
+	prBssInfo = prAdapter->prAisBssInfo;
 
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 	u4PktLen = 0;
@@ -1020,8 +1011,7 @@ TdlsDataFrameSend_CONFIRM(struct ADAPTER *prAdapter,
 	if (prMsduInfo == NULL)
 		return TDLS_STATUS_RESOURCES;
 
-	prMsduInfo->dev = wlanGetNetDev(prGlueInfo,
-		prStaRec->ucBssIndex);
+	prMsduInfo->dev = prGlueInfo->prDevHandler;
 	if (prMsduInfo->dev == NULL) {
 		kalPacketFree(prGlueInfo, prMsduInfo);
 		return TDLS_STATUS_FAIL;
@@ -1099,7 +1089,7 @@ TdlsDataFrameSend_CONFIRM(struct ADAPTER *prAdapter,
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aBSSID,
 		prBssInfo->aucBSSID, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aInitiator,
-		prBssInfo->aucOwnMacAddr, 6);
+		prAdapter->rMyMacAddr, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aResponder,
 		pPeerMac, 6);
 
@@ -1112,7 +1102,7 @@ TdlsDataFrameSend_CONFIRM(struct ADAPTER *prAdapter,
 	/* 5. send the data frame */
 	wlanHardStartXmit(prMsduInfo, prMsduInfo->dev);
 
-	return TDLS_STATUS_PENDING;
+	return TDLS_STATUS_SUCCESS;
 }
 
 /*
@@ -1145,15 +1135,9 @@ TdlsDataFrameSend_DISCOVERY_REQ(struct ADAPTER *prAdapter,
 
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
 
-	if (prStaRec != NULL) {
-		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-			prStaRec->ucBssIndex);
-		if (prBssInfo == NULL) {
-			DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-				, prStaRec->ucBssIndex);
-			return TDLS_STATUS_FAIL;
-		}
-	} else
+	if (prStaRec != NULL)
+		prBssInfo = prAdapter->prAisBssInfo;
+	else
 		return TDLS_STATUS_FAIL;
 
 	/* allocate/init packet */
@@ -1167,8 +1151,7 @@ TdlsDataFrameSend_DISCOVERY_REQ(struct ADAPTER *prAdapter,
 	if (prMsduInfo == NULL)
 		return TDLS_STATUS_RESOURCES;
 
-	prMsduInfo->dev = wlanGetNetDev(prGlueInfo,
-		prStaRec->ucBssIndex);
+	prMsduInfo->dev = prGlueInfo->prDevHandler;
 	if (prMsduInfo->dev == NULL) {
 		kalPacketFree(prGlueInfo, prMsduInfo);
 		return TDLS_STATUS_FAIL;
@@ -1224,7 +1207,7 @@ TdlsDataFrameSend_DISCOVERY_REQ(struct ADAPTER *prAdapter,
 	/* 5. send the data frame */
 	wlanHardStartXmit(prMsduInfo, prMsduInfo->dev);
 
-	return TDLS_STATUS_PENDING;
+	return TDLS_STATUS_SUCCESS;
 }
 
 uint32_t
@@ -1247,15 +1230,9 @@ TdlsDataFrameSend_DISCOVERY_RSP(struct ADAPTER *prAdapter,
 	prGlueInfo = (struct GLUE_INFO *) prAdapter->prGlueInfo;
 
 	/* sanity check */
-	if (prStaRec != NULL) {
-		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-			prStaRec->ucBssIndex);
-		if (prBssInfo == NULL) {
-			DBGLOG(TDLS, ERROR, "prBssInfo %d is NULL!\n"
-				, prStaRec->ucBssIndex);
-			return TDLS_STATUS_FAIL;
-		}
-	} else
+	if (prStaRec != NULL)
+		prBssInfo = prAdapter->prAisBssInfo;
+	else
 		return TDLS_STATUS_FAIL;
 
 	/* allocate/init packet */
@@ -1369,14 +1346,11 @@ TdlsDataFrameSend_DISCOVERY_RSP(struct ADAPTER *prAdapter,
 		u4IeLen = rlmFillHtCapIEByAdapter(prAdapter, prBssInfo, pPkt);
 		LR_TDLS_FME_FIELD_FILL(u4IeLen);
 	}
-
-#if 0 /* TODO: VHT support */
 #if CFG_SUPPORT_802_11AC
 	if (prAdapter->rWifiVar.ucAvailablePhyTypeSet & PHY_TYPE_SET_802_11AC) {
 		u4IeLen = rlmFillVhtCapIEByAdapter(prAdapter, prBssInfo, pPkt);
 		LR_TDLS_FME_FIELD_FILL(u4IeLen);
 	}
-#endif
 #endif
 
 	/* 3.14 20/40 BSS Coexistence */
@@ -1393,7 +1367,7 @@ TdlsDataFrameSend_DISCOVERY_RSP(struct ADAPTER *prAdapter,
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aInitiator,
 		   pPeerMac, 6);
 	kalMemCopy(TDLS_LINK_IDENTIFIER_IE(pPkt)->aResponder,
-		   prBssInfo->aucOwnMacAddr, 6);
+		   prAdapter->rMyMacAddr, 6);
 
 	u4IeLen = IE_SIZE(pPkt);
 	LR_TDLS_FME_FIELD_FILL(u4IeLen);
@@ -1480,7 +1454,6 @@ void TdlsEventTearDown(struct GLUE_INFO *prGlueInfo,
 	uint16_t u2ReasonCode = TDLS_REASON_CODE_NONE;
 	uint32_t u4TearDownSubId;
 	uint8_t *pMac, aucZeroMac[6];
-	struct net_device *prDev = NULL;
 
 	/* init */
 	u4TearDownSubId = *(uint32_t *) prInBuf;
@@ -1502,16 +1475,12 @@ void TdlsEventTearDown(struct GLUE_INFO *prGlueInfo,
 			return;
 	}
 
-	prDev = wlanGetNetDev(prGlueInfo, prStaRec->ucBssIndex);
-	if (prDev == NULL)
-		return;
-
 	if (u4TearDownSubId == TDLS_HOST_EVENT_TD_PTI_TIMEOUT) {
 		DBGLOG(TDLS, INFO,
 	       "TDLS_HOST_EVENT_TD_PTI_TIMEOUT TDLS_REASON_CODE_UNSPECIFIED\n");
 		u2ReasonCode = TDLS_REASON_CODE_UNSPECIFIED;
 
-		cfg80211_tdls_oper_request(prDev,
+		cfg80211_tdls_oper_request(prGlueInfo->prDevHandler,
 				prStaRec->aucMacAddr,
 				NL80211_TDLS_TEARDOWN,
 				WLAN_REASON_TDLS_TEARDOWN_UNREACHABLE,
@@ -1523,7 +1492,7 @@ void TdlsEventTearDown(struct GLUE_INFO *prGlueInfo,
 	       "TDLS_HOST_EVENT_TD_AGE_TIMEOUT TDLS_REASON_CODE_UNREACHABLE\n");
 		u2ReasonCode = TDLS_REASON_CODE_UNREACHABLE;
 
-		cfg80211_tdls_oper_request(prDev,
+		cfg80211_tdls_oper_request(prGlueInfo->prDevHandler,
 				prStaRec->aucMacAddr, NL80211_TDLS_TEARDOWN,
 				WLAN_REASON_TDLS_TEARDOWN_UNREACHABLE,
 				GFP_ATOMIC);
@@ -1588,17 +1557,15 @@ TdlsSendChSwControlCmd(struct ADAPTER *prAdapter,
 {
 
 	struct CMD_TDLS_CH_SW rCmdTdlsChSwCtrl;
-	struct BSS_INFO *prBssInfo;
 
-	prBssInfo =
-		GET_BSS_INFO_BY_INDEX(prAdapter, AIS_DEFAULT_INDEX);
+	ASSERT(prAdapter);
 
 	/* send command packet for scan */
 	kalMemZero(&rCmdTdlsChSwCtrl,
 		   sizeof(struct CMD_TDLS_CH_SW));
 
 	rCmdTdlsChSwCtrl.fgIsTDLSChSwProhibit =
-		prBssInfo->fgTdlsIsChSwProhibited;
+		prAdapter->prAisBssInfo->fgTdlsIsChSwProhibited;
 
 	wlanSendSetQueryCmd(prAdapter,
 			    CMD_ID_SET_TDLS_CH_SW,
@@ -1607,28 +1574,6 @@ TdlsSendChSwControlCmd(struct ADAPTER *prAdapter,
 			    sizeof(struct CMD_TDLS_CH_SW),
 			    (uint8_t *)&rCmdTdlsChSwCtrl, NULL, 0);
 	return TDLS_STATUS_SUCCESS;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to handle TX done for TDLS data packet.
- *
- * \param[in] pvAdapter Pointer to the Adapter structure.
- * \param[in] rTxDoneStatus TX Done status
- *
- * \retval none
- */
-/*----------------------------------------------------------------------------*/
-void TdlsHandleTxDoneStatus(struct ADAPTER *prAdapter,
-			enum ENUM_TX_RESULT_CODE rTxDoneStatus)
-{
-	DBGLOG(TDLS, INFO, "TdlsHandleTxDoneStatus=%d, fgIsWaitForTxDone=%d",
-				rTxDoneStatus, fgIsWaitForTxDone);
-	if (fgIsWaitForTxDone == TRUE) {
-		kalOidComplete(prAdapter->prGlueInfo, 0, 0,
-			WLAN_STATUS_SUCCESS);
-		fgIsWaitForTxDone = FALSE;
-	}
 }
 
 #endif /* CFG_SUPPORT_TDLS */

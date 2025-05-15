@@ -179,7 +179,8 @@ extern const uint8_t *apucACI2Str[4];
  *   Indeed, even if network subqueue is not stopped when no MSDU resource, the
  *   new arriving skb will be queued in prGlueInfo->rTxQueue and not be dropped.
  */
-#define QM_FWD_PKT_QUE_THRESHOLD            (CFG_TX_MAX_PKT_NUM >> 1)
+#define QM_FWD_PKT_QUE_THRESHOLD \
+	(CFG_TX_MAX_PKT_NUM - 2 * CFG_TX_STOP_NETIF_PER_QUEUE_THRESHOLD)
 
 /* 1 WMM-related */
 /* WMM FLAGS */
@@ -348,21 +349,12 @@ enum ENUM_MAC_TX_QUEUE_INDEX {
 	MAC_TX_QUEUE_NUM
 };
 
-#define SEQ_SMALLER(_SEQ1, _SEQ2) (((_SEQ1-_SEQ2) & ((MAX_SEQ_NO_COUNT) >> 1)))
-#define BAR_SSN_IS_VALID   BIT(15)
-#define IS_BAR_SSN_VALID(_prBaSsnEntry)  ((_prBaSsnEntry) & BAR_SSN_IS_VALID)
-#define CLR_BAR_SSN_VALID(_prBaSsnEntry) ((_prBaSsnEntry) &= ~BAR_SSN_IS_VALID)
-#define SET_BAR_SSN_VALID(_prBaSsnEntry) ((_prBaSsnEntry) |= BAR_SSN_IS_VALID)
-
 struct RX_BA_ENTRY {
 	u_int8_t fgIsValid;
 	struct QUE rReOrderQue;
 	uint16_t u2WinStart;
 	uint16_t u2WinEnd;
 	uint16_t u2WinSize;
-	uint16_t u2BarSSN;
-	uint16_t u2LastRcvdSN;
-	uint16_t u2LastFallBehindDropSN;
 
 	/* For identifying the RX BA agreement */
 	uint8_t ucStaRecIdx;
@@ -389,15 +381,12 @@ struct RX_BA_ENTRY {
 	u_int8_t fgAmsduNeedLastFrame; /* for statistic */
 	uint8_t u8LastAmsduSubIdx;
 	u_int8_t fgIsAmsduDuplicated;
-	u_int8_t fgNoDrop;
-	uint32_t u4SNOverlapCount;
 #endif
 };
 
 typedef uint32_t(*PFN_DEQUEUE_FUNCTION) (IN struct ADAPTER *prAdapter,
 	OUT struct QUE *prQue, IN uint8_t ucTC,
-	IN uint32_t u4CurrentQuota,
-	IN uint32_t *prPleCurrentQuota, IN uint32_t u4TotalQuota);
+	IN uint32_t u4CurrentQuota, IN uint32_t u4TotalQuota);
 
 /* The mailbox message
  * (could be used for Host-To-Device or Device-To-Host Mailbox)
@@ -450,9 +439,6 @@ struct QUE_MGT {	/* Queue Management Control Info */
 
 	/* The current serving STA with respect to a TC index */
 	uint32_t au4HeadStaRecIndex[NUM_OF_PER_STA_TX_QUEUES];
-
-	/* The current serving BssInfo */
-	uint32_t u4HeadBssInfoIndex;
 
 	/* For TC5 only */
 	u_int8_t fgGlobalQFirst;
@@ -681,18 +667,6 @@ struct AC_QUE_PARMS {
 	uint8_t ucIsACMSet;
 };
 
-#if (CFG_SUPPORT_802_11AX == 1)
-/* MU EDCA parameters for each AC */
-struct _CMD_MU_EDCA_PARAMS_T {
-	uint8_t ucECWmin;	/* CWmin */
-	uint8_t ucECWmax;	/* CWmax */
-	uint8_t ucAifsn;		/* AIFSN */
-	uint8_t ucIsACMSet;
-	uint8_t ucMUEdcaTimer;
-	uint8_t aucPadding[3];
-};
-#endif
-
 /* WMM ACI (AC index) */
 enum ENUM_WMM_ACI {
 	WMM_AC_BE_INDEX = 0,
@@ -700,6 +674,19 @@ enum ENUM_WMM_ACI {
 	WMM_AC_VI_INDEX,
 	WMM_AC_VO_INDEX,
 	WMM_AC_INDEX_NUM
+};
+
+/* WMM QOS user priority from 802.1D/802.11e */
+enum ENUM_WMM_UP {
+	WMM_UP_BE_INDEX = 0,
+	WMM_UP_BK_INDEX,
+	WMM_UP_RESV_INDEX,
+	WMM_UP_EE_INDEX,
+	WMM_UP_CL_INDEX,
+	WMM_UP_VI_INDEX,
+	WMM_UP_VO_INDEX,
+	WMM_UP_NC_INDEX,
+	WMM_UP_INDEX_NUM
 };
 
 /* Used for CMD Queue Operation */
@@ -731,34 +718,14 @@ struct CMD_UPDATE_WMM_PARMS {
 	uint8_t aucReserved;
 };
 
-#if (CFG_SUPPORT_802_11AX == 1)
-struct _CMD_MQM_UPDATE_MU_EDCA_PARMS_T {
-	/* DWORD_0 - Common Part */
-	uint8_t  ucCmdVer;
-	uint8_t  aucPadding0[1];
-	uint16_t u2CmdLen;       /* Cmd size including common part and body */
-
-	/* DWORD_1 afterwards - Command Body */
-	uint8_t ucBssIndex;
-	uint8_t fgIsQBSS;
-	uint8_t ucWmmSet;
-	uint8_t aucPadding1[1];
-
-	struct _CMD_MU_EDCA_PARAMS_T arMUEdcaParams[AC_NUM];
-	uint8_t aucPadding[32];
-};
-#endif
-
 struct CMD_TX_AMPDU {
 	u_int8_t fgEnable;
-	u_int8_t fgApply;
-	uint8_t aucReserved[2];
+	uint8_t aucReserved[3];
 };
 
 struct CMD_ADDBA_REJECT {
 	u_int8_t fgEnable;
-	u_int8_t fgApply;
-	uint8_t aucReserved[2];
+	uint8_t aucReserved[3];
 };
 
 #if CFG_M0VE_BA_TO_DRIVER
@@ -805,6 +772,13 @@ enum ENUM_BA_ENTRY_STATUS {
 
 #define QM_RX_GET_NEXT_SW_RFB(_prSwRfb) \
 	((struct SW_RFB *)(((_prSwRfb)->rQueEntry).prNext))
+
+#if 0
+#define QM_GET_STA_REC_PTR_FROM_INDEX(_prAdapter, _ucIndex) \
+	((((_ucIndex) != STA_REC_INDEX_BMCAST) && \
+	((_ucIndex) != STA_REC_INDEX_NOT_FOUND)) ? \
+	 &(_prAdapter->arStaRec[_ucIndex]) : NULL)
+#endif
 
 #define QM_GET_STA_REC_PTR_FROM_INDEX(_prAdapter, _ucIndex) \
 	cnmGetStaRecByIndex(_prAdapter, _ucIndex)
@@ -962,28 +936,17 @@ void qmDetermineStaRecIndex(IN struct ADAPTER *prAdapter,
 uint32_t qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER
 	*prAdapter, OUT struct QUE *prQue, IN uint8_t ucTC,
 	IN uint32_t
-	u4CurrentQuota,
-	IN uint32_t
-	*prPleCurrentQuota, IN uint32_t u4TotalQuota);
+	u4CurrentQuota, IN uint32_t u4TotalQuota);
 
 void qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER
 	*prAdapter, OUT struct QUE *prQue, IN uint8_t ucTC,
 	IN uint32_t
-	u4CurrentQuota,
-	IN uint32_t
-	*prPleCurrentQuota, IN uint32_t u4TotalQuota);
+	u4CurrentQuota, IN uint32_t u4TotalQuota);
 
 uint32_t qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER
 	*prAdapter, OUT struct QUE *prQue, IN uint8_t ucTC,
 	IN uint32_t
-	u4CurrentQuota,
-	IN uint32_t
-	*prPleCurrentQuota, IN uint32_t u4TotalQuota);
-
-#if CFG_SUPPORT_NAN
-void qmUpdateFreeNANQouta(IN struct ADAPTER *prAdapter,
-			  struct EVENT_UPDATE_NAN_TX_STATUS *prTxStatus);
-#endif
+	u4CurrentQuota, IN uint32_t u4TotalQuota);
 
 void qmSetStaRecTxAllowed(IN struct ADAPTER *prAdapter,
 	IN struct STA_RECORD *prStaRec, IN u_int8_t fgIsTxAllowed);
@@ -1020,10 +983,6 @@ void qmProcessPktWithReordering(IN struct ADAPTER
 
 void qmProcessBarFrame(IN struct ADAPTER *prAdapter,
 	IN struct SW_RFB *prSwRfb, OUT struct QUE *prReturnedQue);
-
-void qmHandleRxReorderWinShift(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucStaRecIdx, uint8_t ucTid, uint32_t u4SSN,
-	OUT struct QUE *prReturnedQue);
 
 void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 			IN struct SW_RFB *prSwRfb,
@@ -1086,8 +1045,6 @@ void qmDelRxBaEntry(IN struct ADAPTER *prAdapter,
 		    IN uint8_t ucStaRecIdx, IN uint8_t ucTid,
 		    IN u_int8_t fgFlushToHost);
 
-u_int8_t qmIsIndependentPkt(IN struct SW_RFB *prSwRfb);
-
 void mqmProcessAssocRsp(IN struct ADAPTER *prAdapter,
 			IN struct SW_RFB *prSwRfb, IN uint8_t *pucIE,
 			IN uint16_t u2IELength);
@@ -1095,20 +1052,6 @@ void mqmProcessAssocRsp(IN struct ADAPTER *prAdapter,
 void mqmProcessBcn(IN struct ADAPTER *prAdapter,
 		   IN struct SW_RFB *prSwRfb, IN uint8_t *pucIE,
 		   IN uint16_t u2IELength);
-
-#if (CFG_SUPPORT_802_11AX == 1)
-u_int8_t mqmCompareMUEdcaParameters(
-	struct _IE_MU_EDCA_PARAM_T *prIeMUEdcaParam,
-	struct BSS_INFO *prBssInfo);
-
-u_int8_t
-mqmParseMUEdcaParams(
-	struct ADAPTER *prAdapter,
-	struct SW_RFB *prSwRfb,
-	u_int8_t *pucIE,
-	u_int16_t u2IELength,
-	u_int8_t fgForceOverride);
-#endif
 
 u_int8_t
 mqmParseEdcaParameters(IN struct ADAPTER *prAdapter,
@@ -1223,40 +1166,20 @@ void qmHandleRxArpPackets(struct ADAPTER *prAdapter,
 void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 			   struct SW_RFB *prSwRfb);
 #endif
-
-#if defined(CFG_SUPPORT_REPLAY_DETECTION) || \
-	defined(CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION)
-#define CCMPTSCPNNUM	6
-u_int8_t qmRxPNtoU64(uint8_t *pucPN, uint8_t uPNNum,
-	uint64_t *pu64Rets);
-#endif
-
 #ifdef CFG_SUPPORT_REPLAY_DETECTION
 u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 			  struct SW_RFB *prSwRfb);
 #endif
 
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-u_int8_t qmDetectRxInvalidEAPOL(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-u_int8_t qmAmsduAttackDetection(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb);
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
+#if CFG_SUPPORT_LOWLATENCY_MODE || CFG_SUPPORT_OSHARE
 u_int8_t
 qmIsNoDropPacket(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb);
+#endif /* CFG_SUPPORT_LOWLATENCY_MODE */
 
 void qmMoveStaTxQueue(struct STA_RECORD *prSrcStaRec,
 		      struct STA_RECORD *prDstStaRec);
 void qmHandleDelTspec(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 		      enum ENUM_ACI eAci);
-void qmReleaseCHAtFinishedDhcp(struct ADAPTER *prAdapter,
-			       uint8_t ucBssIndex);
-void qmCheckRxEAPOLM3(IN struct ADAPTER *prAdapter,
-			IN struct SW_RFB *prSwRfb, uint8_t ucBssIndex);
 /*******************************************************************************
  *                              F U N C T I O N S
  *******************************************************************************
@@ -1266,7 +1189,6 @@ void qmCheckRxEAPOLM3(IN struct ADAPTER *prAdapter,
 extern struct QUE_MGT g_rQM;
 #endif
 extern const uint8_t aucTid2ACI[TX_DESC_TID_NUM];
-extern const uint8_t aucACI2TxQIdx[WMM_AC_INDEX_NUM];
 extern const uint8_t arNetwork2TcResource[MAX_BSSID_NUM +
 		1][NET_TC_NUM];
 

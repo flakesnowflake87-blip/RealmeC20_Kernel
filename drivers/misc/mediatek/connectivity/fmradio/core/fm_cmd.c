@@ -99,33 +99,6 @@ signed int fm_bop_rd_until(unsigned char addr, unsigned short mask, unsigned sho
 	return FM_RD_UNTIL_BASIC_OP_SIZE + 2;
 }
 
-signed int fm_bop_copy_by_mask(unsigned char src, unsigned char dst, unsigned short mask_and,
-						unsigned char *buf, signed int size)
-{
-	if (size < (FM_COPY_BY_MASK_BASIC_OP_SIZE + 2)) {
-		WCN_DBG(FM_ERR | CHIP, "%s : left size(%d)/need size(%d)\n",
-			__func__, size, FM_COPY_BY_MASK_BASIC_OP_SIZE + 2);
-		return -1;
-	}
-
-	if (buf == NULL) {
-		WCN_DBG(FM_ERR | CHIP, "%s :buf invalid pointer\n", __func__);
-		return -2;
-	}
-
-	buf[0] = FM_COPY_BY_MASK_BASIC_OP;
-	buf[1] = FM_COPY_BY_MASK_BASIC_OP_SIZE;
-	buf[2] = src;
-	buf[3] = dst;
-	buf[4] = (unsigned char) ((mask_and) & 0x00FF);
-	buf[5] = (unsigned char) ((mask_and >> 8) & 0x00FF);
-
-	WCN_DBG(FM_DBG | CHIP, "%02x %02x %02x %02x %02x %02x\n", buf[0], buf[1], buf[2],
-		buf[3], buf[4], buf[5]);
-
-	return FM_COPY_BY_MASK_BASIC_OP_SIZE + 2;
-}
-
 signed int fm_bop_modify(unsigned char addr, unsigned short mask_and, unsigned short mask_or,
 						unsigned char *buf, signed int size)
 {
@@ -167,9 +140,9 @@ signed int fm_bop_top_write(unsigned short addr, unsigned int value, unsigned ch
 		return -2;
 	}
 
-	buf[0] = FM_WRITE_SPI_BASIC_OP;
+	buf[0] = FM_TOP_WRITE_BASIC_OP;
 	buf[1] = FM_TOP_WRITE_BOP_SIZE;
-	buf[2] = top_index;
+	buf[2] = 04;
 	buf[3] = (unsigned char) ((addr) & 0x00FF);
 	buf[4] = (unsigned char) ((addr >> 8) & 0x00FF);
 	buf[5] = (unsigned char) ((value) & 0x00FF);
@@ -197,9 +170,9 @@ signed int fm_bop_top_rd_until(unsigned short addr, unsigned int mask, unsigned 
 		return -2;
 	}
 
-	buf[0] = FM_RD_SPI_UNTIL_BASIC_OP;
+	buf[0] = FM_TOP_RD_UNTIL_BASIC_OP;
 	buf[1] = FM_TOP_RD_UNTIL_BOP_SIZE;
-	buf[2] = top_index;
+	buf[2] = 04;
 	buf[3] = (unsigned char) ((addr) & 0x00FF);
 	buf[4] = (unsigned char) ((addr >> 8) & 0x00FF);
 	buf[5] = (unsigned char) ((mask) & 0x00FF);
@@ -451,7 +424,7 @@ signed int fm_top_get_reg(unsigned char *buf, signed int buf_size, unsigned shor
 	buf[1] = CSPI_READ_OPCODE;
 	buf[2] = 0x03;
 	buf[3] = 0x00;
-	buf[4] = top_index;
+	buf[4] = 0x04;		/* top 04,fm 02 */
 	buf[5] = (unsigned char) ((addr) & 0x00FF);
 	buf[6] = (unsigned char) ((addr >> 8) & 0x00FF);
 
@@ -469,7 +442,7 @@ signed int fm_top_set_reg(unsigned char *buf, signed int buf_size, unsigned shor
 	buf[1] = CSPI_WRITE_OPCODE;
 	buf[2] = 0x07;
 	buf[3] = 0x00;
-	buf[4] = top_index;
+	buf[4] = 0x04;		/* top 04,fm 02 */
 	buf[5] = (unsigned char) ((addr) & 0x00FF);
 	buf[6] = (unsigned char) ((addr >> 8) & 0x00FF);
 	buf[7] = (unsigned char) ((value) & 0x00FF);

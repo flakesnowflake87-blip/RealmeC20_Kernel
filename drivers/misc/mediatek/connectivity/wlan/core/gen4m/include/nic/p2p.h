@@ -99,8 +99,6 @@
 /* Device Capability Definition. */
 #define P2P_MAXIMUM_NOA_COUNT                       8
 
-#define P2P_MAX_AKM_SUITES 2
-
 #define P2P_MAX_SUPPORTED_CHANNEL_LIST_SIZE 51	/* Contains 6 sub-band. */
 
 /* Memory Size Definition. */
@@ -116,18 +114,11 @@
 
 #if (CFG_SUPPORT_DFS_MASTER == 1)
 #define P2P_AP_CAC_WEATHER_CHNL_HOLD_TIME_MS (600*1000)
-#define P2P_AP_CAC_MIN_CAC_TIME_MS (60*1000)
 #endif
 
 #define P2P_DEAUTH_TIMEOUT_TIME_MS 1000
 
 #define P2P_SAA_RETRY_COUNT     5
-
-#define AP_DEFAULT_CHANNEL_2G     6
-#define AP_DEFAULT_CHANNEL_5G     36
-#if (CFG_SUPPORT_WIFI_6G == 1)
-#define AP_DEFAULT_CHANNEL_6G     5
-#endif
 
 /******************************************************************************
  *                                 M A C R O S
@@ -165,8 +156,9 @@ enum ENUM_P2P_CONNECT_STATE {
 	P2P_CNN_DEV_DISC_REQ,
 	P2P_CNN_DEV_DISC_RESP,
 	P2P_CNN_PROV_DISC_REQ,
-	P2P_CNN_PROV_DISC_RESP
+	P2P_CNN_PROV_DISC_RES
 };
+
 
 struct P2P_INFO {
 	uint32_t u4DeviceNum;
@@ -226,14 +218,6 @@ struct P2P_SSID_STRUCT {
 	uint8_t ucSsidLen;
 };
 
-enum ENUM_SCAN_REASON {
-	SCAN_REASON_UNKNOWN = 0,
-	SCAN_REASON_CONNECT,
-	SCAN_REASON_STARTAP,
-	SCAN_REASON_ACS,
-	SCAN_REASON_NUM,
-};
-
 struct P2P_SCAN_REQ_INFO {
 	enum ENUM_SCAN_TYPE eScanType;
 	enum ENUM_SCAN_CHANNEL eChannelSet;
@@ -247,57 +231,8 @@ struct P2P_SCAN_REQ_INFO {
 	uint32_t u4BufLength;
 	uint8_t aucIEBuf[MAX_IE_LENGTH];
 	uint8_t ucSsidNum;
-	enum ENUM_SCAN_REASON eScanReason;
 	/* Currently we can only take one SSID scan request */
 	struct P2P_SSID_STRUCT arSsidStruct[SCN_SSID_MAX_NUM];
-};
-
-enum P2P_CHANNEL_SWITCH_POLICY {
-	P2P_CHANNEL_SWITCH_POLICY_SCC,
-	P2P_CHANNEL_SWITCH_POLICY_SKIP_DFS,
-	P2P_CHANNEL_SWITCH_POLICY_SKIP_DFS_USER,
-};
-
-enum P2P_CONCURRENCY_POLICY {
-	P2P_CONCURRENCY_POLICY_REMOVE,
-	P2P_CONCURRENCY_POLICY_KEEP,
-};
-
-enum P2P_AUTH_POLICY {
-	P2P_AUTH_POLICY_NONE = 0,
-	P2P_AUTH_POLICY_RESET = 1,
-	P2P_AUTH_POLICY_IGNORE = 2,
-};
-
-enum P2P_VENDOR_ACS_HW_MODE {
-	P2P_VENDOR_ACS_HW_MODE_11B,
-	P2P_VENDOR_ACS_HW_MODE_11G,
-	P2P_VENDOR_ACS_HW_MODE_11A,
-	P2P_VENDOR_ACS_HW_MODE_11AD,
-	P2P_VENDOR_ACS_HW_MODE_11ANY
-};
-
-struct P2P_ACS_REQ_INFO {
-	uint8_t ucRoleIdx;
-	u_int8_t fgIsProcessing;
-	u_int8_t fgIsHtEnable;
-	u_int8_t fgIsHt40Enable;
-	u_int8_t fgIsVhtEnable;
-	enum ENUM_MAX_BANDWIDTH_SETTING eChnlBw;
-	enum P2P_VENDOR_ACS_HW_MODE eHwMode;
-	uint32_t u4LteSafeChnMask_2G;
-	uint32_t u4LteSafeChnMask_5G_1;
-	uint32_t u4LteSafeChnMask_5G_2;
-	uint32_t u4LteSafeChnMask_6G;
-	u_int8_t fgIsAis;
-
-	/* output only */
-	uint8_t ucBand;
-	enum ENUM_BAND eBand;
-	uint8_t ucPrimaryCh;
-	uint8_t ucSecondCh;
-	uint8_t ucCenterFreqS1;
-	uint8_t ucCenterFreqS2;
 };
 
 struct P2P_CHNL_REQ_INFO {
@@ -393,20 +328,8 @@ struct P2P_SPECIFIC_BSS_INFO {
 	struct PARAM_CUSTOM_NOA_PARAM_STRUCT rNoaParam;
 	struct PARAM_CUSTOM_OPPPS_PARAM_STRUCT rOppPsParam;
 
-	uint32_t u4KeyMgtSuiteCount;
-	uint32_t au4KeyMgtSuite[P2P_MAX_AKM_SUITES];
-
 	uint16_t u2WpaIeLen;
 	uint8_t aucWpaIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_WPA];
-
-	uint16_t u2RsnIeLen;
-	uint8_t aucRsnIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_RSN];
-
-	uint16_t u2RsnxIeLen;
-	uint8_t aucRsnxIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_RSN];
-
-	uint16_t u2OweIeLen;
-	uint8_t aucOweIeBuffer[ELEM_HDR_LEN + ELEM_MAX_LEN_WPA];
 };
 
 struct P2P_QUEUED_ACTION_FRAME {
@@ -414,12 +337,6 @@ struct P2P_QUEUED_ACTION_FRAME {
 	int32_t u4Freq;
 	uint8_t *prHeader;
 	uint16_t u2Length;
-};
-
-struct P2P_MGMT_TX_REQ_INFO {
-	struct LINK rTxReqLink;
-	struct MSDU_INFO *prMgmtTxMsdu;
-	u_int8_t fgIsWaitRsp;
 };
 
 /******************************************************************************

@@ -159,7 +159,7 @@ static INT32 mtk_wcn_sys_check_function_status(UINT8 type, UINT8 op)
 {
 
 	/*op == FUNCTION_ACTIVE, to check if funciton[type] is active ? */
-	if (type >= MTKSTP_MAX_TASK_NUM)
+	if (!(type >= 0 && type < MTKSTP_MAX_TASK_NUM))
 		return STATUS_FUNCTION_INVALID;
 
 	if (op == OP_FUNCTION_ACTIVE) {
@@ -225,7 +225,7 @@ INT32 _mtk_wcn_stp_register_event_cb(INT32 type, MTK_WCN_STP_EVENT_CB func)
 INT32 mtk_wcn_stp_register_event_cb(INT32 type, MTK_WCN_STP_EVENT_CB func)
 #endif
 {
-	if ((type < MTKSTP_MAX_TASK_NUM) && (type >= BT_TASK_INDX)) {
+	if (type < MTKSTP_MAX_TASK_NUM) {
 		event_callback_tbl[type] = func;
 
 		/*clear rx queue */
@@ -244,7 +244,7 @@ INT32 _mtk_wcn_stp_register_tx_event_cb(INT32 type, MTK_WCN_STP_EVENT_CB func)
 INT32 mtk_wcn_stp_register_tx_event_cb(INT32 type, MTK_WCN_STP_EVENT_CB func)
 #endif
 {
-	if ((type < MTKSTP_MAX_TASK_NUM) && (type >= BT_TASK_INDX))
+	if (type < MTKSTP_MAX_TASK_NUM)
 		tx_event_callback_tbl[type] = func;
 	else
 		osal_bug_on(0);
@@ -367,3 +367,8 @@ INT32 mtk_wcn_stp_sdio_wake_up_ctrl(MTK_WCN_HIF_SDIO_CLTCTX ctx)
 }
 EXPORT_SYMBOL(mtk_wcn_stp_sdio_wake_up_ctrl);
 
+INT32 mtk_stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
+{
+	return stp_dbg_poll_cpupcr(times, sleep, cmd);
+}
+EXPORT_SYMBOL(mtk_stp_dbg_poll_cpupcr);

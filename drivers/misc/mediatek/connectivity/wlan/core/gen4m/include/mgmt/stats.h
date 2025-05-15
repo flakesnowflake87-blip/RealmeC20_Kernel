@@ -1,21 +1,54 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
+/******************************************************************************
  *
- * This program is free software: you can redistribute it and/or modify it
- * under the terms of the
- * GNU General Public License version 2 as published by the Free Software
- * Foundation.
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
+ *
+ * GPLv2 License
+ *
+ * Copyright(C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.
- * If not, see <http://www.gnu.org/licenses/>.
- */
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 
 /*******************************************************************************
  *						C O M P I L E R	 F L A G S
@@ -31,125 +64,30 @@
  *						C O N S T A N T S
  *******************************************************************************
  */
-#define AIR_LAT_LVL_NUM 4
-#define AIR_LAT_CAT_NUM 5
-
-#define TX_TIME_CAT_NUM 5
 
 /*******************************************************************************
  *            D A T A   T Y P E S
  *******************************************************************************
  */
-enum EVENT_TYPE {
-	EVENT_RX,
-	EVENT_TX,
-};
-
-enum ENUM_STATS_TX_TLV_TAG_ID_T {
-	STATS_TX_TAG_QUEUE          = 0,
-	STATS_TX_TAG_BSS0          = 1,
-	STATS_TX_TAG_TIME          = 2,
-	STATS_TX_TAG_MAX_NUM
-};
-
-enum ENUM_STATS_RX_TLV_TAG_ID_T {
-	STATS_RX_TAG_REORDER_DROP          = 0,
-	STATS_RX_TAG_MAX_NUM
-};
-
-enum ENUM_STATS_CGS_TLV_TAG_ID_T {
-	STATS_CGS_TAG_B0_IDLE_SLOT          = 0,
-	STATS_CGS_TAG_AIR_LAT          = 1,
-	STATS_CGS_TAG_MAX_NUM
-};
-
-/* TLV */
-struct STATS_TRX_TLV_T {
-	uint32_t u4Tag;
-	uint32_t u4Len;
-	uint8_t  aucBuffer[0];
-};
-
-typedef void(*PFN_STATS_HANDLE)(struct GLUE_INFO*,
-	struct STATS_TRX_TLV_T*, uint32_t);
-typedef uint32_t(*PFN_STATS_GET_LENGTH)(void);
-
-/* Tx Queue statistics */
-struct STATS_TX_QUEUE_STAT_T {
-	uint32_t u4MsduTokenUsed;
-	uint32_t u4MsduTokenRsvd;
-	uint32_t u4PleHifUsed;
-	uint32_t u4PleHifRsvd;
-};
-
-/* tx per bss statistics */
-struct STATS_TX_PER_BSS_STAT_T {
-	uint64_t u8Retry;
-	uint64_t u8RtsFail;
-	uint64_t u8AckFail;
-};
-
-/* tx time statistics */
-struct STATS_TX_TIME_STAT_T {
-	/* from enqueued to transmission reported. (in ms) */
-	uint32_t au4Success[TX_TIME_CAT_NUM];
-	uint32_t au4Fail[TX_TIME_CAT_NUM];
-};
-
-struct STATS_CGS_LAT_STAT_T {
-	uint32_t au4AirLatLvl[AIR_LAT_LVL_NUM];
-	uint32_t au4AirLatMpdu[AIR_LAT_CAT_NUM];
-};
-
-struct STATS_TLV_HDLR_T {
-	PFN_STATS_GET_LENGTH pfnTlvGetLen;
-	PFN_STATS_HANDLE pfnStstsTlvHdl;
-};
 
 /*******************************************************************************
  *            M A C R O   D E C L A R A T I O N S
  *******************************************************************************
  */
+#include <linux/rtc.h>
 
 #if (CFG_SUPPORT_STATISTICS == 1)
 #define STATS_RX_PKT_INFO_DISPLAY			StatsRxPktInfoDisplay
 #define STATS_TX_PKT_INFO_DISPLAY			StatsTxPktInfoDisplay
 #else
-#define STATS_RX_PKT_INFO_DISPLAY
-#define STATS_TX_PKT_INFO_DISPLAY
+#define STATS_RX_PKT_INFO_DISPLAY(__Pkt__)
+#define STATS_TX_PKT_INFO_DISPLAY(__Pkt__)
 #endif /* CFG_SUPPORT_STATISTICS */
 
 /*******************************************************************************
  *            F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
  */
-/* common tlv length */
-uint32_t statsGetTlvU2Len(void);
-uint32_t statsGetTlvU4Len(void);
-uint32_t statsGetTlvU8Len(void);
-
-/* tx tlv length */
-uint32_t statsTxGetQueuetLen(void);
-uint32_t statsTxGetPerBssLen(void);
-uint32_t statsTxGetTimeLen(void);
-
-/* congestion tlv length */
-uint32_t statsCgsGetAirLatLen(void);
-
-void statsTxQueueHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
-void statsTxTlvBss0Hdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
-void statsTxTimeHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
-
-void statsRxReorderDropHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
-
-void statsCgsB0IdleSlotHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
-void statsCgsAirLatHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *prTlvList, uint32_t u4TlvLen);
 
 /*******************************************************************************
  *						P R I V A T E   D A T A
@@ -166,7 +104,6 @@ void statsCgsAirLatHdlr(struct GLUE_INFO *prGlueInfo,
  *******************************************************************************
  */
 
-
 #define STATS_TX_TIME_ARRIVE(__Skb__)	\
 do { \
 	uint64_t __SysTime; \
@@ -180,14 +117,11 @@ void StatsEnvTxTime2Hif(IN struct ADAPTER *prAdapter,
 			IN struct MSDU_INFO *prMsduInfo);
 
 void StatsEnvRxTime2Host(IN struct ADAPTER *prAdapter,
-			 struct sk_buff *prSkb,
-			 struct net_device *prNetDev);
+			 struct sk_buff *prSkb);
 
-void StatsRxPktInfoDisplay(struct SW_RFB *prSwRfb,
-	struct ADAPTER *prAdapter, uint8_t ucBssIndex);
+void StatsRxPktInfoDisplay(struct SW_RFB *prSwRfb);
 
-void StatsTxPktInfoDisplay(struct sk_buff *prSkb,
-	struct ADAPTER *prAdapter, uint8_t ucBssIndex);
+void StatsTxPktInfoDisplay(uint8_t *pPkt);
 
 void StatsResetTxRx(void);
 
@@ -201,20 +135,4 @@ void StatsEnvGetPktDelay(OUT uint8_t *pucTxRxFlag,
 			 OUT uint8_t *pucRxIpProto,
 			 OUT uint16_t *pu2RxUdpPort,
 			 OUT uint32_t *pu4RxDelayThreshold);
-
-uint32_t statsTxGetTlvStatTotalLen(void);
-uint32_t statsRxGetTlvStatTotalLen(void);
-uint32_t statsCgstnGetTlvStatTotalLen(void);
-
-uint32_t statsTxGetTlvStatTotalLen(void);
-uint32_t statsRxGetTlvStatTotalLen(void);
-uint32_t statsCgsGetTlvStatTotalLen(void);
-
-void statsGetTxInfoHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *paucTxTlvList);
-void statsGetRxInfoHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *paucRxTlvList);
-void statsGetCgsInfoHdlr(struct GLUE_INFO *prGlueInfo,
-	struct STATS_TRX_TLV_T *paucCgsTlvList);
-
 /* End of stats.h */

@@ -18,12 +18,24 @@
 #include "fm_typedef.h"
 #include "fm_patch.h"
 #include "fm_link.h"
-#include "fm_reg_utils.h"
 
 extern unsigned char *cmd_buf;
 extern struct fm_lock *cmd_buf_lock;
 extern struct fm_res_ctx *fm_res;
-extern unsigned char top_index;
+
+/* FM basic-operation's opcode */
+#define FM_BOP_BASE (0x80)
+enum {
+	FM_WRITE_BASIC_OP = (FM_BOP_BASE + 0x00),
+	FM_UDELAY_BASIC_OP = (FM_BOP_BASE + 0x01),
+	FM_RD_UNTIL_BASIC_OP = (FM_BOP_BASE + 0x02),
+	FM_MODIFY_BASIC_OP = (FM_BOP_BASE + 0x03),
+	FM_MSLEEP_BASIC_OP = (FM_BOP_BASE + 0x04),
+	FM_TOP_WRITE_BASIC_OP = (FM_BOP_BASE + 0x05),
+	FM_TOP_RD_UNTIL_BASIC_OP = (FM_BOP_BASE + 0x06),
+	FM_TOP_MODIFY_BASIC_OP = (FM_BOP_BASE + 0x07),
+	FM_MAX_BASIC_OP = (FM_BOP_BASE + 0x08)
+};
 
 #define PATCH_SEG_LEN 512
 enum IMG_TYPE {
@@ -44,14 +56,11 @@ enum IMG_TYPE {
 #define FM_RD_UNTIL_BASIC_OP_SIZE   (5)
 #define FM_MODIFY_BASIC_OP_SIZE     (5)
 #define FM_MSLEEP_BASIC_OP_SIZE     (4)
-#define FM_COPY_BY_MASK_BASIC_OP_SIZE (4)
 
 signed int fm_bop_write(unsigned char addr, unsigned short value, unsigned char *buf, signed int size);
 signed int fm_bop_udelay(unsigned int value, unsigned char *buf, signed int size);
 signed int fm_bop_rd_until(unsigned char addr, unsigned short mask, unsigned short value, unsigned char *buf,
 						signed int size);
-signed int fm_bop_copy_by_mask(unsigned char src, unsigned char dst, unsigned short mask_and,
-						unsigned char *buf, signed int size);
 signed int fm_bop_modify(unsigned char addr, unsigned short mask_and, unsigned short mask_or, unsigned char *buf,
 						signed int size);
 signed int fm_bop_top_write(unsigned short addr, unsigned int value, unsigned char *buf, signed int size);

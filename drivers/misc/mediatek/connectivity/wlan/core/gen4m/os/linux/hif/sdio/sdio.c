@@ -103,7 +103,7 @@
 #define HIF_SDIO_ERR_TITLE_STR              "["CHIP_NAME"] SDIO Access Error!"
 #define HIF_SDIO_ERR_DESC_STR               "**SDIO Access Error**\n"
 
-#define HIF_SDIO_ACCESS_RETRY_LIMIT         250
+#define HIF_SDIO_ACCESS_RETRY_LIMIT         3
 #define HIF_SDIO_INTERRUPT_RESPONSE_TIMEOUT (15000)
 
 #if MTK_WCN_HIF_SDIO
@@ -423,126 +423,48 @@ static void mtk_sdio_remove(struct sdio_func *func)
 static int mtk_sdio_pm_suspend(struct device *pDev)
 {
 	int ret = 0, wait = 0;
-	int pm_caps, set_flag;
-	const char *func_id;
 	struct sdio_func *func;
 	struct GLUE_INFO *prGlueInfo = NULL;
-	struct ADAPTER *prAdapter = NULL;
-	uint8_t drv_own_fail = FALSE;
 
 	DBGLOG(HAL, STATE, "==>\n");
 
 	func = dev_to_sdio_func(pDev);
 	prGlueInfo = sdio_get_drvdata(func);
-	prAdapter = prGlueInfo->prAdapter;
-
-	DBGLOG(REQ, STATE, "Wow:%d, WowEnable:%d, state:%d\n",
-		prAdapter->rWifiVar.ucWow,
-		prAdapter->rWowCtrl.fgWowEnable,
-		kalGetMediaStateIndicated(prGlueInfo, AIS_DEFAULT_INDEX));
-
-	/* 1) wifi cfg "Wow" is true
-	*  2) wow is enable
-	*  3) WIfI connected => execute WOW flow
-	*/
-	if (prAdapter->rWifiVar.ucWow && prAdapter->rWowCtrl.fgWowEnable &&
-		(kalGetMediaStateIndicated(prGlueInfo, AIS_DEFAULT_INDEX) ==
-		MEDIA_STATE_CONNECTED)) {
-		DBGLOG(HAL, STATE, "enter WOW flow\n");
-		kalWowProcess(prGlueInfo, TRUE);
-	}
-
-	prGlueInfo->rHifInfo.fgForceFwOwn = TRUE;
 
 	/* Wait for
 	*  1. The other unfinished ownership handshakes
 	*  2. FW own back
 	*/
-	while (wait < 100) {
-		if ((prAdapter->u4PwrCtrlBlockCnt == 0) &&
-		    (prAdapter->fgIsFwOwn == TRUE) &&
-		    (drv_own_fail == FALSE)) {
-			DBGLOG(HAL, STATE, "************************\n");
-			DBGLOG(HAL, STATE, "* Entered SDIO Suspend *\n");
-			DBGLOG(HAL, STATE, "************************\n");
-			DBGLOG(HAL, INFO, "wait = %d\n\n", wait);
+	while (1) {
+		if (wait > LP_OWN_BACK_FAILED_LOG_SKIP_MS) {
+			DBGLOG(HAL, ERROR, "Timeout !!\n");
 			break;
 		}
-
-		ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
-		/* Prevent that suspend without FW Own:
-		 * Set Drv own has failed, and then Set FW Own is skipped
-		 */
-		if (prAdapter->fgIsFwOwn == FALSE)
-			drv_own_fail = FALSE;
-		else
-			drv_own_fail = TRUE;
-		/* For single core CPU, let hif_thread can be completed */
-		kalMsleep(10);
-		RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
-
+		if (prGlueInfo->prAdapter->u4PwrCtrlBlockCnt == 0
+			&& prGlueInfo->prAdapter->fgIsFwOwn == TRUE) {
+			DBGLOG(HAL, STATE, "\n Entered SDIO Supsend ");
+			break;
+		}
 		wait++;
+		kalMsleep(LP_OWN_BACK_LOOP_DELAY_MS);
 	}
-
-	if (wait >= 100) {
-		DBGLOG(HAL, ERROR, "Set FW Own Timeout !!\n");
-		return -EAGAIN;
-	}
-
-	pm_caps = sdio_get_host_pm_caps(func);
-	func_id = sdio_func_id(func);
 
 	/* Ask kernel keeping SDIO bus power-on */
-	set_flag = MMC_PM_KEEP_POWER;
-	ret = sdio_set_host_pm_flags(func, set_flag);
+	ret = sdio_set_host_pm_flags(func, MMC_PM_KEEP_POWER);
 	if (ret) {
-		DBGLOG(HAL, ERROR, "set flag %d err %d\n", set_flag, ret);
-		DBGLOG(HAL, ERROR,
-			"%s: cannot remain alive(0x%X)\n", func_id, pm_caps);
+		DBGLOG(HAL, ERROR, "sdio_set_host_pm_flags err %d\n", ret);
+		goto out;
 	}
 
-	/* If wow enable, ask kernel accept SDIO IRQ in suspend mode */
-	if (prAdapter->rWifiVar.ucWow &&
-		prAdapter->rWowCtrl.fgWowEnable) {
-		set_flag = MMC_PM_WAKE_SDIO_IRQ;
-		ret = sdio_set_host_pm_flags(func, set_flag);
-		if (ret) {
-			DBGLOG(HAL, ERROR, "set flag %d err %d\n", set_flag, ret);
-			DBGLOG(HAL, ERROR,
-				"%s: cannot sdio wake-irq(0x%X)\n", func_id, pm_caps);
-		}
-	}
-
+out:
 	DBGLOG(HAL, STATE, "<==\n");
-	return 0;
+	return ret;
 }
 
 static int mtk_sdio_pm_resume(struct device *pDev)
 {
-	struct sdio_func *func;
-	struct GLUE_INFO *prGlueInfo = NULL;
-
 	DBGLOG(HAL, STATE, "==>\n");
 
-	func = dev_to_sdio_func(pDev);
-	prGlueInfo = sdio_get_drvdata(func);
-
-	DBGLOG(REQ, STATE, "Wow:%d, WowEnable:%d, state:%d\n",
-		prGlueInfo->prAdapter->rWifiVar.ucWow,
-		prGlueInfo->prAdapter->rWowCtrl.fgWowEnable,
-		kalGetMediaStateIndicated(prGlueInfo, AIS_DEFAULT_INDEX));
-
-	prGlueInfo->rHifInfo.fgForceFwOwn = FALSE;
-
-	if (prGlueInfo->prAdapter->rWifiVar.ucWow &&
-		prGlueInfo->prAdapter->rWowCtrl.fgWowEnable &&
-		(kalGetMediaStateIndicated(prGlueInfo, AIS_DEFAULT_INDEX) ==
-		MEDIA_STATE_CONNECTED)) {
-		DBGLOG(HAL, STATE, "leave WOW flow\n");
-		kalWowProcess(prGlueInfo, FALSE);
-	}
-
-	DBGLOG(HAL, STATE, "<==\n");
 	return 0;
 }
 
@@ -996,32 +918,28 @@ u_int8_t kalDevRegRead_mac(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Regist
 {
 	uint32_t value;
 	uint32_t u4Time, u4Current;
-	uint8_t ucResult;/* For Unchecked return value*/
 
     /* progrqm h2d mailbox0 as interested register address */
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_H2DSM0R, u4Register);
+	kalDevRegWrite(prGlueInfo, MCR_H2DSM0R, u4Register);
 
     /* set h2d interrupt to notify firmware. bit16 */
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_WSICR,
-			SDIO_MAILBOX_FUNC_READ_REG_IDX);
+	kalDevRegWrite(prGlueInfo, MCR_WSICR, SDIO_MAILBOX_FUNC_READ_REG_IDX);
 
 	/* polling interrupt status asserted. bit16 */
 
 	/* first, disable interrupt enable for SDIO_MAILBOX_FUNC_READ_REG_IDX */
-	ucResult = kalDevRegRead(prGlueInfo, MCR_WHIER, &value);
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_WHIER,
-			(value & ~SDIO_MAILBOX_FUNC_READ_REG_IDX));
+	kalDevRegRead(prGlueInfo, MCR_WHIER, &value);
+	kalDevRegWrite(prGlueInfo, MCR_WHIER, (value & ~SDIO_MAILBOX_FUNC_READ_REG_IDX));
 
 	u4Time = (uint32_t) kalGetTimeTick();
 
 	do {
 		/* check bit16 of WHISR assert for read register response */
-		ucResult = kalDevRegRead(prGlueInfo, MCR_WHISR, &value);
+		kalDevRegRead(prGlueInfo, MCR_WHISR, &value);
 
 		if (value & SDIO_MAILBOX_FUNC_READ_REG_IDX) {
 			/* read d2h mailbox0 for interested register address */
-			ucResult = kalDevRegRead(prGlueInfo,
-						MCR_D2HRM0R, &value);
+			kalDevRegRead(prGlueInfo, MCR_D2HRM0R, &value);
 
 			if (value != u4Register) {
 				DBGLOG(HAL, ERROR, "ERROR! kalDevRegRead_mac():register address mis-match");
@@ -1031,8 +949,7 @@ u_int8_t kalDevRegRead_mac(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Regist
 			}
 
 			/* read d2h mailbox1 for the value of the register */
-			ucResult = kalDevRegRead(prGlueInfo,
-						MCR_D2HRM1R, &value);
+			kalDevRegRead(prGlueInfo, MCR_D2HRM1R, &value);
 			*pu4Value = value;
 			return	TRUE;
 		}
@@ -1118,35 +1035,31 @@ u_int8_t kalDevRegWrite_mac(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Regis
 {
 	uint32_t value;
 	uint32_t u4Time, u4Current;
-	uint8_t ucResult; /* For Unchecked return value*/
 
 	/* progrqm h2d mailbox0 as interested register address */
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_H2DSM0R, u4Register);
+	kalDevRegWrite(prGlueInfo, MCR_H2DSM0R, u4Register);
 
 	/* progrqm h2d mailbox1 as the value to write */
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_H2DSM1R, u4Value);
+	kalDevRegWrite(prGlueInfo, MCR_H2DSM1R, u4Value);
 
 	/*  set h2d interrupt to notify firmware bit17 */
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_WSICR,
-			SDIO_MAILBOX_FUNC_WRITE_REG_IDX);
+	kalDevRegWrite(prGlueInfo, MCR_WSICR, SDIO_MAILBOX_FUNC_WRITE_REG_IDX);
 
 	/* polling interrupt status asserted. bit17 */
 
 	/* first, disable interrupt enable for SDIO_MAILBOX_FUNC_WRITE_REG_IDX */
-	ucResult = kalDevRegRead(prGlueInfo, MCR_WHIER, &value);
-	ucResult = kalDevRegWrite(prGlueInfo, MCR_WHIER,
-			(value & ~SDIO_MAILBOX_FUNC_WRITE_REG_IDX));
+	kalDevRegRead(prGlueInfo, MCR_WHIER, &value);
+	kalDevRegWrite(prGlueInfo, MCR_WHIER, (value & ~SDIO_MAILBOX_FUNC_WRITE_REG_IDX));
 
 	u4Time = (uint32_t) kalGetTimeTick();
 
 	do {
 		/* check bit17 of WHISR assert for response */
-		ucResult = kalDevRegRead(prGlueInfo, MCR_WHISR, &value);
+		kalDevRegRead(prGlueInfo, MCR_WHISR, &value);
 
 		if (value & SDIO_MAILBOX_FUNC_WRITE_REG_IDX) {
 			/* read d2h mailbox0 for interested register address */
-			ucResult = kalDevRegRead(prGlueInfo,
-						MCR_D2HRM0R, &value);
+			kalDevRegRead(prGlueInfo, MCR_D2HRM0R, &value);
 
 			if (value != u4Register) {
 				DBGLOG(HAL, ERROR, "ERROR! kalDevRegWrite_mac():register address mis-match");
@@ -1443,10 +1356,8 @@ void kalDevReadIntStatus(IN struct ADAPTER *prAdapter, OUT uint32_t *pu4IntStatu
 #endif /* CFG_SDIO_INTR_ENHANCE */
 
 	if (*pu4IntStatus & ~(WHIER_DEFAULT | WHIER_FW_OWN_BACK_INT_EN)) {
-		DBGLOG(INTR, WARN,
-			"Un-handled HISR %lx, HISR = %lx (HIER:0x%lx)\n",
-			(*pu4IntStatus & ~WHIER_DEFAULT), *pu4IntStatus,
-			WHIER_DEFAULT);
+		DBGLOG(INTR, WARN, "Un-handled HISR %#lx, HISR = %#lx (HIER:0x%lx)\n",
+		       (*pu4IntStatus & ~WHIER_DEFAULT), *pu4IntStatus, WHIER_DEFAULT);
 		*pu4IntStatus &= WHIER_DEFAULT;
 	}
 }				/* end of nicSDIOReadIntStatus() */
@@ -1621,8 +1532,7 @@ u_int8_t kalDevKickData(IN struct GLUE_INFO *prGlueInfo)
 * \retval FALSE         operation fail
 */
 /*----------------------------------------------------------------------------*/
-enum ENUM_CMD_TX_RESULT kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo,
-		IN struct CMD_INFO *prCmdInfo, IN uint8_t ucTC)
+u_int8_t kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo, IN struct CMD_INFO *prCmdInfo, IN uint8_t ucTC)
 {
 	struct ADAPTER *prAdapter = prGlueInfo->prAdapter;
 /*	P_GL_HIF_INFO_T prHifInfo = &prGlueInfo->rHifInfo; */
@@ -1637,7 +1547,7 @@ enum ENUM_CMD_TX_RESULT kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 	if (TFCB_FRAME_PAD_TO_DW(prCmdInfo->u4TxdLen + prCmdInfo->u4TxpLen) >
 		prAdapter->u4CoalescingBufCachedSize) {
 		DBGLOG(HAL, ERROR, "Command TX buffer underflow!\n");
-		return CMD_TX_RESULT_FAILED;
+		return FALSE;
 	}
 
 	if (prCmdInfo->u4TxdLen) {
@@ -1671,7 +1581,7 @@ enum ENUM_CMD_TX_RESULT kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 				   (prCmdInfo->u4TxdLen + prCmdInfo->u4TxpLen));
 
 	prGlueInfo->rHifInfo.rStatCounter.u4CmdPktWriteCnt++;
-	return CMD_TX_RESULT_SUCCESS;
+	return TRUE;
 }
 
 void glGetDev(void *ctx, struct device **dev)
@@ -1707,24 +1617,4 @@ u_int8_t glWakeupSdio(struct GLUE_INFO *prGlueInfo)
 
 	return fgSuccess;
 }
-
-#if (CFG_CHIP_RESET_SUPPORT == 1) && (MTK_WCN_HIF_SDIO == 0)
-void kalRemoveProbe(IN struct GLUE_INFO *prGlueInfo)
-{
-	struct mmc_host *host;
-
-	ASSERT(prGlueInfo);
-
-	host = prGlueInfo->rHifInfo.func->card->host;
-	host->rescan_entered = 0;
-
-	/* clear trx fifo */
-	DBGLOG(INIT, STATE, "[SER][L0] mmc_remove_host\n");
-	mmc_remove_host(prGlueInfo->rHifInfo.func->card->host);
-
-	DBGLOG(INIT, STATE, "[SER][L0] mmc_add_host\n");
-	mmc_add_host(host);
-
-}
-#endif
 

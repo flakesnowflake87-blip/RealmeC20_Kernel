@@ -80,7 +80,6 @@
  */
 #include "hif_cmm.h"
 #include "gl_os.h"		/* Include "config.h" */
-#include "gl_cfg80211.h"
 
 #if CFG_ENABLE_WIFI_DIRECT
 #include "gl_p2p_os.h"
@@ -102,20 +101,9 @@
 /* Dependency:  mac.h (MAC_ADDR_LEN) */
 #include "wlan_def.h"
 
-#if (CFG_SUPPORT_802_11AX == 1)
-#include "he_ie.h"
-#endif
-
-#if (CFG_SUPPORT_802_11BE == 1)
-#include "eht_ie.h"
-#endif
-
 #if CFG_SUPPORT_SWCR
 #include "swcr.h"
 #endif
-
-#include "rlm_obss.h"
-#include "cnm_timer.h"
 
 /*------------------------------------------------------------------------------
  * .\include\nic
@@ -126,7 +114,6 @@
 
 /* Dependency:  mac.h (MAC_ADDR_LEN) */
 #include "nic_cmd_event.h"
-#include "nic_ext_cmd_event.h"
 
 /* Dependency:  nic_cmd_event.h (P_EVENT_CONNECTION_STATUS) */
 #include "nic.h"
@@ -136,14 +123,8 @@
 #include "hif_rx.h"
 #include "hif_tx.h"
 
-#include "nic_connac2x_tx.h"
 #include "nic_tx.h"
-#include "nic_txd_v1.h"
-#include "nic_txd_v2.h"
-#include "nic_rxd_v1.h"
-#include "nic_rxd_v2.h"
 
-#include "nic_connac2x_rx.h"
 /* Dependency:  hif_rx.h (P_HIF_RX_HEADER_T) */
 #include "nic_rx.h"
 
@@ -165,9 +146,6 @@
  * .\include\mgmt
  *------------------------------------------------------------------------------
  */
-#if (CFG_SUPPORT_TWT == 1)
-#include "twt.h"
-#endif /* CFG_SUPPORT_802_11AX */
 
 #include "hem_mbox.h"
 
@@ -190,23 +168,6 @@
 #include "connac_reg.h"
 #include "connac_dmashdl.h"
 #include "cmm_asic_connac.h"
-#include "cmm_asic_connac2x.h"
-
-#include "pre_cal.h"
-
-#if (CFG_SUPPORT_802_11AX == 1)
-#include "he_rlm.h"
-#include "wlan_he.h"
-#endif /* CFG_SUPPORT_802_11AX == 1 */
-
-#if (CFG_SUPPORT_802_11BE == 1)
-#include "eht_rlm.h"
-#endif
-
-#if (CFG_SUPPORT_TWT == 1)
-#include "twt_req_fsm.h"
-#include "twt_planner.h"
-#endif
 
 #include "rlm.h"
 #include "rlm_domain.h"
@@ -214,11 +175,12 @@
 #include "rlm_obss.h"
 #include "rate.h"
 #include "wnm.h"
-#include "rrm.h"
 
 #include "qosmap.h"
 
 #include "aa_fsm.h"
+
+#include "cnm_timer.h"
 
 #include "que_mgt.h"
 
@@ -264,26 +226,11 @@
 #include "auth.h"
 #include "assoc.h"
 
-#if CFG_SUPPORT_NAN
-#include "gl_nan_os.h"
-#include "gl_vendor_nan.h"
-#include "nanDiscovery.h"
-#include "nanScheduler.h"
-#include "nanReg.h"
-#include "nan_base.h"
-#include "nan_data_engine.h"
-#include "nan_dev.h"
-#include "nan_intf.h"
-#include "nan_ranging.h"
-#endif
-
 #if CFG_SUPPORT_ROAMING
 #include "roaming_fsm.h"
 #endif /* CFG_SUPPORT_ROAMING */
 
 #include "ais_fsm.h"
-
-#include "mscs.h"
 
 #include "adapter.h"
 
@@ -298,10 +245,6 @@
 
 /* Support AP Selection */
 #include "ap_selection.h"
-
-#if (CFG_SUPPORT_POWER_THROTTLING == 1)
-#include "thrm.h"
-#endif
 
 /*------------------------------------------------------------------------------
  * NVRAM structure
@@ -322,24 +265,10 @@
 #include "gl_ate_agent.h"
 #endif
 
-#if CFG_SUPPORT_WIFI_SYSDVT
-#include "dvt_common.h"
-#if (CFG_SUPPORT_DMASHDL_SYSDVT)
-#include "dvt_dmashdl.h"
-#endif
-#endif
-
 #ifdef UT_TEST_MODE
 #include "ut_lib.h"
 #endif
 
-#include "ie_sort.h"
-
-#if CFG_SUPPORT_CABLE_DETECT
-#include <linux/of_platform.h>
-#include <linux/of_device.h>
-#include <linux/of_gpio.h>
-#endif
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************

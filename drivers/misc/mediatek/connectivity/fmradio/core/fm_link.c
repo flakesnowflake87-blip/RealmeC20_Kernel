@@ -11,7 +11,6 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 
@@ -20,13 +19,51 @@
 #include "fm_err.h"
 #include "fm_stdlib.h"
 #include "fm_link.h"
-#include "fm_reg_utils.h"
-
+#include "osal_typedef.h"
+#include "stp_exp.h"
+#include "wmt_exp.h"
 static struct fm_link_event *link_event;
 
 static struct fm_trace_fifo_t *cmd_fifo;
 
 static struct fm_trace_fifo_t *evt_fifo;
+
+static signed int (*whole_chip_reset)(signed int sta);
+
+static void WCNfm_wholechip_rst_cb(ENUM_WMTDRV_TYPE_T src,
+				   ENUM_WMTDRV_TYPE_T dst, ENUM_WMTMSG_TYPE_T type, void *buf, unsigned int sz)
+{
+	/* To handle reset procedure please */
+	ENUM_WMTRSTMSG_TYPE_T rst_msg;
+
+	if (sz <= sizeof(ENUM_WMTRSTMSG_TYPE_T)) {
+		memcpy((char *)&rst_msg, (char *)buf, sz);
+		WCN_DBG(FM_WAR | LINK,
+			"[src=%d], [dst=%d], [type=%d], [buf=0x%x], [sz=%d], [max=%d]\n", src, dst,
+			type, rst_msg, sz, WMTRSTMSG_RESET_MAX);
+
+		if ((src == WMTDRV_TYPE_WMT) && (dst == WMTDRV_TYPE_FM)
+		    && (type == WMTMSG_TYPE_RESET)) {
+
+			if (rst_msg == WMTRSTMSG_RESET_START) {
+				WCN_DBG(FM_WAR | LINK, "FM restart start!\n");
+				if (whole_chip_reset)
+					whole_chip_reset(1);
+			} else if (rst_msg == WMTRSTMSG_RESET_END_FAIL) {
+				WCN_DBG(FM_WAR | LINK, "FM restart end fail!\n");
+				if (whole_chip_reset)
+					whole_chip_reset(2);
+			} else if (rst_msg == WMTRSTMSG_RESET_END) {
+				WCN_DBG(FM_WAR | LINK, "FM restart end!\n");
+				if (whole_chip_reset)
+					whole_chip_reset(0);
+			}
+		}
+	} else {
+		/*message format invalid */
+		WCN_DBG(FM_WAR | LINK, "message format invalid!\n");
+	}
+}
 
 signed int fm_link_setup(void *data)
 {
@@ -64,9 +101,8 @@ signed int fm_link_setup(void *data)
 		goto failed;
 	}
 
-	if (fm_wcn_ops.ei.wmt_msgcb_reg)
-		fm_wcn_ops.ei.wmt_msgcb_reg(data);
-
+	whole_chip_reset = data;		/* get whole chip reset cb */
+	mtk_wcn_wmt_msgcb_reg(WMTDRV_TYPE_FM, WCNfm_wholechip_rst_cb);
 	return 0;
 
 failed:
@@ -159,8 +195,7 @@ signed int fm_cmd_tx(unsigned char *buf, unsigned short len, signed int mask, si
 #endif
 
 	/* send cmd to FM firmware */
-	if (fm_wcn_ops.ei.stp_send_data)
-		ret_time = fm_wcn_ops.ei.stp_send_data(buf, len);
+	ret_time = mtk_wcn_stp_send_data(buf, len, FM_TASK_INDX);
 	if (ret_time <= 0) {
 		WCN_DBG(FM_EMG | LINK, "send data over stp failed[%d]\n", ret_time);
 		return -FM_ELINK;
@@ -170,7 +205,7 @@ signed int fm_cmd_tx(unsigned char *buf, unsigned short len, signed int mask, si
 
 	if (!ret_time) {
 		if (cnt-- > 0) {
-			WCN_DBG(FM_WAR | LINK, "wait event timeout, [retry_cnt=%d], pid=%d\n", cnt, task->pid);
+			WCN_DBG(FM_WAR | LINK, "wait even timeout, [retry_cnt=%d], pid=%d\n", cnt, task->pid);
 			fm_print_cmd_fifo();
 			fm_print_evt_fifo();
 		} else
@@ -189,20 +224,18 @@ signed int fm_cmd_tx(unsigned char *buf, unsigned short len, signed int mask, si
 
 signed int fm_event_parser(signed int(*rds_parser) (struct rds_rx_t *, signed int))
 {
-	signed int len = 0;
+	signed int len;
 	signed int i = 0;
 	unsigned char opcode = 0;
 	unsigned short length = 0;
 	unsigned char ch;
 	unsigned char rx_buf[RX_BUF_SIZE + 10] = { 0 };	/* the 10 bytes are protect gaps */
-	unsigned int rx_len = 0;
 
 	static enum fm_task_parser_state state = FM_TASK_RX_PARSER_PKT_TYPE;
 	struct fm_trace_t trace;
 	struct task_struct *task = current;
 
-	if (fm_wcn_ops.ei.stp_recv_data)
-		len = fm_wcn_ops.ei.stp_recv_data(rx_buf, RX_BUF_SIZE);
+	len = mtk_wcn_stp_receive_data(rx_buf, RX_BUF_SIZE, FM_TASK_INDX);
 	WCN_DBG_LIMITED(FM_DBG | LINK, "[len=%d],[CMD=0x%02x 0x%02x 0x%02x 0x%02x]\n", len, rx_buf[0],
 		rx_buf[1], rx_buf[2], rx_buf[3]);
 
@@ -254,9 +287,7 @@ signed int fm_event_parser(signed int(*rds_parser) (struct rds_rx_t *, signed in
 			trace.len = length;
 			trace.tid = (signed int) task->pid;
 			fm_memset(trace.pkt, 0, FM_TRACE_PKT_SIZE);
-			rx_len = (length > FM_TRACE_PKT_SIZE) ? FM_TRACE_PKT_SIZE : length;
-			rx_len = (rx_len > (sizeof(rx_buf) - i)) ? sizeof(rx_buf) - i : rx_len;
-			fm_memcpy(trace.pkt, &rx_buf[i], rx_len);
+			fm_memcpy(trace.pkt, &rx_buf[i], (length > FM_TRACE_PKT_SIZE) ? FM_TRACE_PKT_SIZE : length);
 
 			if (true == FM_TRACE_FULL(evt_fifo))
 				FM_TRACE_OUT(evt_fifo, NULL);
@@ -442,16 +473,16 @@ extern signed int fm_print_cmd_fifo(void)
 	while (false == FM_TRACE_EMPTY(cmd_fifo)) {
 		fm_memset(trace.pkt, 0, FM_TRACE_PKT_SIZE);
 		FM_TRACE_OUT(cmd_fifo, &trace);
-		WCN_DBG_LIMITED(FM_ALT | LINK, "trace, type %d, op %d, len %d, tid %d, time %d\n",
+		WCN_DBG(FM_ALT | LINK, "trace, type %d, op %d, len %d, tid %d, time %d\n",
 			trace.type, trace.opcode, trace.len, trace.tid, jiffies_to_msecs(abs(trace.time)));
 		i = 0;
 		while ((trace.len > 0) && (i < trace.len) && (i < (FM_TRACE_PKT_SIZE - 8))) {
-			WCN_DBG_LIMITED(FM_ALT | LINK, "trace, %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			WCN_DBG(FM_ALT | LINK, "trace, %02x %02x %02x %02x %02x %02x %02x %02x\n",
 				trace.pkt[i], trace.pkt[i + 1], trace.pkt[i + 2], trace.pkt[i + 3],
 				trace.pkt[i + 4], trace.pkt[i + 5], trace.pkt[i + 6], trace.pkt[i + 7]);
 			i += 8;
 		}
-		WCN_DBG_LIMITED(FM_ALT | LINK, "trace\n");
+		WCN_DBG(FM_ALT | LINK, "trace\n");
 	}
 #endif
 
@@ -469,17 +500,17 @@ extern signed int fm_print_evt_fifo(void)
 	while (false == FM_TRACE_EMPTY(evt_fifo)) {
 		fm_memset(trace.pkt, 0, FM_TRACE_PKT_SIZE);
 		FM_TRACE_OUT(evt_fifo, &trace);
-		WCN_DBG_LIMITED(FM_ALT | LINK, "%s: op %d, len %d, %d\n", evt_fifo->name, trace.opcode,
+		WCN_DBG(FM_ALT | LINK, "%s: op %d, len %d, %d\n", evt_fifo->name, trace.opcode,
 			trace.len, jiffies_to_msecs(abs(trace.time)));
 		i = 0;
 		while ((trace.len > 0) && (i < trace.len) && (i < (FM_TRACE_PKT_SIZE - 8))) {
-			WCN_DBG_LIMITED(FM_ALT | LINK, "%s: %02x %02x %02x %02x %02x %02x %02x %02x\n",
+			WCN_DBG(FM_ALT | LINK, "%s: %02x %02x %02x %02x %02x %02x %02x %02x\n",
 				evt_fifo->name, trace.pkt[i], trace.pkt[i + 1], trace.pkt[i + 2],
 				trace.pkt[i + 3], trace.pkt[i + 4], trace.pkt[i + 5],
 				trace.pkt[i + 6], trace.pkt[i + 7]);
 			i += 8;
 		}
-		WCN_DBG_LIMITED(FM_ALT | LINK, "%s\n", evt_fifo->name);
+		WCN_DBG(FM_ALT | LINK, "%s\n", evt_fifo->name);
 	}
 #endif
 

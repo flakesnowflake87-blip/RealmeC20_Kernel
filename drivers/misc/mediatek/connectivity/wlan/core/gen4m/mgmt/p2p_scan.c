@@ -143,8 +143,7 @@ scanP2pProcessBeaconAndProbeResp(IN struct ADAPTER *prAdapter,
 			prP2pBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 					(uint8_t) u4Idx);
 
-			if (!prP2pBssInfo ||
-				!IS_BSS_ACTIVE(prP2pBssInfo))
+			if (!IS_BSS_ACTIVE(prP2pBssInfo))
 				continue;
 
 			if ((prP2pBssInfo->eNetworkType != NETWORK_TYPE_P2P) ||
@@ -161,7 +160,7 @@ scanP2pProcessBeaconAndProbeResp(IN struct ADAPTER *prAdapter,
 			if ((prP2pBssInfo->eCurrentOPMode ==
 					OP_MODE_INFRASTRUCTURE) &&
 				(prP2pBssInfo->eConnectionState ==
-					MEDIA_STATE_CONNECTED)) {
+					PARAM_MEDIA_STATE_CONNECTED)) {
 				fgIsSkipThisBeacon = TRUE;
 				/* First Time. */
 				if ((!prP2pBssInfo->ucDTIMPeriod)) {
@@ -195,6 +194,7 @@ scanP2pProcessBeaconAndProbeResp(IN struct ADAPTER *prAdapter,
 				prBssDesc->ucChannelNum);
 		return;
 	}
+
 
 	do {
 		struct RF_CHANNEL_INFO rChannelInfo;
@@ -232,8 +232,6 @@ void scnEventReturnChannel(IN struct ADAPTER *prAdapter,
 	/* send cancel message to firmware domain */
 	rCmdScanCancel.ucSeqNum = ucScnSeqNum;
 	rCmdScanCancel.ucIsExtChannel = (uint8_t) FALSE;
-	rCmdScanCancel.aucReserved[0] = 0;
-	rCmdScanCancel.aucReserved[1] = 0;
 
 	wlanSendSetQueryCmd(prAdapter,
 			    CMD_ID_SCAN_CANCEL,
@@ -283,7 +281,7 @@ struct BSS_DESC *scanP2pSearchDesc(IN struct ADAPTER *prAdapter,
 			MAC2STR(prConnReqInfo->aucBssid));
 		DBGLOG(P2P, LOUD,
 			"Connecting to SSID:%s, length:%d\n",
-			HIDE(prConnReqInfo->rSsidStruct.aucSsid),
+			prConnReqInfo->rSsidStruct.aucSsid,
 			prConnReqInfo->rSsidStruct.ucSsidLen);
 
 		LINK_FOR_EACH_ENTRY(prBssDesc, prBssDescList,
@@ -317,12 +315,11 @@ struct BSS_DESC *scanP2pSearchDesc(IN struct ADAPTER *prAdapter,
 					MAC2STR(prConnReqInfo->aucBssid));
 				DBGLOG(P2P, TRACE,
 					"Connecting to SSID:%s, length:%d\n",
-					HIDE(
-					  prConnReqInfo->rSsidStruct.aucSsid),
+					prConnReqInfo->rSsidStruct.aucSsid,
 					prConnReqInfo->rSsidStruct.ucSsidLen);
 				DBGLOG(P2P, TRACE,
 					"Checking SSID:%s, length:%d\n",
-					HIDE(prBssDesc->aucSSID),
+					prBssDesc->aucSSID,
 					prBssDesc->ucSSIDLen);
 				DBGLOG(P2P, TRACE,
 					"Ignore mismatch SSID, (But BSSID match).\n");

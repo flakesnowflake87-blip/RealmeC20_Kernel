@@ -148,11 +148,6 @@ authSendDeauthFrame(IN struct ADAPTER *prAdapter,
 		    IN struct SW_RFB *prClassErrSwRfb, IN uint16_t u2ReasonCode,
 		    IN PFN_TX_DONE_HANDLER pfTxDoneHandler);
 
-#if CFG_SUPPORT_ASSURANCE
-void deauth_build_nonwfa_vend_ie(struct ADAPTER *prAdapter,
-				struct MSDU_INFO *prMsduInfo);
-#endif
-
 uint32_t authProcessRxDeauthFrame(IN struct SW_RFB *prSwRfb,
 			IN uint8_t aucBSSID[], OUT uint16_t *pu2ReasonCode);
 
@@ -163,11 +158,6 @@ authProcessRxAuth1Frame(IN struct ADAPTER *prAdapter,
 			IN uint16_t u2ExpectedAuthAlgNum,
 			IN uint16_t u2ExpectedTransSeqNum,
 			OUT uint16_t *pu2ReturnStatusCode);
-uint32_t
-authProcessRxAuthFrame(IN struct ADAPTER *prAdapter,
-			IN struct SW_RFB *prSwRfb,
-			IN struct BSS_INFO *prBssInfo,
-			OUT uint16_t *pu2ReturnStatusCode);
 
 void authAddMDIE(IN struct ADAPTER *prAdapter,
 		 IN OUT struct MSDU_INFO *prMsduInfo);
@@ -176,9 +166,6 @@ uint32_t authCalculateRSNIELen(struct ADAPTER *prAdapter, uint8_t ucBssIdx,
 			       struct STA_RECORD *prStaRec);
 
 void authAddRSNIE(IN struct ADAPTER *prAdapter,
-		  IN OUT struct MSDU_INFO *prMsduInfo);
-
-uint32_t authAddRSNIE_impl(IN struct ADAPTER *prAdapter,
 		  IN OUT struct MSDU_INFO *prMsduInfo);
 
 void authHandleFtIEs(struct ADAPTER *prAdapter, struct SW_RFB *prSwRfb,

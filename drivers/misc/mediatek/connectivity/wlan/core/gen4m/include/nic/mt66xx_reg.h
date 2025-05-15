@@ -81,30 +81,12 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_mt7663;
 #ifdef CONNAC
 extern struct mt66xx_hif_driver_data mt66xx_driver_data_connac;
 #endif /* CONNAC */
-#ifdef SOC2_1X1
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc2_1x1;
-#endif /* SOC2_1X1 */
-#ifdef SOC2_2X2
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc2_2x2;
-#endif /* SOC2_2X2 */
+#ifdef CONNAC2X2
+extern struct mt66xx_hif_driver_data mt66xx_driver_data_connac2x2;
+#endif /* CONNAC2X2 */
 #ifdef UT_TEST_MODE
 extern struct mt66xx_hif_driver_data mt66xx_driver_data_ut;
 #endif /* UT_TEST_MODE */
-#ifdef MT7915
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_mt7915;
-#endif /* MT7915 */
-#ifdef SOC3_0
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc3_0;
-#endif /* SOC3_0 */
-#ifdef MT7961
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_mt7961;
-#endif /* MT7961 */
-#ifdef SOC5_0
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc5_0;
-#endif /* SOC5_0 */
-#ifdef SOC7_0
-extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc7_0;
-#endif /* SOC7_0 */
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -490,7 +472,7 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc7_0;
 
 #define WPDMA_FIFO_TEST_MOD				(PCIE_HIF_BASE + 0x0140)
 
-#define WPDMA_APSRC_ACK_LOCK_SLPPROT                    (PCIE_HIF_BASE + 0x0160)
+#define WPDMA_APSRC_ACK_LOCK_SLPPROT			(PCIE_HIF_BASE + 0x0160)
 
 /* HIF Low Power Control Host Register */
 #define CFG_PCIE_LPCR_HOST				(PCIE_HIF_BASE + 0x01F0)
@@ -513,20 +495,7 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc7_0;
 /* Configuration for WPDMA Delayed Interrupt */
 #define WPDMA_DELAY_INT_CFG				(PCIE_HIF_BASE + 0x0210)
 
-#define WPDMA_PAUSE_RX_Q_TH10				(PCIE_HIF_BASE + 0x0260)
-#define WPDMA_PAUSE_RX_Q_TH32				(PCIE_HIF_BASE + 0x0264)
-#define WPDMA_PAUSE_RX_Q_TH0				2
-#define WPDMA_PAUSE_RX_Q_TH1				2
-#define WPDMA_PAUSE_RX_Q_TH2				2
-#define WPDMA_PAUSE_RX_Q_TH3				2
-#define WPDMA_PAUSE_RX_Q_TH0_MASK			0x00000FFF
-#define WPDMA_PAUSE_RX_Q_TH1_MASK			0x0FFF0000
-#define WPDMA_PAUSE_RX_Q_TH2_MASK			0x00000FFF
-#define WPDMA_PAUSE_RX_Q_TH3_MASK			0x0FFF0000
-#define WPDMA_PAUSE_RX_Q_TH0_SHFT			0
-#define WPDMA_PAUSE_RX_Q_TH1_SHFT			16
-#define WPDMA_PAUSE_RX_Q_TH2_SHFT			0
-#define WPDMA_PAUSE_RX_Q_TH3_SHFT			16
+#define MT_WPDMA_PAUSE_RX_Q             (PCIE_HIF_BASE + 0x0260)
 
 /* TX Ring0 Control 0 */
 #define WPDMA_TX_RING0_CTRL0			(PCIE_HIF_BASE + 0x0300)
@@ -570,16 +539,6 @@ extern struct mt66xx_hif_driver_data mt66xx_driver_data_soc7_0;
 
 #define MT_PCIE_IRQ_ENABLE              (PCIE_NEW_HIF_BASE + 0x0188)
 
-#define MD_INT_STA					(PCIE_HIF_BASE + 0x01C0)
-#define MD_WPDMA_GLO_CFG				(PCIE_HIF_BASE + 0x01D0)
-#define MD_INT_ENA					(PCIE_HIF_BASE + 0x01D4)
-#define MD_WPDMA_DLY_INIT_CFG				(PCIE_HIF_BASE + 0x01D8)
-#define MD_WPDMA_MISC					(PCIE_HIF_BASE + 0x01DC)
-
-#define CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR (PCIE_HIF_BASE + 0x154)
-#define CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_ENABLE_MASK BIT(0)
-#define CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_RDY_MASK BIT(16)
-
 /* WPDMA_INT_STA */
 union WPDMA_INT_STA_STRUCT {
 	struct {
@@ -601,94 +560,6 @@ union WPDMA_INT_STA_STRUCT {
 		uint32_t mcu_cmd_int:1;
 		uint32_t fw_clr_own:1;
 	} field;
-
-	struct {
-		uint32_t rx_done_0:1;
-		uint32_t rx_done_1:1;
-		uint32_t rx_done_2:1;
-		uint32_t rx_done_3:1;
-		uint32_t tx_done:16;
-		uint32_t rx_coherent:1;
-		uint32_t tx_coherent:1;
-		uint32_t reserved:2;
-		uint32_t wpdma2host_err_int_en:1;
-		uint32_t tx_done_20:1;
-		uint32_t tx_done_16:1;
-		uint32_t tx_done_17:1;
-		uint32_t subsys_int_en:1;
-		uint32_t mcu2host_sw_int_en:1;
-		uint32_t tx_done_18:1;
-		uint32_t tx_done_19:1;
-	} field_conn2x;
-
-	struct {
-		uint32_t wfdma1_rx_done_0:1;
-		uint32_t wfdma1_rx_done_1:1;
-		uint32_t wfdma1_rx_done_2:1;
-		uint32_t wfdma1_rx_done_3:1;
-		uint32_t wfdma1_tx_done_0:1;
-		uint32_t wfdma1_tx_done_1:1;
-		uint32_t wfdma1_tx_done_2:1;
-		uint32_t wfdma1_tx_done_3:1;
-		uint32_t wfdma1_tx_done_4:1;
-		uint32_t wfdma1_tx_done_5:1;
-		uint32_t wfdma1_tx_done_6:1;
-		uint32_t wfdma1_tx_done_7:1;
-		uint32_t wfdma1_tx_done_8:1;
-		uint32_t reserved13:2;
-		uint32_t wfdma1_tx_done_20:1;
-		uint32_t wfdma0_rx_done_0:1;
-		uint32_t wfdma0_rx_done_1:1;
-		uint32_t wfdma0_rx_done_2:1;
-		uint32_t wfdma0_rx_done_3:1;
-		uint32_t wfdma1_rx_coherent:1;
-		uint32_t wfdma1_tx_coherent:1;
-		uint32_t wfdma0_rx_coherent:1;
-		uint32_t wfdma0_tx_coherent:1;
-		uint32_t wpdma2host1_err_int_en:1;
-		uint32_t wpdma2host0_err_int_en:1;
-		uint32_t wfdma1_tx_done_16:1;
-		uint32_t wfdma1_tx_done_17:1;
-		uint32_t wfdma1_subsys_int_en:1;
-		uint32_t wfdma1_mcu2host_sw_int_en:1;
-		uint32_t wfdma1_tx_done_18:1;
-		uint32_t wfdma1_tx_done_19:1;
-	} field_conn2x_ext;
-
-	struct {
-		uint32_t wfdma0_rx_done_0:1;
-		uint32_t wfdma0_rx_done_1:1;
-		uint32_t wfdma0_rx_done_2:1;
-		uint32_t wfdma0_rx_done_3:1;
-		uint32_t wfdma0_tx_done_0:1;
-		uint32_t wfdma0_tx_done_1:1;
-		uint32_t wfdma0_tx_done_2:1;
-		uint32_t wfdma0_tx_done_3:1;
-		uint32_t wfdma0_tx_done_4:1;
-		uint32_t wfdma0_tx_done_5:1;
-		uint32_t wfdma0_tx_done_6:1;
-		uint32_t wfdma0_tx_done_7:1;
-		uint32_t wfdma0_tx_done_8:1;
-		uint32_t wfdma0_tx_done_9:1;
-		uint32_t wfdma0_tx_done_10:1;
-		uint32_t wfdma0_tx_done_11:1;
-		uint32_t wfdma0_tx_done_12:1;
-		uint32_t wfdma0_tx_done_13:1;
-		uint32_t wfdma0_tx_done_14:1;
-		uint32_t reserved19:1;
-		uint32_t wfdma0_rx_coherent:1;
-		uint32_t wfdma0_tx_coherent:1;
-		uint32_t wfdma0_rx_done_4:1;
-		uint32_t wfdma0_rx_done_5:1;
-		uint32_t wpdma2host0_err_int_en:1;
-		uint32_t reserved25:1;
-		uint32_t wfdma0_tx_done_16:1;
-		uint32_t wfdma0_tx_done_17:1;
-		uint32_t wfdma0_subsys_int_en:1;
-		uint32_t wfdma0_mcu2host_sw_int_en:1;
-		uint32_t wfdma0_tx_done_18:1;
-		uint32_t reserved31:1;
-	} field_conn2x_single;
 
 	uint32_t word;
 };
@@ -732,93 +603,6 @@ union WPDMA_INT_MASK {
 		uint32_t rsv_30_31:2;
 	} field_conn;
 
-	struct {
-		uint32_t rx_done_0:1;
-		uint32_t rx_done_1:1;
-		uint32_t rx_done_2:1;
-		uint32_t rx_done_3:1;
-		uint32_t tx_done:16;
-		uint32_t rx_coherent:1;
-		uint32_t tx_coherent:1;
-		uint32_t reserved:2;
-		uint32_t wpdma2host_err_int_en:1;
-		uint32_t tx_done_20:1;
-		uint32_t tx_done_16:1;
-		uint32_t tx_done_17:1;
-		uint32_t subsys_int_en:1;
-		uint32_t mcu2host_sw_int_en:1;
-		uint32_t tx_done_18:1;
-		uint32_t tx_done_19:1;
-	} field_conn2x;
-
-	struct {
-		uint32_t wfdma1_rx_done_0:1;
-		uint32_t wfdma1_rx_done_1:1;
-		uint32_t wfdma1_rx_done_2:1;
-		uint32_t wfdma1_rx_done_3:1;
-		uint32_t wfdma1_tx_done_0:1;
-		uint32_t wfdma1_tx_done_1:1;
-		uint32_t wfdma1_tx_done_2:1;
-		uint32_t wfdma1_tx_done_3:1;
-		uint32_t wfdma1_tx_done_4:1;
-		uint32_t wfdma1_tx_done_5:1;
-		uint32_t wfdma1_tx_done_6:1;
-		uint32_t wfdma1_tx_done_7:1;
-		uint32_t wfdma1_tx_done_8:1;
-		uint32_t reserved13:2;
-		uint32_t wfdma1_tx_done_20:1;
-		uint32_t wfdma0_rx_done_0:1;
-		uint32_t wfdma0_rx_done_1:1;
-		uint32_t wfdma0_rx_done_2:1;
-		uint32_t wfdma0_rx_done_3:1;
-		uint32_t wfdma1_rx_coherent:1;
-		uint32_t wfdma1_tx_coherent:1;
-		uint32_t wfdma0_rx_coherent:1;
-		uint32_t wfdma0_tx_coherent:1;
-		uint32_t wpdma2host1_err_int_en:1;
-		uint32_t wpdma2host0_err_int_en:1;
-		uint32_t wfdma1_tx_done_16:1;
-		uint32_t wfdma1_tx_done_17:1;
-		uint32_t wfdma1_subsys_int_en:1;
-		uint32_t wfdma1_mcu2host_sw_int_en:1;
-		uint32_t wfdma1_tx_done_18:1;
-		uint32_t wfdma1_tx_done_19:1;
-	} field_conn2x_ext;
-
-	struct {
-		uint32_t wfdma0_rx_done_0:1;
-		uint32_t wfdma0_rx_done_1:1;
-		uint32_t wfdma0_rx_done_2:1;
-		uint32_t wfdma0_rx_done_3:1;
-		uint32_t wfdma0_tx_done_0:1;
-		uint32_t wfdma0_tx_done_1:1;
-		uint32_t wfdma0_tx_done_2:1;
-		uint32_t wfdma0_tx_done_3:1;
-		uint32_t wfdma0_tx_done_4:1;
-		uint32_t wfdma0_tx_done_5:1;
-		uint32_t wfdma0_tx_done_6:1;
-		uint32_t wfdma0_tx_done_7:1;
-		uint32_t wfdma0_tx_done_8:1;
-		uint32_t wfdma0_tx_done_9:1;
-		uint32_t wfdma0_tx_done_10:1;
-		uint32_t wfdma0_tx_done_11:1;
-		uint32_t wfdma0_tx_done_12:1;
-		uint32_t wfdma0_tx_done_13:1;
-		uint32_t wfdma0_tx_done_14:1;
-		uint32_t reserved19:1;
-		uint32_t wfdma0_rx_coherent:1;
-		uint32_t wfdma0_tx_coherent:1;
-		uint32_t wfdma0_rx_done_4:1;
-		uint32_t wfdma0_rx_done_5:1;
-		uint32_t wpdma2host0_err_int_en:1;
-		uint32_t reserved25:1;
-		uint32_t wfdma0_tx_done_16:1;
-		uint32_t wfdma0_tx_done_17:1;
-		uint32_t wfdma0_subsys_int_en:1;
-		uint32_t wfdma0_mcu2host_sw_int_en:1;
-		uint32_t wfdma0_tx_done_18:1;
-		uint32_t reserved31:1;
-	} field_conn2x_single;
 	uint32_t word;
 };
 
@@ -899,37 +683,6 @@ union WPDMA_GLO_CFG_STRUCT {
 		uint32_t rx_2b_offset:1;
 	} field_conn;
 
-	struct {
-		uint32_t tx_dma_en:1;
-		uint32_t tx_dma_busy:1;
-		uint32_t rx_dma_en:1;
-		uint32_t rx_dma_busy:1;
-		uint32_t pdma_bt_size:2;
-		uint32_t tx_wb_ddone:1;
-		uint32_t big_endian:1;
-		uint32_t dmad_32b_en:1;
-		uint32_t bypass_dmashdl_txring:1;
-		uint32_t csr_wfdma_dummy_reg:1;
-		uint32_t csr_axi_bufrdy_byp:1;
-		uint32_t fifo_little_endian:1;
-		uint32_t csr_rx_wb_ddone:1;
-		uint32_t csr_pp_hif_txp_active_en:1;
-		uint32_t csr_disp_base_ptr_chain_en:1;
-		uint32_t csr_lbk_rx_q_sel:4;
-		uint32_t csr_lbk_rx_q_sel_en:1;
-		/* define after Buzzard (rsv before) */
-		uint32_t omit_rx_info_pfet2:1;
-		uint32_t reserved22:2;
-		uint32_t csr_sw_rst:1;
-		uint32_t force_tx_eof:1;
-		uint32_t pdma_addr_ext_en:1;
-		uint32_t omit_rx_info:1;
-		uint32_t omit_tx_info:1;
-		uint32_t byte_swap:1;
-		uint32_t clk_gate_dis:1;
-		uint32_t rx_2b_offset:1;
-	} field_conn2x;
-
 	uint32_t word;
 };
 
@@ -972,7 +725,6 @@ union DELAY_INT_CFG_STRUCT {
 #define PCIE_HIF_SYS_REV				BITS(0, 15)
 
 /* CFG_PCIE_LPCR_HOST */
-#define PCIE_LPCR_AP_HOST_OWNER_STATE_SYNC	BIT(2)
 #define PCIE_LPCR_HOST_CLR_OWN			BIT(1)
 #define PCIE_LPCR_HOST_SET_OWN			BIT(0)
 
@@ -1040,9 +792,6 @@ union DELAY_INT_CFG_STRUCT {
 
 /* 4 Device to Host Receive Mailbox 1 Register */
 #define MCR_D2HRM1R                         0x007c
-
-/* 4 Device to Host Receive Mailbox 2 Register */
-#define MCR_D2HRM2R                         0x0080
 
 /* 4 WLAN RX Packet Length Register */
 #define MCR_WRPLR                           0x0090
@@ -1284,15 +1033,10 @@ enum enum_workAround {
 	WORKAROUND_NUM
 };
 
-enum ENUM_CHIP_CAPABILITY {
-	CHIP_CAPA_FW_LOG_TIME_SYNC
-};
-
 struct mt66xx_chip_info {
 	struct BUS_INFO *bus_info;
 	struct FWDL_OPS_T *fw_dl_ops;
 	struct TX_DESC_OPS_T *prTxDescOps;
-	struct RX_DESC_OPS_T *prRxDescOps;
 #if CFG_SUPPORT_QA_TOOL
 	struct ATE_OPS_T *prAteOps;
 #endif
@@ -1305,25 +1049,12 @@ struct mt66xx_chip_info {
 	const unsigned int sw_ready_bit_offset;	/* sw_sync0 ready bit offset */
 	const unsigned int patch_addr;	/* patch download start address */
 	const unsigned int is_support_cr4;	/* support CR4 */
-	const unsigned int is_support_wacpu;	/* support WA-CPU */
 	const unsigned int txd_append_size;	/* hw mac txd append */
 	const unsigned int rxd_size;	        /* hw mac rxd size */
-	const unsigned int init_evt_rxd_size;	/* init event rxd size */
-	const unsigned int pse_header_length;	/* NIC_TX_PSE_HEADER_LENGTH */
 	const unsigned int init_event_size;     /* init event w/o rxd size */
 	const unsigned int event_hdr_size;      /* event w/o rxd size */
 	const unsigned int isNicCapV1;
 	const unsigned int is_support_efuse; /* efuse support */
-	const unsigned int top_hcr; /* TOP_HCR */
-	const unsigned int top_hvr; /* TOP_HVR */
-	const unsigned int top_fvr; /* TOP_FVR */
-#if (CFG_SUPPORT_802_11AX == 1)
-	const unsigned int arb_ac_mode_addr;
-#endif /* CFG_SUPPORT_802_11AX == 1 */
-	const unsigned int custom_oid_interface_version;
-	const unsigned int em_interface_version;
-	const unsigned int cmd_max_pkt_size;
-	const bool isSupportMddpAOR;
 
 	const struct ECO_INFO *eco_info;	/* chip version table */
 	uint8_t eco_ver;	/* chip version */
@@ -1332,107 +1063,28 @@ struct mt66xx_chip_info {
 	uint16_t u2TxInitCmdPort;
 	uint16_t u2TxFwDlPort;
 	uint16_t u2HifTxdSize;
-	uint16_t u2CmdTxHdrSize;
-	uint16_t u2RxSwPktBitMap;
-	uint16_t u2RxSwPktEvent;
-	uint16_t u2RxSwPktFrame;
-
 	/* Extra TXD Size for TX Byte Count field (in unit of Byte) */
 	uint32_t u4ExtraTxByteCount;
 	uint32_t u4HifDmaShdlBaseAddr;
 	/* chip ip version from FW */
 	uint32_t u4ChipIpVersion;
 	uint32_t u4ChipIpConfig;
-	uint16_t u2ADieChipVersion;
-	void *CSRBaseAddress;
 
 	void (*asicCapInit)(IN struct ADAPTER *prAdapter);
 	void (*asicEnableFWDownload)(IN struct ADAPTER *prAdapter,
 		IN u_int8_t fgEnable);
-	void (*asicFillInitCmdTxd)(IN struct ADAPTER *prAdapter,
-		IN struct WIFI_CMD_INFO *prCmdInfo,
-		OUT uint16_t *pu2BufInfoLen, OUT uint8_t *pucSeqNum,
-		OUT void **pCmdBuf);
-	void (*asicFillCmdTxd)(IN struct ADAPTER *prAdapter,
-		IN struct WIFI_CMD_INFO *prCmdInfo,
-		OUT uint8_t *pucSeqNum, OUT void **pCmdBuf);
 	uint32_t (*asicGetChipID)(IN struct ADAPTER *prAdapter);
 	void (*fillHifTxDesc)(IN uint8_t **pDest, IN uint16_t *pInfoBufLen);
 	uint32_t (*downloadBufferBin)(IN struct ADAPTER *prAdapter);
-	void (*asicRxProcessRxvforMSP)(IN struct ADAPTER *prAdapter,
-		IN OUT struct SW_RFB *prRetSwRfb);
-	uint8_t (*asicRxGetRcpiValueFromRxv)(
-		IN uint8_t ucRcpiMode,
-		IN struct SW_RFB *prSwRfb);
-	void (*asicRxPerfIndProcessRXV)(
-		IN struct ADAPTER *prAdapter,
-		IN struct SW_RFB *prSwRfb,
-		IN uint8_t ucBssIndex);
 
 	const uint32_t features;	/* feature bits */
 	u_int8_t is_support_hw_amsdu;
 	uint8_t ucMaxSwAmsduNum;
-	uint8_t ucMaxSwapAntenna;
 	uint32_t workAround;
-	char *prTxPwrLimitFile;
-	uint8_t ucTxPwrLimitBatchSize;
-	u_int8_t is_support_asic_lp;
-	u_int8_t is_support_wfdma1;
-	u_int8_t is_support_dma_shdl;
-	u_int8_t get_rxv_from_rxrpt;
-	u_int8_t rx_event_port;
-#if CFG_SUPPORT_LLS
-	const u_int8_t is_supported_full_lls;
-#endif
-#if defined(_HIF_USB)
-	void (*asicUsbInit)(IN struct ADAPTER *prAdapter,
-			    IN struct mt66xx_chip_info *prChipInfo);
-	void (*asicUsbInit_ic_specific)(IN struct ADAPTER *prAdapter,
-			    IN struct mt66xx_chip_info *prChipInfo);
-	uint32_t u4SerUsbMcuEventAddr;
-	uint32_t u4SerUsbHostAckAddr;
-#endif
-	void (*asicDumpSerDummyCR)(IN struct ADAPTER *prAdapter);
-	void (*asicWfdmaReInit)(IN struct ADAPTER *prAdapter);
-	void (*asicWfdmaReInit_handshakeInit)(IN struct ADAPTER *prAdapter);
-	void *pdev;
-	uint32_t group5_size;
-	void (*wlanCheckAsicCap)(IN struct ADAPTER *prAdapter);
-#if (CFG_CHIP_RESET_SUPPORT == 1) && (CFG_WMT_RESET_API_SUPPORT == 0)
-	u_int8_t (*rst_L0_notify_step2)(void);
-#endif
-	uint32_t u4LmacWtblDUAddr;
-	uint32_t u4UmacWtblDUAddr;
-	int (*wmmcupwron)(void);
-	int (*wmmcupwroff)(void);
-	uint32_t (*pwrondownload)(IN struct ADAPTER *prAdapter,
-		IN uint8_t ucDownloadItem);
-	int (*triggerfwassert)(void);
-	int (*coexpccifon)(void);
-	int (*coexpccifoff)(void);
-	void (*coantSetWiFi)(void);
-	void (*coantSetMD)(void);
-	void (*coantVFE28En)(IN struct ADAPTER *prAdapter);
-	void (*coantVFE28Dis)(void);
-	bool (*get_sw_interrupt_status)(struct ADAPTER *prAdapter,
-		uint32_t *status);
-	void (*dumpwfsyscpupcr)(IN struct ADAPTER *prAdapter);
-	uint8_t* (*getCalResult)(OUT uint32_t *prCalSize);
-	void (*calDebugCmd)(uint32_t cmd, uint32_t para);
-	u_int8_t is_support_nvram_fragment;
-	int (*checkbushang)(void *prAdapter,
-		uint8_t ucWfResetEnable);
-	void (*dumpBusHangCr)(IN struct ADAPTER *prAdapter);
-	uint64_t chip_capability;
 };
 
 struct mt66xx_hif_driver_data {
 	struct mt66xx_chip_info *chip_info;
-	const char *fw_flavor;
-#if (CFG_SUPPORT_POWER_THROTTLING == 1)
-	uint32_t u4PwrLevel;
-	struct conn_pwr_event_max_temp rTempInfo;
-#endif
 };
 
 /*******************************************************************************

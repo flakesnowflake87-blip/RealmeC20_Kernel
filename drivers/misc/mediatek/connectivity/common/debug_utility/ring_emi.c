@@ -1,15 +1,3 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
- */
 #include "ring_emi.h"
 #include <linux/string.h>
 #include <linux/kernel.h>
@@ -28,10 +16,8 @@ void ring_emi_init(void *base, unsigned int max_size, void *read, void *write, s
 	ring_emi->base = base;
 	ring_emi->read = read;
 	ring_emi->write = write;
-	if (ring_emi->write)
-		EMI_WRITE32(ring_emi->write, 0);
-	if (ring_emi->read)
-		EMI_WRITE32(ring_emi->read, 0);
+	EMI_WRITE32(ring_emi->write, 0);
+	EMI_WRITE32(ring_emi->read, 0);
 	ring_emi->max_size = max_size;
 	pr_info("base: %p, read: %p, write: %p, max_size: %d\n", base, read, write, max_size);
 }

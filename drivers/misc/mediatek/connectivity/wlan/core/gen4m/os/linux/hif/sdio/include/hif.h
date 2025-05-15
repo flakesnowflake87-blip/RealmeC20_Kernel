@@ -101,7 +101,7 @@
 #define SDIO_X86_WORKAROUND_WRITE_MCR   0x00C4
 #define HIF_NUM_OF_QM_RX_PKT_NUM        512
 
-#define HIF_TX_INIT_CMD_PORT            TX_RING_FWDL_IDX_4
+#define HIF_TX_INIT_CMD_PORT            TX_RING_FWDL_IDX_3
 
 #define HIF_IST_LOOP_COUNT              128
 #define HIF_IST_TX_THRESHOLD            32 /* Min msdu count to trigger Tx during INT polling state */
@@ -289,7 +289,6 @@ struct GL_HIF_INFO {
 	struct SDIO_INT_LOG_T arIntLog[CFG_SDIO_INT_LOG_CNT];
 	uint32_t u4IntLogIdx;
 	uint8_t ucIntLogEntry;
-	uint8_t fgForceFwOwn;
 };
 
 struct BUS_INFO {

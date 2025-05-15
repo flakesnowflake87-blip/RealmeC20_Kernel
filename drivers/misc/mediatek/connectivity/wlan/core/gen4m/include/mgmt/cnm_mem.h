@@ -214,12 +214,7 @@ struct SEC_INFO {
 
 /* Fragment information structure */
 struct FRAG_INFO {
-	uint16_t u2SeqNo;
-	uint8_t ucNextFragNo;
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-	uint8_t ucSecMode;
-	uint64_t u8NextPN;
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
+	uint16_t u2NextFragSeqCtrl;
 	uint8_t *pucNextFragStart;
 	struct SW_RFB *pr1stFrag;
 
@@ -241,7 +236,6 @@ struct STA_PMF_CFG {
 	u_int8_t fgMfpc;
 	u_int8_t fgMfpr;
 	u_int8_t fgSha256;
-	u_int8_t fgSaeRequireMfp;
 	u_int8_t fgApplyPmf;
 	u_int8_t fgBipKeyInstalled;
 
@@ -366,43 +360,11 @@ struct STA_RECORD {
 	 */
 	uint32_t u4VhtCapInfo;
 	uint16_t u2VhtRxMcsMap;
-	uint16_t u2VhtRxMcsMapAssoc;
 	uint16_t u2VhtRxHighestSupportedDataRate;
 	uint16_t u2VhtTxMcsMap;
 	uint16_t u2VhtTxHighestSupportedDataRate;
 	uint8_t ucVhtOpMode;
 #endif
-
-#if (CFG_SUPPORT_802_11AX == 1)
-	/*--------------------------------------------------------------------*/
-	/* HE capability if (prStaRec->ucPhyTypeSet & PHY_TYPE_BIT_HE) is set */
-	/* They have the same definition with fields of information element   */
-	/*--------------------------------------------------------------------*/
-	uint8_t ucHeMacCapInfo[HE_MAC_CAP_BYTE_NUM];
-	uint8_t ucHePhyCapInfo[HE_PHY_CAP_BYTE_NUM];
-
-	uint16_t u2HeRxMcsMapBW80;
-	uint16_t u2HeTxMcsMapBW80;
-	uint16_t u2HeRxMcsMapBW160;
-	uint16_t u2HeTxMcsMapBW160;
-	uint16_t u2HeRxMcsMapBW80P80;
-	uint16_t u2HeTxMcsMapBW80P80;
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-	/*--------------------------------------------------------------------*/
-	/* EHT capability if (prStaRec->ucPhyTypeSet &                        */
-	/*  PHY_TYPE_BIT_EHT) is set                                          */
-	/* They have the same definition with fields of information element   */
-	/*--------------------------------------------------------------------*/
-	uint8_t ucEhtMacCapInfo[EHT_MAC_CAP_BYTE_NUM];
-	uint8_t ucEhtPhyCapInfo[EHT_PHY_CAP_BYTE_NUM];
-#endif
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	/* HE 6 GHz Band Capabilities */
-	uint16_t u2He6gBandCapInfo;
-#endif
-
 	/*----------------------------------------------------------------------
 	 * 802.11ac  HT operation info when (prStaRec->ucPhyTypeSet &
 	 * PHY_TYPE_BIT_HT) is true. They have the same definition with fields
@@ -410,7 +372,6 @@ struct STA_RECORD {
 	 *----------------------------------------------------------------------
 	 */
 	uint8_t ucHtPeerOpInfo1; /* Backup peer HT OP Info */
-	uint16_t u2HtPeerOpInfo2; /* Backup peer HT OP Info */
 
 	/*----------------------------------------------------------------------
 	 * 802.11ac  VHT operation info when (prStaRec->ucPhyTypeSet &
@@ -450,7 +411,6 @@ struct STA_RECORD {
 
 	uint16_t u2StatusCode;	/* Status of Auth/Assoc Req */
 	uint16_t u2ReasonCode;	/* Reason that been Deauth/Disassoc */
-	u_int8_t fgIsLocallyGenerated;
 
 	/* Point to an allocated buffer for storing Challenge */
 	/* Text for Shared Key Authentication */
@@ -519,11 +479,6 @@ struct STA_RECORD {
 
 	u_int8_t afgIsIgnoreAmsduDuplicate[TID_NUM + 1];
 
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-	uint16_t au2AmsduInvalidSN[TID_NUM + 1];
-	u_int8_t afgIsAmsduInvalid[TID_NUM + 1];
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
 #if 0
 	/* RXM */
 	struct RX_BA_ENTRY *aprRxBaTable[TID_NUM];
@@ -532,8 +487,7 @@ struct STA_RECORD {
 	P_TX_BA_ENTRY_T aprTxBaTable[TID_NUM];
 #endif
 
-	struct FRAG_INFO rFragInfo[TID_NUM + 1][
-			MAX_NUM_CONCURRENT_FRAGMENTED_MSDUS];
+	struct FRAG_INFO rFragInfo[MAX_NUM_CONCURRENT_FRAGMENTED_MSDUS];
 
 #if 0 /* TODO: Remove this */
 	struct SEC_INFO rSecInfo; /* The security state machine */
@@ -576,11 +530,6 @@ struct STA_RECORD {
 	u_int8_t fgIsUapsdSupported;
 
 	u_int8_t afgAcmRequired[ACI_NUM];
-
-#if (CFG_SUPPORT_802_11AX == 1)
-	/* If the peer supports MU EDCA, set to TRUE (for association)*/
-	u_int8_t fgIsMuEdcaSupported;
-#endif
 
 	/*----------------------------------------------------------------------
 	 * P2P related fields
@@ -668,7 +617,6 @@ struct STA_RECORD {
 
 	/* Reorder Parameter reference table */
 	struct RX_BA_ENTRY *aprRxReorderParamRefTbl[CFG_RX_MAX_BA_TID_NUM];
-
 #endif
 
 #if CFG_SUPPORT_802_11V_TIMING_MEASUREMENT
@@ -726,82 +674,18 @@ struct STA_RECORD {
 #if CFG_SUPPORT_802_11W
 	/* AP PMF */
 	struct STA_PMF_CFG rPmfCfg;
-	/* STA PMF */
-	uint32_t u4assocComeBackTime;
 #endif
 #if DSCP_SUPPORT
 	uint8_t  qosMapSet[64];
 #endif
-#if (CFG_SUPPORT_TWT == 1)
-	/* TWT Requester state */
-	enum _ENUM_TWT_REQUESTER_STATE_T aeTWTReqState;
-	struct _TWT_FLOW_T arTWTFlow[TWT_MAX_FLOW_NUM];
-#endif
-#if (CFG_SUPPORT_802_11AX == 1)
-	struct HE_A_CTRL_OM_T arHeACtrlOm;
-#endif
-
 	u_int8_t fgSupportBTM; /* Indicates whether to support BTM */
-#if CFG_TC10_FEATURE
-	u_int8_t fgSupportProxyARP;
-	u_int8_t fgSupportTFS;
-	u_int8_t fgSupportWNMSleep;
-	u_int8_t fgSupportTIMBcast;
-	u_int8_t fgSupportDMS;
-#endif
+
 	/*
 	 * Flag used to record the connected status of upper layer.
 	 * Indicate connected status only when disconnected, and only
 	 * indicate disconnected status only when connected.
 	 */
 	u_int8_t fgIsConnected;
-#if CFG_SUPPORT_HE_ER
-	u_int8_t fgIsExtendedRange;
-#endif
-
-/* fos_change begin*/
-#if CFG_SUPPORT_STAT_STATISTICS
-	uint32_t u4LastPhyRate;
-	uint8_t ucNoise_avg;
-#endif /* fos_change end*/
-#if CFG_SUPPORT_NAN
-	OS_SYSTIME rNanExpiredSendTime;
-	unsigned char fgNanSendTimeExpired;
-	atomic_t NanRefCount;
-#endif
-
-#if CFG_SUPPORT_LLS
-	/* Store data in format from RXV in reduced size to serve Link Stats
-	 * report format defined in STATS_LLS_WIFI_RATE
-	 *
-	 * preamble   :3;   0:OFDM, 1:CCK, 2:HT 3:VHT 4:HE, in separate array
-	 * nss        :1;   0:1x1, 1:2x2
-	 * bw         :2;   0:20MHz, 1:40Mhz, 2:80Mhz, 3:160Mhz
-	 * rateMcsIdx :4;   CCK: [2, 4, 11, 22]
-	 *                  OFDM:  [12, 18, 24, 36, 48, 72, 96, 108];
-	 *                  HT/VHT/HE it would be mcs index
-	 */
-	struct {
-		uint32_t u4RxMpduOFDM[1]
-			[STATS_LLS_MAX_OFDM_BW_NUM][STATS_LLS_OFDM_NUM];
-		uint32_t u4RxMpduCCK[1]
-			[STATS_LLS_MAX_CCK_BW_NUM][STATS_LLS_CCK_NUM];
-		uint32_t u4RxMpduHT[1]
-			[STATS_LLS_MAX_HT_BW_NUM][STATS_LLS_HT_NUM];
-		uint32_t u4RxMpduVHT[STATS_LLS_MAX_NSS_NUM]
-			[STATS_LLS_MAX_VHT_BW_NUM][STATS_LLS_VHT_NUM];
-		uint32_t u4RxMpduHE[STATS_LLS_MAX_NSS_NUM]
-			[STATS_LLS_MAX_HE_BW_NUM][STATS_LLS_HE_NUM];
-	};
-#endif
-
-	u_int8_t fgIsMscsSupported;
-	struct LINK rMscsMonitorList;
-	struct LINK rMscsTcpMonitorList;
-	u_int8_t fgIsEapEncrypt;
-#if CFG_TC10_FEATURE
-	u_int8_t ucSupportedBand;
-#endif
 };
 
 #if 0
@@ -981,7 +865,6 @@ struct CMD_PEER_ADD {
 
 	uint8_t aucPeerMac[6];
 	enum ENUM_STA_TYPE eStaType;
-	uint8_t ucBssIdx;
 };
 
 struct CMD_PEER_UPDATE_HT_CAP_MCS_INFO {
@@ -1040,7 +923,6 @@ struct CMD_PEER_UPDATE {
 
 	u_int8_t fgIsSupHt;
 	enum ENUM_STA_TYPE eStaType;
-	uint8_t ucBssIdx;
 
 	/* TODO */
 	/* So far, TDLS only a few of the parameters, the rest will be added
@@ -1076,15 +958,6 @@ struct CMD_PEER_UPDATE {
 };
 
 #endif
-
-#if CFG_DBG_MGT_BUF
-struct MEM_TRACK {
-	struct LINK_ENTRY rLinkEntry;
-	uint16_t u2CmdIdAndWhere;
-	uint8_t *pucFileAndLine;
-	uint8_t aucData[];
-};
-#endif
 /*******************************************************************************
  *                            P U B L I C   D A T A
  *******************************************************************************
@@ -1099,8 +972,6 @@ struct MEM_TRACK {
  *                                 M A C R O S
  *******************************************************************************
  */
-#define STRL(x) #x
-#define STRLINE(x) STRL(x)
 
 #if CFG_DBG_MGT_BUF
 #define cnmMgtPktAlloc(_prAdapter, _u4Length) \
@@ -1108,16 +979,6 @@ struct MEM_TRACK {
 
 #define cnmMgtPktFree(_prAdapter, _prMsduInfo) \
 	cnmPktFreeWrapper((_prAdapter), (_prMsduInfo), (uint8_t *)__func__)
-
-#define cnmMemAlloc(_prAdapter, eRameType, u4Length) \
-	cnmMemAllocX(_prAdapter, eRameType, u4Length, \
-		__FILE__ ":" STRLINE(__LINE__))
-
-#define IS_FROM_BUF(_prAdapter, pucInfoBuffer) \
-	(((uint8_t *)(pucInfoBuffer) >= \
-		(uint8_t *)_prAdapter->rMgtBufInfo.pucBuf) && \
-	((uint8_t *)(pucInfoBuffer) < \
-		(uint8_t *)_prAdapter->rMgtBufInfo.pucBuf + MGT_BUFFER_SIZE))
 #else
 #define cnmMgtPktAlloc cnmPktAlloc
 #define cnmMgtPktFree cnmPktFree
@@ -1141,14 +1002,8 @@ void cnmPktFree(IN struct ADAPTER *prAdapter, IN struct MSDU_INFO *prMsduInfo);
 
 void cnmMemInit(IN struct ADAPTER *prAdapter);
 
-#if CFG_DBG_MGT_BUF
-void *cnmMemAllocX(IN struct ADAPTER *prAdapter,
-	IN enum ENUM_RAM_TYPE eRamType, IN uint32_t u4Length,
-	uint8_t *fileAndLine);
-#else
 void *cnmMemAlloc(IN struct ADAPTER *prAdapter, IN enum ENUM_RAM_TYPE eRamType,
 	IN uint32_t u4Length);
-#endif
 
 void cnmMemFree(IN struct ADAPTER *prAdapter, IN void *pvMemory);
 
@@ -1166,10 +1021,6 @@ void cnmStaFreeAllStaByNetwork(struct ADAPTER *prAdapter, uint8_t ucBssIndex,
 
 struct STA_RECORD *cnmGetStaRecByIndex(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucIndex);
-
-struct STA_RECORD *cnmGetStaRecByIndexWithoutInUseCheck(
-	struct ADAPTER *prAdapter,
-	uint8_t ucIndex);
 
 struct STA_RECORD *cnmGetStaRecByAddress(struct ADAPTER *prAdapter,
 	uint8_t ucBssIndex, uint8_t aucPeerMACAddress[]);

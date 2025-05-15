@@ -90,8 +90,12 @@
  *                              C O N S T A N T S
  *******************************************************************************
  */
-#define WIFI_NVRAM_FILE_NAME   "/data/nvram/APCFG/APRDEB/WIFI"
-#define WIFI_NVRAM_CUSTOM_NAME "/data/nvram/APCFG/APRDEB/WIFI_CUSTOM"
+#if CFG_TC1_FEATURE
+#define WIFI_NVRAM_FILE_NAME   "/vendor/firmware/WIFI"
+#else
+#define WIFI_NVRAM_FILE_NAME   "/mnt/vendor/nvdata/APCFG/APRDEB/WIFI"
+#endif
+#define WIFI_NVRAM_CUSTOM_NAME "/mnt/vendor/nvdata/APCFG/APRDEB/WIFI_CUSTOM"
 
 /*******************************************************************************
  *                             D A T A   T Y P E S
@@ -107,39 +111,6 @@
  *                           P R I V A T E   D A T A
  *******************************************************************************
  */
-static const uint8_t *apucDebugNetdevState[] = {
-	(uint8_t *) DISP_STRING("NETDEV_UNKNOWN"),
-	(uint8_t *) DISP_STRING("NETDEV_UP"),
-	(uint8_t *) DISP_STRING("NETDEV_DOWN"),
-	(uint8_t *) DISP_STRING("NETDEV_REBOOT"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGE"),
-	(uint8_t *) DISP_STRING("NETDEV_REGISTER"),
-	(uint8_t *) DISP_STRING("NETDEV_UNREGISTER"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGEMTU"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGEADDR"),
-	(uint8_t *) DISP_STRING("NETDEV_GOING_DOWN"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGENAME"),
-	(uint8_t *) DISP_STRING("NETDEV_FEAT_CHANGE"),
-	(uint8_t *) DISP_STRING("NETDEV_BONDING_FAILOVER"),
-	(uint8_t *) DISP_STRING("NETDEV_PRE_UP"),
-	(uint8_t *) DISP_STRING("NETDEV_PRE_TYPE_CHANGE"),
-	(uint8_t *) DISP_STRING("NETDEV_POST_TYPE_CHANGE"),
-	(uint8_t *) DISP_STRING("NETDEV_POST_INIT"),
-	(uint8_t *) DISP_STRING("NETDEV_UNREGISTER_FINAL"),
-	(uint8_t *) DISP_STRING("NETDEV_RELEASE"),
-	(uint8_t *) DISP_STRING("NETDEV_NOTIFY_PEERS"),
-	(uint8_t *) DISP_STRING("NETDEV_JOIN"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGEUPPER"),
-	(uint8_t *) DISP_STRING("NETDEV_RESEND_IGMP"),
-	(uint8_t *) DISP_STRING("NETDEV_PRECHANGEMTU"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGEINFODATA"),
-	(uint8_t *) DISP_STRING("NETDEV_BONDING_INFO"),
-	(uint8_t *) DISP_STRING("NETDEV_PRECHANGEUPPER"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGELOWERSTATE"),
-	(uint8_t *) DISP_STRING("NETDEV_UDP_TUNNEL_PUSH_INFO"),
-	(uint8_t *) DISP_STRING("NETDEV_UNKNOWN"),
-	(uint8_t *) DISP_STRING("NETDEV_CHANGE_TX_QUEUE_LEN"),
-};
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -150,8 +121,6 @@ static const uint8_t *apucDebugNetdevState[] = {
  *                   F U N C T I O N   D E C L A R A T I O N S
  *******************************************************************************
  */
-static int wlan_netdev_notifier_call(struct notifier_block *nb,
-		unsigned long state, void *ndev);
 
 /*******************************************************************************
  *                              F U N C T I O N S
@@ -171,9 +140,6 @@ static int netdev_event(struct notifier_block *nb,
 	}
 
 	if ((strncmp(prDev->name, "p2p", 3) != 0)
-#if CFG_SUPPORT_NAN
-		&& (strncmp(prDev->name, "aware", 5) != 0)
-#endif
 	    && (strncmp(prDev->name, "wlan", 4) != 0)) {
 		/* DBGLOG(REQ, INFO, ("netdev_event: xxx\n")); */
 		return NOTIFY_DONE;
@@ -186,6 +152,13 @@ static int netdev_event(struct notifier_block *nb,
 		prGlueInfo->fgIsDad = FALSE;
 	}
 #endif /* CFG_SUPPORT_PASSPOINT */
+	if ((prDev != gPrDev) && (prDev != gPrP2pDev[0])
+	    && (prDev != gPrP2pDev[1])) {
+		/* DBGLOG(REQ, INFO, ("netdev_event: device is not mine.\n"));
+		 */
+		return NOTIFY_DONE;
+	}
+
 
 	prGlueInfo = *((struct GLUE_INFO **) netdev_priv(prDev));
 	if (prGlueInfo == NULL) {
@@ -195,7 +168,7 @@ static int netdev_event(struct notifier_block *nb,
 
 	if (prGlueInfo->fgIsInSuspendMode == FALSE) {
 		/* DBGLOG(REQ, INFO,
-		 *  ("netdev_event: MEDIA_STATE_DISCONNECTED. (%d)\n",
+		 *  ("netdev_event: PARAM_MEDIA_STATE_DISCONNECTED. (%d)\n",
 		 * prGlueInfo->eParamMediaStateIndicated));
 		 */
 		return NOTIFY_DONE;
@@ -261,7 +234,7 @@ static struct notifier_block inet6addr_notifier = {
 };
 #endif /* CFG_SUPPORT_PASSPOINT */
 
-void wlanRegisterInetAddrNotifier(void)
+void wlanRegisterNotifier(void)
 {
 #if CFG_ENABLE_NET_DEV_NOTIFY
 
@@ -273,7 +246,7 @@ void wlanRegisterInetAddrNotifier(void)
 #endif
 }
 
-void wlanUnregisterInetAddrNotifier(void)
+void wlanUnregisterNotifier(void)
 {
 #if CFG_ENABLE_NET_DEV_NOTIFY
 
@@ -344,6 +317,171 @@ int glUnregisterEarlySuspend(struct early_suspend *prDesc)
 }
 #endif
 
+#if 0
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Utility function for reading data from files on NVRAM-FS
+ *
+ * \param[in]
+ *           filename
+ *           len
+ *           offset
+ * \param[out]
+ *           buf
+ * \return
+ *           actual length of data being read
+ */
+/*----------------------------------------------------------------------------*/
+static int nvram_read(char *filename, char *buf,
+		      ssize_t len, int offset)
+{
+#if CFG_SUPPORT_NVRAM
+	struct file *fd;
+	int retLen = -1;
+#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
+	loff_t pos;
+	char __user *p;
+#endif
+
+	mm_segment_t old_fs = get_fs();
+
+	set_fs(KERNEL_DS);
+
+	fd = filp_open(filename, O_RDONLY, 0644);
+
+	if (IS_ERR(fd)) {
+		DBGLOG(INIT, INFO, "[nvram_read] : failed to open!!\n");
+		set_fs(old_fs);
+		return -1;
+	}
+
+	do {
+		if (fd->f_op == NULL) {
+			DBGLOG(INIT, INFO, "[nvram_read] : f_op is NULL!!\n");
+			break;
+		}
+
+		if (fd->f_pos != offset) {
+			if (fd->f_op->llseek) {
+				if (fd->f_op->llseek(fd, offset, 0) != offset) {
+					DBGLOG(INIT, INFO,
+					       "[nvram_read] : failed to seek!!\n");
+					break;
+				}
+			} else {
+				fd->f_pos = offset;
+			}
+		}
+
+#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
+		p = (__force char __user *)buf;
+		pos = (loff_t)offset;
+
+		retLen = __vfs_read(fd, p, len, &pos);
+#else
+		retLen = fd->f_op->read(fd, buf, len, &fd->f_pos);
+#endif
+		if (retLen < 0)
+			DBGLOG(INIT, ERROR,
+			       "[nvram_read] : read failed!! Error code: %d\n",
+			       retLen);
+	} while (FALSE);
+
+	filp_close(fd, NULL);
+
+	set_fs(old_fs);
+
+	return retLen;
+
+#else /* !CFG_SUPPORT_NVRAM */
+
+	return -EIO;
+
+#endif
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Utility function for writing data to files on NVRAM-FS
+ *
+ * \param[in]
+ *           filename
+ *           buf
+ *           len
+ *           offset
+ * \return
+ *           actual length of data being written
+ */
+/*----------------------------------------------------------------------------*/
+static int nvram_write(char *filename, char *buf,
+		       ssize_t len, int offset)
+{
+#if CFG_SUPPORT_NVRAM
+	struct file *fd;
+	int retLen = -1;
+#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
+	loff_t pos;
+	char __user *p;
+#endif
+
+	mm_segment_t old_fs = get_fs();
+
+	set_fs(KERNEL_DS);
+
+	fd = filp_open(filename, O_WRONLY | O_CREAT, 0644);
+
+	if (IS_ERR(fd)) {
+		DBGLOG(INIT, INFO, "[nvram_write] : failed to open!!\n");
+		set_fs(old_fs);
+		return -1;
+	}
+
+	do {
+		if (fd->f_op == NULL) {
+			DBGLOG(INIT, INFO, "[nvram_write] : f_op is NULL!!\n");
+			break;
+		}
+		/* End of if */
+		if (fd->f_pos != offset) {
+			if (fd->f_op->llseek) {
+				if (fd->f_op->llseek(fd, offset, 0) != offset) {
+					DBGLOG(INIT, INFO,
+					       "[nvram_write] : failed to seek!!\n");
+					break;
+				}
+			} else {
+				fd->f_pos = offset;
+			}
+		}
+
+#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
+		p = (__force char __user *)buf;
+		pos = (loff_t)offset;
+
+		retLen = __vfs_write(fd, p, len, &pos);
+#else
+		retLen = fd->f_op->write(fd, buf, len, &fd->f_pos);
+#endif
+		if (retLen < 0)
+			DBGLOG(INIT, ERROR,
+			       "[nvram_write] : write failed!! Error code: %d\n",
+			       retLen);
+	} while (FALSE);
+
+	filp_close(fd, NULL);
+
+	set_fs(old_fs);
+
+	return retLen;
+
+#else /* !CFG_SUPPORT_NVRAMS */
+
+	return -EIO;
+
+#endif
+}
+#endif
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief API for reading data on NVRAM with flexible length.
@@ -359,14 +497,13 @@ int glUnregisterEarlySuspend(struct early_suspend *prDesc)
  *           FALSE
  */
 /*----------------------------------------------------------------------------*/
-u_int8_t kalCfgDataRead(IN struct GLUE_INFO *prGlueInfo,
-			IN uint32_t u4Offset,
+u_int8_t kalCfgDataRead(IN uint32_t u4Offset,
 			IN ssize_t len, OUT uint16_t *pu2Data)
 {
 	if (pu2Data == NULL)
 		return FALSE;
 
-	if (u4Offset + len > MAX_CFG_FILE_WIFI_REC_SIZE)
+	if (u4Offset + len > CFG_FILE_WIFI_REC_SIZE)
 		return FALSE;
 
 	kalMemCopy(pu2Data, &g_aucNvram[u4Offset], len);
@@ -401,7 +538,7 @@ u_int8_t kalCfgDataRead16(IN struct GLUE_INFO *prGlueInfo,
 	if (pu2Data == NULL)
 		return FALSE;
 
-	if (u4Offset + sizeof(unsigned short) > MAX_CFG_FILE_WIFI_REC_SIZE)
+	if (u4Offset + sizeof(unsigned short) > CFG_FILE_WIFI_REC_SIZE)
 		return FALSE;
 
 	kalMemCopy(pu2Data, &g_aucNvram[u4Offset],
@@ -434,7 +571,7 @@ u_int8_t kalCfgDataRead16(IN struct GLUE_INFO *prGlueInfo,
 u_int8_t kalCfgDataWrite16(IN struct GLUE_INFO *prGlueInfo,
 			   uint32_t u4Offset, uint16_t u2Data)
 {
-	if (u4Offset + sizeof(unsigned short) > MAX_CFG_FILE_WIFI_REC_SIZE)
+	if (u4Offset + sizeof(unsigned short) > CFG_FILE_WIFI_REC_SIZE)
 		return FALSE;
 
 	kalMemCopy(&g_aucNvram[u4Offset], &u2Data,
@@ -449,72 +586,4 @@ u_int8_t kalCfgDataWrite16(IN struct GLUE_INFO *prGlueInfo,
 		return TRUE;
 	}
 #endif
-}
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief API for writing data on NVRAM with 1 bytes fixed length.
- *
- * \param[in]
- *           prGlueInfo
- *           u4Offset
- *           u1Data
- * \return
- *           TRUE
- *           FALSE
- */
-/*----------------------------------------------------------------------------*/
-
-u_int8_t kalCfgDataWrite8(IN struct GLUE_INFO *prGlueInfo,
-			   IN uint32_t u4Offset, IN uint8_t u1Data)
-{
-	if (u4Offset + sizeof(unsigned char) > MAX_CFG_FILE_WIFI_REC_SIZE)
-		return FALSE;
-
-	kalMemCopy(&g_aucNvram[u4Offset], &u1Data,
-		sizeof(unsigned char));
-	return TRUE;
-
-}
-
-static int wlan_netdev_notifier_call(struct notifier_block *nb,
-		unsigned long state, void *ndev)
-{
-#if KERNEL_VERSION(3, 11, 0) <= CFG80211_VERSION_CODE
-	struct netdev_notifier_info *dev_notif_info = ndev;
-	struct net_device *dev = dev_notif_info != NULL ?
-			dev_notif_info->dev : NULL;
-#else
-	struct net_device *dev = ndev;
-#endif
-
-	if (!dev)
-		return NOTIFY_DONE;
-
-	if ((strncmp(dev->name, "wlan", 4) != 0) &&
-#if CFG_SUPPORT_NAN
-			(strncmp(dev->name, "aware", 5) != 0) &&
-#endif
-			(strncmp(dev->name, "p2p", 3) != 0) &&
-			(strncmp(dev->name, "ap", 2) != 0)) {
-		return NOTIFY_DONE;
-	}
-
-	DBGLOG(REQ, TRACE, "%s's new state: %lu %s.\n",
-			dev->name, state, apucDebugNetdevState[state]);
-
-	return NOTIFY_DONE;
-}
-
-static struct notifier_block wlan_netdev_notifier = {
-	.notifier_call = wlan_netdev_notifier_call,
-};
-
-void wlanRegisterNetdevNotifier(void)
-{
-	register_netdevice_notifier(&wlan_netdev_notifier);
-}
-
-void wlanUnregisterNetdevNotifier(void)
-{
-	unregister_netdevice_notifier(&wlan_netdev_notifier);
 }

@@ -400,6 +400,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E1,
 	 .cPatchNameExt = WMT_IC_PATCH_NO_EXT,
+	 .eWmtHwVer = WMTHWVER_E1,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_FALSE,
 	 },
@@ -408,6 +409,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E2,
 	 .cPatchNameExt = WMT_IC_PATCH_NO_EXT,
+	 .eWmtHwVer = WMTHWVER_E2,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_FALSE,
 	 },
@@ -416,6 +418,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E3,
 	 .cPatchNameExt = WMT_IC_PATCH_E3_EXT,
+	 .eWmtHwVer = WMTHWVER_E3,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -424,6 +427,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E4,
 	 .cPatchNameExt = WMT_IC_PATCH_E3_EXT,
+	 .eWmtHwVer = WMTHWVER_E4,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -432,6 +436,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E6,
 	 .cPatchNameExt = WMT_IC_PATCH_E6_EXT,
+	 .eWmtHwVer = WMTHWVER_E6,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_TRUE /*MTK_WCN_BOOL_FALSE */,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -440,6 +445,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E6,
 	 .cPatchNameExt = WMT_IC_PATCH_E6_EXT,
+	 .eWmtHwVer = WMTHWVER_E6,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_TRUE /*MTK_WCN_BOOL_FALSE */,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -448,6 +454,7 @@ static const WMT_IC_INFO_S mt6620_info_table[] = {
 	 .cChipName = WMT_IC_NAME_MT6620,
 	 .cChipVersion = WMT_IC_VER_E7,
 	 .cPatchNameExt = WMT_IC_PATCH_E6_EXT,
+	 .eWmtHwVer = WMTHWVER_E7,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_TRUE /*MTK_WCN_BOOL_FALSE */,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -1169,10 +1176,10 @@ static MTK_WCN_BOOL mt6620_aee_dump_flag_get(VOID)
 
 static INT32 mt6620_ver_check(VOID)
 {
-	UINT32 hw_ver = 0;
-	UINT32 fw_ver = 0;
+	UINT32 hw_ver;
+	UINT32 fw_ver;
 	INT32 iret;
-	const WMT_IC_INFO_S *p_info = NULL;
+	const WMT_IC_INFO_S *p_info;
 	ULONG ctrlPa1;
 	ULONG ctrlPa2;
 
@@ -1199,14 +1206,14 @@ static INT32 mt6620_ver_check(VOID)
 		return -3;
 	}
 
-	WMT_INFO_FUNC("MT6620: wmt ic info: %s.%s (0x%x, patch_ext:%s)\n",
+	WMT_INFO_FUNC("MT6620: wmt ic info: %s.%s (0x%x, WMTHWVER:%d, patch_ext:%s)\n",
 		      p_info->cChipName, p_info->cChipVersion,
-		      p_info->u4HwVer, p_info->cPatchNameExt);
+		      p_info->u4HwVer, p_info->eWmtHwVer, p_info->cPatchNameExt);
 
 	/* hw id & version */
 	ctrlPa1 = (0x00006620UL << 16) | (hw_ver & 0x0000FFFF);
-	/* translated fw rom version */
-	ctrlPa2 = (fw_ver & 0x0000FFFF);
+	/* translated hw version & fw rom version */
+	ctrlPa2 = ((UINT32) (p_info->eWmtHwVer) << 16) | (fw_ver & 0x0000FFFF);
 
 	iret = wmt_core_ctrl(WMT_CTRL_HWIDVER_SET, &ctrlPa1, &ctrlPa2);
 	if (iret)
@@ -1269,8 +1276,8 @@ static const WMT_IC_INFO_S *mt6620_find_wmt_ic_info(const UINT32 hw_ver)
 static INT32 wmt_stp_init_coex(VOID)
 {
 	INT32 iRet;
-	ULONG addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	ULONG addr;
+	WMT_GEN_CONF *pWmtGenConf;
 
 #define COEX_WMT  0
 #define COEX_BT   1

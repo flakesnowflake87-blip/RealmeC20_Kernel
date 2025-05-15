@@ -108,6 +108,47 @@
  ******************************************************************************
  */
 
+/*---------------------------------------------------------------------------*/
+/*!
+ *
+ * \brief This routine is called to generate WPA IE for
+ *        associate request frame.
+ *
+ * \param[in]  prCurrentBss     The Selected BSS description
+ *
+ * \retval The append WPA IE length
+ *
+ * \note
+ *      Called by: AIS module, Associate request
+ */
+/*---------------------------------------------------------------------------*/
+void wapiGenerateWAPIIE(IN struct ADAPTER *prAdapter,
+			IN struct MSDU_INFO *prMsduInfo)
+{
+	uint8_t *pucBuffer;
+
+	ASSERT(prAdapter);
+	ASSERT(prMsduInfo);
+
+	if (prMsduInfo->ucBssIndex != prAdapter->prAisBssInfo->ucBssIndex)
+		return;
+
+	pucBuffer =
+	    (uint8_t *) ((unsigned long)prMsduInfo->prPacket +
+			 (unsigned long)prMsduInfo->u2FrameLength);
+
+	/* ASSOC INFO IE ID: 68 :0x44 */
+	if (/* prWlanInfo->fgWapiMode && */ prAdapter->prGlueInfo->
+	    u2WapiAssocInfoIESz) {
+		kalMemCopy(pucBuffer,
+			   &prAdapter->prGlueInfo->aucWapiAssocInfoIEs,
+			   prAdapter->prGlueInfo->u2WapiAssocInfoIESz);
+		prMsduInfo->u2FrameLength +=
+		    prAdapter->prGlueInfo->u2WapiAssocInfoIESz;
+	}
+
+}
+
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief This routine is called to parse WAPI IE.
@@ -136,6 +177,9 @@ u_int8_t wapiParseWapiIE(IN struct WAPI_INFO_ELEM *prInfoElem,
 
 	DEBUGFUNC("wapiParseWapiIE");
 
+	ASSERT(prInfoElem);
+	ASSERT(prWapiInfo);
+
 	/* Verify the length of the WAPI IE. */
 	if (prInfoElem->ucLength < 6) {
 		DBGLOG(SEC, TRACE, "WAPI IE length too short (length=%d)\n",
@@ -151,7 +195,7 @@ u_int8_t wapiParseWapiIE(IN struct WAPI_INFO_ELEM *prInfoElem,
 		return FALSE;
 	}
 
-	cp = (uint8_t *) &prInfoElem->u2AKMSuiteCount;
+	cp = (uint8_t *) &prInfoElem->u2AuthKeyMgtSuiteCount;
 	u4RemainWapiIeLen = (int32_t) prInfoElem->ucLength - 2;
 
 	do {
@@ -387,7 +431,7 @@ u_int8_t wapiParseWapiIE(IN struct WAPI_INFO_ELEM *prInfoElem,
  */
 /*----------------------------------------------------------------------------*/
 u_int8_t wapiPerformPolicySelection(IN struct ADAPTER *prAdapter,
-	IN struct BSS_DESC *prBss, IN uint8_t ucBssIndex)
+				    IN struct BSS_DESC *prBss)
 {
 	uint32_t i;
 	uint32_t u4PairwiseCipher = 0;
@@ -395,22 +439,20 @@ u_int8_t wapiPerformPolicySelection(IN struct ADAPTER *prAdapter,
 	uint32_t u4AkmSuite = 0;
 	struct WAPI_INFO *prBssWapiInfo;
 	struct WLAN_INFO *prWlanInfo;
-	struct CONNECTION_SETTINGS *prConnSettings;
 
 	DEBUGFUNC("wapiPerformPolicySelection");
+
+	ASSERT(prBss);
 
 	/* Notice!!!! WAPI AP not set the privacy bit for WAI
 	 * and WAI-PSK at WZC configuration mode
 	 */
 	prWlanInfo = &prAdapter->rWlanInfo;
 
-	prConnSettings =
-		aisGetConnSettings(prAdapter, ucBssIndex);
-
 	if (prBss->fgIEWAPI) {
 		prBssWapiInfo = &prBss->rIEWAPI;
 	} else {
-		if (prConnSettings->fgWapiMode == FALSE) {
+		if (prAdapter->rWifiVar.rConnSettings.fgWapiMode == FALSE) {
 			DBGLOG(SEC, TRACE, "-- No Protected BSS\n");
 			return TRUE;
 		}
@@ -422,13 +464,14 @@ u_int8_t wapiPerformPolicySelection(IN struct ADAPTER *prAdapter,
 	/* Select pairwise/group ciphers */
 	for (i = 0; i < prBssWapiInfo->u4PairwiseKeyCipherSuiteCount; i++) {
 		if (prBssWapiInfo->au4PairwiseKeyCipherSuite[i] ==
-		    prConnSettings->u4WapiSelectedPairwiseCipher) {
+		    prAdapter->rWifiVar.
+		    rConnSettings.u4WapiSelectedPairwiseCipher) {
 			u4PairwiseCipher =
 			    prBssWapiInfo->au4PairwiseKeyCipherSuite[i];
 		}
 	}
 	if (prBssWapiInfo->u4GroupKeyCipherSuite ==
-	    prConnSettings->u4WapiSelectedGroupCipher)
+	    prAdapter->rWifiVar.rConnSettings.u4WapiSelectedGroupCipher)
 		u4GroupCipher = prBssWapiInfo->u4GroupKeyCipherSuite;
 
 	/* Exception handler */
@@ -449,7 +492,7 @@ u_int8_t wapiPerformPolicySelection(IN struct ADAPTER *prAdapter,
 	/* Attempt to find any overlapping supported AKM suite. */
 	for (i = 0; i < prBssWapiInfo->u4AuthKeyMgtSuiteCount; i++) {
 		if (prBssWapiInfo->au4AuthKeyMgtSuite[i] ==
-		    prConnSettings->u4WapiSelectedAKMSuite) {
+		    prAdapter->rWifiVar.rConnSettings.u4WapiSelectedAKMSuite) {
 			u4AkmSuite = prBssWapiInfo->au4AuthKeyMgtSuite[i];
 			break;
 		}

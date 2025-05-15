@@ -69,6 +69,7 @@
  ******************************************************************************
  */
 #include "precomp.h"
+#include "gl_p2p_ioctl.h"
 
 /******************************************************************************
  *                              C O N S T A N T S
@@ -137,51 +138,56 @@ wlanoidSendSetQueryP2PCmd(IN struct ADAPTER *prAdapter,
 {
 	struct GLUE_INFO *prGlueInfo;
 	struct CMD_INFO *prCmdInfo;
-	uint8_t *pucCmdBuf;
-	struct mt66xx_chip_info *prChipInfo;
+	struct WIFI_CMD *prWifiCmd;
+	uint8_t ucCmdSeqNum;
 
 	ASSERT(prAdapter);
 
 	prGlueInfo = prAdapter->prGlueInfo;
 	ASSERT(prGlueInfo);
-	prChipInfo = prAdapter->chip_info;
 
 	DEBUGFUNC("wlanoidSendSetQueryP2PCmd");
 	DBGLOG(REQ, TRACE, "Command ID = 0x%08X\n", ucCID);
 
 	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
-			(prChipInfo->u2CmdTxHdrSize + u4SetQueryInfoLen));
+			(CMD_HDR_SIZE + u4SetQueryInfoLen));
 
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
 		return WLAN_STATUS_FAILURE;
 	}
+	/* increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
+	DBGLOG(REQ, TRACE, "ucCmdSeqNum =%d\n", ucCmdSeqNum);
 
 	/* Setup common CMD Info Packet */
 	prCmdInfo->eCmdType = COMMAND_TYPE_NETWORK_IOCTL;
-	prCmdInfo->u2InfoBufLen =
-		(uint16_t) (prChipInfo->u2CmdTxHdrSize + u4SetQueryInfoLen);
+	prCmdInfo->u2InfoBufLen = (uint16_t) (CMD_HDR_SIZE + u4SetQueryInfoLen);
 	prCmdInfo->pfCmdDoneHandler = pfCmdDoneHandler;
 	prCmdInfo->pfCmdTimeoutHandler = pfCmdTimeoutHandler;
 	prCmdInfo->fgIsOid = fgIsOid;
 	prCmdInfo->ucCID = ucCID;
 	prCmdInfo->fgSetQuery = fgSetQuery;
 	prCmdInfo->fgNeedResp = fgNeedResp;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = u4SetQueryInfoLen;
 	prCmdInfo->pvInformationBuffer = pvSetQueryBuffer;
 	prCmdInfo->u4InformationBufferLength = u4SetQueryBufferLen;
 
 	/* Setup WIFI_CMD_T (no payload) */
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen,
-		prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery, &pucCmdBuf, FALSE, 0, S2D_INDEX_CMD_H2N);
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->u2Length = prCmdInfo->u2InfoBufLen -
+		(uint16_t) OFFSET_OF(struct WIFI_CMD, u2Length);
+	prWifiCmd->u2PqId = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
 
 	if (u4SetQueryInfoLen > 0 && pucInfoBuffer != NULL)
-		kalMemCopy(pucCmdBuf,
+		kalMemCopy(prWifiCmd->aucBuffer,
 				pucInfoBuffer, u4SetQueryInfoLen);
 	/* insert into prCmdQueue */
 	kalEnqueueCommand(prGlueInfo, (struct QUE_ENTRY *) prCmdInfo);
@@ -589,7 +595,7 @@ wlanoidSetP2pNetworkAddress(IN struct ADAPTER *prAdapter,
 	/* construct payload of command packet */
 	u4CmdSize =
 		OFFSET_OF(struct CMD_SET_NETWORK_ADDRESS_LIST, arNetAddress) +
-		sizeof(struct CMD_IPV4_NETWORK_ADDRESS) * u4IpAddressCount;
+		sizeof(struct IPV4_NETWORK_ADDRESS) * u4IpAddressCount;
 
 	prCmdNWAddrList = (struct CMD_SET_NETWORK_ADDRESS_LIST *)
 		kalMemAlloc(u4CmdSize, VIR_MEM_TYPE);
@@ -814,7 +820,7 @@ wlanoidSetP2pSetNetworkAddress(IN struct ADAPTER *prAdapter,
 	/* construct payload of command packet */
 	u4CmdSize =
 		OFFSET_OF(struct CMD_SET_NETWORK_ADDRESS_LIST, arNetAddress) +
-	    sizeof(struct CMD_IPV4_NETWORK_ADDRESS) * u4IpAddressCount;
+	    sizeof(struct IPV4_NETWORK_ADDRESS) * u4IpAddressCount;
 
 	if (u4IpAddressCount == 0)
 		u4CmdSize = sizeof(struct CMD_SET_NETWORK_ADDRESS_LIST);
@@ -1457,7 +1463,6 @@ wlanoidSetUApsdParam(IN struct ADAPTER *prAdapter,
 	struct CMD_CUSTOM_UAPSD_PARAM_STRUCT rCmdUapsdParam;
 	struct PM_PROFILE_SETUP_INFO *prPmProfSetupInfo;
 	struct BSS_INFO *prBssInfo;
-	u_int8_t fgIsOid = TRUE;
 
 	DEBUGFUNC("wlanoidSetUApsdParam");
 	DBGLOG(INIT, TRACE, "\n");
@@ -1475,8 +1480,6 @@ wlanoidSetUApsdParam(IN struct ADAPTER *prAdapter,
 	prUapsdParam = (struct PARAM_CUSTOM_UAPSD_PARAM_STRUCT *) pvSetBuffer;
 
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prUapsdParam->ucBssIdx);
-	if (!prBssInfo)
-		return WLAN_STATUS_NOT_SUPPORTED;
 	prPmProfSetupInfo = &prBssInfo->rPmProfSetupInfo;
 
 	kalMemZero(&rCmdUapsdParam,
@@ -1504,10 +1507,6 @@ wlanoidSetUApsdParam(IN struct ADAPTER *prAdapter,
 	rCmdUapsdParam.ucMaxSpLen = prUapsdParam->ucMaxSpLen;
 	prPmProfSetupInfo->ucUapsdSp = prUapsdParam->ucMaxSpLen;
 
-	if (prAdapter->prGlueInfo)
-		fgIsOid = (prAdapter->prGlueInfo->u4TxThreadPid
-				!= KAL_GET_CURRENT_THREAD_ID());
-
 #if 0
 	return wlanSendSetQueryCmd(prAdapter,
 				CMD_ID_SET_UAPSD_PARAM,
@@ -1526,7 +1525,7 @@ wlanoidSetUApsdParam(IN struct ADAPTER *prAdapter,
 				prBssInfo->ucBssIndex,
 				TRUE,
 				FALSE,
-				fgIsOid,
+				TRUE,
 				nicCmdEventSetCommon,
 				nicOidCmdTimeoutCommon,
 				sizeof(struct CMD_CUSTOM_UAPSD_PARAM_STRUCT),
@@ -1728,18 +1727,13 @@ uint32_t
 wlanoidAbortP2pScan(IN struct ADAPTER *prAdapter,
 		OUT void *pvQueryBuffer,
 		IN uint32_t u4QueryBufferLen,
-		OUT uint32_t *pu4QueryInfoLen)
-{
-	uint8_t ucBssIdx;
+		OUT uint32_t *pu4QueryInfoLen) {
+
+	DBGLOG(P2P, INFO, "wlanoidAbortP2pScan\n");
 
 	ASSERT(prAdapter);
 
-	ucBssIdx = *((uint8_t *) pvQueryBuffer);
-
-	if (ucBssIdx == prAdapter->ucP2PDevBssIdx)
-		p2pDevFsmRunEventScanAbort(prAdapter, ucBssIdx);
-	else
-		p2pRoleFsmRunEventScanAbort(prAdapter, ucBssIdx);
+	p2pDevFsmRunEventScanAbort(prAdapter, NULL);
 
 	return WLAN_STATUS_SUCCESS;
 }

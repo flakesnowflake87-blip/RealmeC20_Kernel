@@ -342,13 +342,8 @@ enum ENUM_RF_AT_FUNCID {
 	RF_AT_FUNCID_SET_MPS_PKT_CNT = 131,
 	RF_AT_FUNCID_SET_MPS_PWR_GAIN = 132,
 	RF_AT_FUNCID_SET_MPS_NSS = 133,
-	RF_AT_FUNCID_SET_MPS_PACKAGE_BW = 134,
+	RF_AT_FUNCID_SET_MPS_PACKAGE_BW = 134
 #endif
-#if CFG_SUPPORT_ANT_SWAP
-	/* Antenna swap feature*/
-	RF_AT_FUNCID_SET_ANT_SWP = 153,
-#endif
-
 };
 
 /* Command */
@@ -428,7 +423,8 @@ enum ENUM_RF_AUTOTEST_STATE {
 uint32_t rftestSetATInfo(IN struct ADAPTER *prAdapter,
 		uint32_t u4FuncIndex, uint32_t u4FuncData);
 
-uint32_t rftestQueryATInfo(IN struct ADAPTER *prAdapter,
+uint32_t
+rftestQueryATInfo(IN struct ADAPTER *prAdapter,
 		uint32_t u4FuncIndex, uint32_t u4FuncData,
 		OUT void *pvQueryBuffer, IN uint32_t u4QueryBufferLen);
 

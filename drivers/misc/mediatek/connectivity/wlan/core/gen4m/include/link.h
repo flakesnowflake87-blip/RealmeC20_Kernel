@@ -141,14 +141,16 @@ struct LINK_MGMT {
 /* Support AP Selection */
 #define LINK_MGMT_INIT(prLinkMgmt) \
 	do { \
-		LINK_INITIALIZE(&((struct LINK_MGMT *)prLinkMgmt)->rUsingLink); \
-		LINK_INITIALIZE(&((struct LINK_MGMT *)prLinkMgmt)->rFreeLink); \
+		LINK_INITIALIZE(&((struct LINK_MGMT *)prLinkMgmt)-> \
+		rUsingLink); \
+		LINK_INITIALIZE(&((struct LINK_MGMT *)prLinkMgmt)-> \
+		rFreeLink); \
 	} while (0)
 
 #define LINK_MGMT_GET_ENTRY(prLinkMgmt, prEntry, EntryType, memType) \
 	do { \
-		LINK_REMOVE_HEAD(&((struct LINK_MGMT *)prLinkMgmt)->rFreeLink, \
-			prEntry, EntryType*); \
+		LINK_REMOVE_HEAD(&((struct LINK_MGMT *)prLinkMgmt)-> \
+			rFreeLink, prEntry, EntryType*); \
 		if (!prEntry) \
 			prEntry = kalMemAlloc(sizeof(EntryType), memType); \
 		if (prEntry) {\
@@ -173,8 +175,10 @@ struct LINK_MGMT {
 #define LINK_MGMT_UNINIT(prLinkMgmt, EntryType, memType) \
 	do { \
 		EntryType *prEntry = NULL; \
-		struct LINK *prFreeList = &((struct LINK_MGMT *)prLinkMgmt)->rFreeLink; \
-		struct LINK *prUsingList = &((struct LINK_MGMT *)prLinkMgmt)->rUsingLink; \
+		struct LINK *prFreeList = &((struct LINK_MGMT *)prLinkMgmt)-> \
+			rFreeLink; \
+		struct LINK *prUsingList = &((struct LINK_MGMT *)prLinkMgmt) \
+			->rUsingLink; \
 		LINK_REMOVE_HEAD(prFreeList, prEntry, EntryType *); \
 		while (prEntry) { \
 			kalMemFree(prEntry, memType, sizeof(EntryType)); \
@@ -208,10 +212,12 @@ struct LINK_MGMT {
 	(((struct LINK *)(prLink))->prNext == (struct LINK_ENTRY *)(prLink))
 
 #define LINK_ENTRY_IS_VALID(prEntry) \
-	(((struct LINK_ENTRY *)(prEntry))->prNext != (struct LINK_ENTRY *)NULL && \
+	(((struct LINK_ENTRY *)(prEntry))->prNext != \
+		(struct LINK_ENTRY *)NULL && \
 	((struct LINK_ENTRY *)(prEntry))->prNext != \
 		(struct LINK_ENTRY *)INVALID_LINK_POISON1 && \
-	((struct LINK_ENTRY *)(prEntry))->prPrev != (struct LINK_ENTRY *)NULL && \
+	((struct LINK_ENTRY *)(prEntry))->prPrev != \
+		(struct LINK_ENTRY *)NULL && \
 	((struct LINK_ENTRY *)(prEntry))->prPrev != \
 	(struct LINK_ENTRY *)INVALID_LINK_POISON2)
 
@@ -221,7 +227,8 @@ struct LINK_MGMT {
  *       so we can check if it is valid before parsing the LINK.
  */
 #define LINK_IS_INVALID(prLink)         \
-	(((struct LINK *)(prLink))->prNext == (struct LINK_ENTRY *)NULL)
+	(((struct LINK *)(prLink))->prNext == \
+		(struct LINK_ENTRY *)NULL)
 
 #define LINK_IS_VALID(prLink)           \
 	(((struct LINK *)(prLink))->prNext != (struct LINK_ENTRY *)NULL)
@@ -370,14 +377,10 @@ static __KAL_INLINE__ void __linkAdd(IN struct LINK_ENTRY
 				     *prNew, IN struct LINK_ENTRY *prPrev,
 				     IN struct LINK_ENTRY *prNext)
 {
-	if (prNext) {
-		prNext->prPrev = prNew;
-		prNew->prNext = prNext;
-	}
-	if (prPrev) {
-		prNew->prPrev = prPrev;
-		prPrev->prNext = prNew;
-	}
+	prNext->prPrev = prNew;
+	prNew->prNext = prNext;
+	prNew->prPrev = prPrev;
+	prPrev->prNext = prNew;
 }				/* end of __linkAdd() */
 
 /*----------------------------------------------------------------------------*/
@@ -427,10 +430,8 @@ static __KAL_INLINE__ void linkAddTail(IN struct LINK_ENTRY
 static __KAL_INLINE__ void __linkDel(IN struct LINK_ENTRY
 				     *prPrev, IN struct LINK_ENTRY *prNext)
 {
-	if (prNext)
-		prNext->prPrev = prPrev;
-	if (prPrev)
-		prPrev->prNext = prNext;
+	prNext->prPrev = prPrev;
+	prPrev->prNext = prNext;
 }				/* end of __linkDel() */
 
 /*----------------------------------------------------------------------------*/

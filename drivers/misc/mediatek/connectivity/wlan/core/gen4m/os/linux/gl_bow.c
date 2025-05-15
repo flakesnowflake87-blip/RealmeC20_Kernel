@@ -903,8 +903,7 @@ static int bowStop(IN struct net_device *prDev)
  * \retval NETDEV_TX_BUSY - on failure, packet will be discarded by upper layer.
  */
 /*----------------------------------------------------------------------------*/
-static netdev_tx_t bowHardStartXmit(IN struct sk_buff *prSkb,
-		IN struct net_device *prDev)
+static int bowHardStartXmit(IN struct sk_buff *prSkb, IN struct net_device *prDev)
 {
 	struct GLUE_INFO *prGlueInfo = *((struct GLUE_INFO **) netdev_priv(prDev));
 
@@ -988,8 +987,7 @@ static netdev_tx_t bowHardStartXmit(IN struct sk_buff *prSkb,
  * \retval NETDEV_TX_BUSY - on failure, packet will be discarded by upper layer.
  */
 /*----------------------------------------------------------------------------*/
-static netdev_tx_t bowHardStartXmit(IN struct sk_buff *prSkb,
-		IN struct net_device *prDev)
+static int bowHardStartXmit(IN struct sk_buff *prSkb, IN struct net_device *prDev)
 {
 	struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate = (struct NETDEV_PRIVATE_GLUE_INFO *) NULL;
 	struct GLUE_INFO *prGlueInfo = NULL;
@@ -1024,6 +1022,7 @@ static netdev_tx_t bowHardStartXmit(IN struct sk_buff *prSkb,
 		GLUE_SET_PKT_FLAG(prSkb, ENUM_PKT_1X);
 
 	if (kalHardStartXmit(prSkb, prDev, prGlueInfo, ucBssIndex) == WLAN_STATUS_SUCCESS) {
+		/* Successfully enqueue to Tx queue */
 		/* Successfully enqueue to Tx queue */
 	}
 
@@ -1097,7 +1096,7 @@ u_int8_t kalInitBowDevice(IN struct GLUE_INFO *prGlueInfo, IN const char *prDevN
 			   prGlueInfo->rBowInfo.prDevHandler->dev_addr, ETH_ALEN);
 
 		/* 1.3 register callback functions */
-		prGlueInfo->rBowInfo.prDevHandler->needed_headroom =
+		prGlueInfo->rBowInfo.prDevHandler->needed_headroom +=
 			NIC_TX_DESC_AND_PADDING_LENGTH + prChipInfo->txd_append_size;
 		prGlueInfo->rBowInfo.prDevHandler->netdev_ops = &bow_netdev_ops;
 

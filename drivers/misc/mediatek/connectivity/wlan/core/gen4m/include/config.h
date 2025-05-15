@@ -1,4 +1,4 @@
-/*******************************************************************************
+/******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
  * distribute this software, you may choose to be licensed under
@@ -64,8 +64,6 @@
 #ifndef _CONFIG_H
 #define _CONFIG_H
 
-#include <linux/version.h>
-
 /*******************************************************************************
  *                         C O M P I L E R   F L A G S
  *******************************************************************************
@@ -83,15 +81,17 @@
 /* 2 Flags for OS capability */
 
 #if defined(_HIF_SDIO)
-/* #ifdef CONFIG_X86 */
-/*Kernel-3.10-ARM did not provide X86_FLAG & HIF shouldn't bind platform*/
-#if (CFG_MTK_ANDROID_WMT)
-#define MTK_WCN_HIF_SDIO		1
+#ifdef LINUX
+#ifdef CONFIG_X86
+#define MTK_WCN_HIF_SDIO        0
 #else
-#define MTK_WCN_HIF_SDIO		0
+#define MTK_WCN_HIF_SDIO        1
 #endif
 #else
-#define MTK_WCN_HIF_SDIO		0
+#define MTK_WCN_HIF_SDIO            0
+#endif
+#else
+#define MTK_WCN_HIF_SDIO	0
 #endif
 
 #if defined(_HIF_AXI)
@@ -111,7 +111,9 @@
 
 
 /* Android build-in driver switch, Mike 2016/11/11*/
-#define CFG_BUILT_IN_DRIVER         1 /* Rissu: Force to one */
+#ifndef CFG_BUILT_IN_DRIVER
+#define CFG_BUILT_IN_DRIVER         0
+#endif
 
 /* Mike 2016/09/01 ALPS update K3.18 80211_disconnect to K4.4 version*/
 /* work around for any alps K3.18 platform*/
@@ -156,14 +158,13 @@
 #define CFG_MET_TAG_SUPPORT             0
 #endif
 
-#ifndef CFG_SUPPORT_PERF_IND
-#define CFG_SUPPORT_PERF_IND            1
-#endif
-
 /* Support AP Selection */
 #define CFG_SUPPORT_RSN_SCORE		0
 #define CFG_SELECT_BSS_BASE_ON_MULTI_PARAM	1
+#define CFG_MAX_NUM_OF_CHNL_INFO		50
 #define CFG_SUPPORT_CHNL_CONFLICT_REVISE	0
+
+#define CFG_FORCE_USE_20BW			1
 
 /*------------------------------------------------------------------------------
  * Driver config
@@ -195,7 +196,7 @@
 /* Quiet (802.11h) */
 #define CFG_SUPPORT_QUIET	0
 /* Spectrum Management (802.11h): TPC and DFS */
-#define CFG_SUPPORT_SPEC_MGMT	1
+#define CFG_SUPPORT_SPEC_MGMT       0
 #else
 /* Quiet (802.11h) */
 #define CFG_SUPPORT_QUIET	0
@@ -220,9 +221,6 @@
 
 #define CFG_SUPPORT_BFER	0
 #define CFG_SUPPORT_BFEE	1
-/* Enable Bfee only when AP's Nss > STA's Nss */
-#define CFG_SUPPORT_CONDITIONAL_BFEE	1
-
 #define CFG_SUPPORT_WAPI	1
 
 /* Enable QA Tool Support */
@@ -242,12 +240,6 @@
 /* Enable A-MSDU RX Reordering Support */
 #define CFG_SUPPORT_RX_AMSDU	1
 
-/* Enable Detection for 2021 Frag/AGG Attack from WFA */
-#define CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION 1
-
-/* Enable handling BA Request advance SSN before data in previous window */
-#define CFG_SUPPORT_RX_OOR_BAR	1
-
 /* Enable Android wake_lock operations */
 #ifndef CFG_ENABLE_WAKE_LOCK
 #define CFG_ENABLE_WAKE_LOCK	1
@@ -257,35 +249,8 @@
 
 #define CFG_SUPPORT_LOWLATENCY_MODE	1
 
-#define CFG_SUPPORT_ANT_SWAP		1
-
-/* If skb_buff mark field marked with pre-defined value, change priority to VO*/
+/* If skb_buff mark field is 0x5a, change priority to VO (Customer Feature)*/
 #define CFG_CHANGE_PRIORITY_BY_SKB_MARK_FIELD	1
-
-#if KERNEL_VERSION(4, 4, 0) <= LINUX_VERSION_CODE
-#define CFG_SUPPORT_DATA_STALL			1
-#define CFG_SUPPORT_BIGDATA_PIP			1
-#else
-#define CFG_SUPPORT_DATA_STALL			0
-#define CFG_SUPPORT_BIGDATA_PIP			0
-#endif
-
-#define CFG_SUPPORT_HE_ER               1
-
-#define CFG_SUPPORT_ICS                 0
-
-#define CFG_SUPPORT_BAR_DELAY_INDICATION	1
-
-/*------------------------------------------------------------------------------
- * Flags of 6G SUPPORT
- *------------------------------------------------------------------------------
- */
-#if 0 /* KERNEL_VERSION(5, 4, 0) > LINUX_VERSION_CODE */
-#ifdef CFG_SUPPORT_WIFI_6G
-#undef CFG_SUPPORT_WIFI_6G
-#endif
-#define CFG_SUPPORT_WIFI_6G			0
-#endif
 
 /*------------------------------------------------------------------------------
  * Flags of Buffer mode SUPPORT
@@ -320,18 +285,6 @@
 #define CFG_TX_MAX_PKT_SIZE                     1600
 #define CFG_NATIVE_802_11                       0
 #endif
-
-/* By using GRO at NAPI level, the driver is doing the aggregation to a large
- * SKB very early, right at the receive completion handler. This means that all
- * the next functions in the receive stack do much less processing.
- * The GRO feature could enhance "Rx" tput.
- */
-#define CFG_SUPPORT_RX_GRO                      1
-#if CFG_SUPPORT_RX_GRO
-#define CFG_SUPPORT_SKIP_RX_GRO_FOR_TC          1
-#else
-#define CFG_SUPPORT_SKIP_RX_GRO_FOR_TC          0
-#endif /* CFG_SUPPORT_RX_GRO */
 
 /* 2 Flags for Driver Parameters */
 /*------------------------------------------------------------------------------
@@ -374,13 +327,6 @@
  */
 #define CFG_SDIO_RX_AGG                              1
 
-/* 1: Enable SDIO RX Tasklet De-Aggregation
- * 0(default): Disable
- */
-#ifndef CFG_SDIO_RX_AGG_TASKLET
-#define CFG_SDIO_RX_AGG_TASKLET                      0
-#endif
-
 #if (CFG_SDIO_RX_AGG == 1) && (CFG_SDIO_INTR_ENHANCE == 0)
 #error \
 	"CFG_SDIO_INTR_ENHANCE should be 1 once CFG_SDIO_RX_AGG equals to 1"
@@ -414,8 +360,6 @@
 #define CFG_RX_DIRECT_USB                           1
 #endif
 
-#define CFG_HW_WMM_BY_BSS                           1
-
 /*------------------------------------------------------------------------------
  * Flags and Parameters for Integration
  *------------------------------------------------------------------------------
@@ -428,12 +372,10 @@
 
 #define MAX_BSSID_NUM			4	/* MAX BSSID number */
 
+#if (MTK_WCN_HIF_SDIO == 1) || (MTK_WCN_HIF_AXI == 1)
 #define CFG_CHIP_RESET_SUPPORT          1
-
-#if CFG_CHIP_RESET_SUPPORT
-#define CFG_CHIP_RESET_HANG		0
 #else
-#define CFG_CHIP_RESET_HANG		0
+#define CFG_CHIP_RESET_SUPPORT		0
 #endif
 
 #define HW_BSSID_NUM			4	/* HW BSSID number by chip */
@@ -457,14 +399,10 @@
  */
 
 /*! Maximum number of SW TX packet queue */
-#if (CFG_SUPPORT_CONNAC2X == 1)
-#define CFG_TX_MAX_PKT_NUM                      2048
-#else
 #define CFG_TX_MAX_PKT_NUM                      1024
-#endif
 
 /*! Maximum number of SW TX CMD packet buffer */
-#define CFG_TX_MAX_CMD_PKT_NUM                  64
+#define CFG_TX_MAX_CMD_PKT_NUM                  32
 
 /*------------------------------------------------------------------------------
  * Flags and Parameters for RX path
@@ -514,7 +452,7 @@
 #define CFG_RX_MIN_PKT_SIZE	10 /*!< 802.11 Control Frame is 10 bytes */
 
 /*! RX BA capability */
-#define CFG_NUM_OF_RX_BA_AGREEMENTS             80
+#define CFG_NUM_OF_RX_BA_AGREEMENTS             8
 #if CFG_M0VE_BA_TO_DRIVER
 #define CFG_RX_BA_MAX_WINSIZE                   64
 #endif
@@ -532,20 +470,10 @@
  * Flags and Parameters for CMD/RESPONSE
  *------------------------------------------------------------------------------
  */
-/* WMT expects wlan driver on/off to be completed within 4s.
- * To avoid on/off timeout, only polling ready bit in 1s
- * (CFG_RESPONSE_POLLING_TIMEOUT * CFG_RESPONSE_POLLING_DELAY).
- */
-#if CFG_MTK_ANDROID_WMT
-#define CFG_RESPONSE_POLLING_TIMEOUT            500
-#else
 #define CFG_RESPONSE_POLLING_TIMEOUT            1000
-#endif
 #define CFG_RESPONSE_POLLING_DELAY              5
 
-#define CFG_DEFAULT_SLEEP_WAITING_INTERVAL      50
-
-#define CFG_PRE_CAL_SLEEP_WAITING_INTERVAL      50000
+#define CFG_POWER_CTRL_ACQUIRE_RES_TIMEOUT      3000
 
 /*------------------------------------------------------------------------------
  * Flags and Parameters for Protocol Stack
@@ -560,7 +488,7 @@
 #define CFG_RAW_BUFFER_SIZE                      1024
 
 /*! Maximum size of IE buffer of each SCAN record */
-#define CFG_IE_BUFFER_SIZE                      800
+#define CFG_IE_BUFFER_SIZE                      512
 
 /*------------------------------------------------------------------------------
  * Flags and Parameters for Power management
@@ -571,7 +499,6 @@
 
 /* debug which packet wake up host */
 #define CFG_SUPPORT_WAKEUP_REASON_DEBUG         1
-#define CFG_MODIFY_TX_POWER_BY_BAT_VOLT         0
 
 #define CFG_INIT_POWER_SAVE_PROF		ENUM_PSP_FAST_SWITCH
 
@@ -592,27 +519,21 @@
 #define CFG_SUPPORT_DROP_ALL_MC_PACKET		0
 
 /*------------------------------------------------------------------------------
+ * 802.11i RSN Pre-authentication PMKID cahce maximun number
+ *------------------------------------------------------------------------------
+ */
+/*!< max number of PMKID cache 16(default) : The Max PMKID cache */
+#define CFG_MAX_PMKID_CACHE                     16
+
+/*------------------------------------------------------------------------------
  * Auto Channel Selection maximun channel number
  *------------------------------------------------------------------------------
  */
 /* ARRAY_SIZE(mtk_5ghz_channels) + ARRAY_SIZE(mtk_2ghz_channels) */
+#define MAX_CHN_NUM			39
 
-#define MAX_CHN_NUM			(MAX_2G_BAND_CHN_NUM + \
-					MAX_5G_BAND_CHN_NUM + \
-					MAX_6G_BAND_CHN_NUM)
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
 #define MAX_2G_BAND_CHN_NUM		14
-#define MAX_5G_BAND_CHN_NUM		28
-#define MAX_6G_BAND_CHN_NUM		59 /* will be 59 for full channel set */
-#define MAX_PER_BAND_CHN_NUM		59
-#else
-#define MAX_2G_BAND_CHN_NUM		14
-#define MAX_5G_BAND_CHN_NUM		28
-#define MAX_6G_BAND_CHN_NUM		0
-#define MAX_PER_BAND_CHN_NUM		28
-#endif
-
+#define MAX_5G_BAND_CHN_NUM		(MAX_CHN_NUM - MAX_2G_BAND_CHN_NUM)
 #define ACS_PRINT_BUFFER_LEN		200
 
 /*------------------------------------------------------------------------------
@@ -631,21 +552,10 @@
  */
 #define SCAN_CMD_SSID_NUM                       (4)
 #define SCAN_CMD_CHNL_NUM                       (32)
-
-#if 0
-/* to be compatible with old FW, we set ssid num to 0 here,
- * we should set correct num when query of scan capability from FW is done
- */
-#define SCAN_CMD_EXT_SSID_NUM                   (0)
-#define SCAN_CMD_EXT_CHNL_NUM                   (32)
-#else
 #define SCAN_CMD_EXT_SSID_NUM                   (6)
 #define SCAN_CMD_EXT_CHNL_NUM                   (32)
-#endif
-#define CFG_SCAN_OOB_MAX_NUM			(4)
 #define CFG_SCAN_SSID_MAX_NUM (SCAN_CMD_SSID_NUM+SCAN_CMD_EXT_SSID_NUM)
 #define MAXIMUM_OPERATION_CHANNEL_LIST (SCAN_CMD_CHNL_NUM+SCAN_CMD_EXT_CHNL_NUM)
-
 
 /*------------------------------------------------------------------------------
  * Flags and Parameters for Load Setup Default
@@ -682,6 +592,8 @@
 #define CFG_RX_PKTS_DUMP                        0
 
 #define CFG_SUPPORT_STATISTICS			1
+
+#define CFG_ASSERT_DUMP                         1
 
 #define CFG_SUPPORT_TRACE_TC4			1
 /*------------------------------------------------------------------------------
@@ -728,18 +640,10 @@
 #endif
 
 /* Allow connection with no P2P IE device */
-#ifndef CFG_P2P_CONNECT_ALL_BSS
 #define CFG_P2P_CONNECT_ALL_BSS            0
-#endif
 
 /* Allow setting max P2P GO client count */
-#ifndef CFG_P2P_DEFAULT_CLIENT_COUNT
 #define CFG_P2P_DEFAULT_CLIENT_COUNT 0
-#endif
-
-#ifndef CFG_P2P_FORCE_ROC_CSA
-#define CFG_P2P_FORCE_ROC_CSA 1
-#endif
 
 /*------------------------------------------------------------------------------
  * Flags for GTK rekey offload
@@ -783,23 +687,9 @@
 #define CFG_HOTSPOT_OPTIMIZATION_DTIM           1
 #define CFG_AUTO_CHANNEL_SEL_SUPPORT            1
 
-#define CFG_SUPPORT_SOFTAP_WPA3	1
-
-#define CFG_HOTSPOT_SUPPORT_ADJUST_SCC          1
-
-#if CFG_TC1_FEATURE
-#define CFG_HOTSPOT_SUPPORT_FORCE_ACS_SCC       0
-#elif CFG_TC10_FEATURE
-#define CFG_HOTSPOT_SUPPORT_FORCE_ACS_SCC       1
-#else
-#define CFG_HOTSPOT_SUPPORT_FORCE_ACS_SCC       0
-#endif
-
 #ifndef CFG_ENABLE_UNIFY_WIPHY
 #define CFG_ENABLE_UNIFY_WIPHY 1
 #endif
-
-#define CFG_ENABLE_OFFCHANNEL_TX 1
 
 /*------------------------------------------------------------------------------
  * Configuration Flags (Linux Only)
@@ -817,13 +707,13 @@
 #define CFG_ENABLE_STATISTICS_BUFFERING         0
 #endif
 #define CFG_STATISTICS_VALID_CYCLE              2000
-#define CFG_LINK_QUALITY_VALID_PERIOD           1000
+#define CFG_LINK_QUALITY_VALID_PERIOD           500
 
 /*------------------------------------------------------------------------------
  * Migration Option
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_ADHOC                       0
+#define CFG_SUPPORT_ADHOC                       1
 #define CFG_SUPPORT_AAA                         1
 
 #define CFG_SUPPORT_BCM                         0
@@ -847,7 +737,7 @@
 #endif
 
 #define CFG_SUPPORT_AIS_5GHZ                    1
-#define CFG_SUPPORT_DETECT_SECURITY_MODE_CHANGE 0
+#define CFG_SUPPORT_BEACON_CHANGE_DETECTION     0
 
 /*------------------------------------------------------------------------------
  * Option for NVRAM and Version Checking
@@ -897,10 +787,7 @@
 #define CFG_SUPPORT_UL_PSMP		0
 
 /* Roaming System */
-#ifndef CFG_SUPPORT_ROAMING
-#define CFG_SUPPORT_ROAMING		1
-#endif
-
+#define CFG_SUPPORT_ROAMING         1
 #if (CFG_SUPPORT_ROAMING == 1)
 
 /* Roaming feature: skip roaming when only one ESSID AP
@@ -909,11 +796,12 @@
  * to trigger roaming scan
  * after skip roaming in one ESSID AP case
  */
-#define CFG_SUPPORT_ROAMING_SKIP_ONE_AP		0
-#define CFG_SUPPORT_DRIVER_ROAMING		0
+#define CFG_SUPPORT_ROAMING_SKIP_ONE_AP		1
+#if CFG_SUPPORT_ROAMING_SKIP_ONE_AP
+#define CFG_MAX_NUM_ROAM_BSS_LIST		64
+#endif
 #else
 #define CFG_SUPPORT_ROAMING_SKIP_ONE_AP		0
-#define CFG_SUPPORT_DRIVER_ROAMING		0
 
 #endif /* CFG_SUPPORT_ROAMING */
 
@@ -929,17 +817,9 @@
 
 #define CFG_SHOW_MACADDR_SOURCE			1
 
-#if BUILD_QA_DBG
 #define CFG_SHOW_FULL_MACADDR     1
-#define CFG_SHOW_FULL_IPADDR			1
-#else
-#define CFG_SHOW_FULL_MACADDR     0
-#define CFG_SHOW_FULL_IPADDR			0
-#endif
 
-#ifndef CFG_SUPPORT_VO_ENTERPRISE
 #define CFG_SUPPORT_VO_ENTERPRISE               1
-#endif
 #define CFG_SUPPORT_WMM_AC                      1
 #if CFG_SUPPORT_VO_ENTERPRISE
 #define CFG_SUPPORT_802_11R                     1
@@ -948,43 +828,11 @@
 #define CFG_SUPPORT_802_11R                     0
 #define CFG_SUPPORT_802_11K                     0
 #endif
-#define CFG_SUPPORT_MBO                         1
-#define CFG_SUPPORT_OCE				1
-
-#define CFG_SUPPORT_SUPPLICANT_SME              0
-
-#ifndef CFG_SUPPORT_CRYPTO
-#define CFG_SUPPORT_CRYPTO			0
-#endif
-
-#if (CFG_SUPPORT_802_11K == 1) && (CFG_SUPPORT_SUPPLICANT_SME == 1)
-/* Enable to do beacon reports by supplicant.
- * Beacon report is a sub-feature of 802_11K(RRM)
- * Supplicant only support RRM when SME supported.
- */
-#define CFG_SUPPORT_RM_BEACON_REPORT_BY_SUPPLICANT 0
-#else
-#define CFG_SUPPORT_RM_BEACON_REPORT_BY_SUPPLICANT 0
-#endif
 
 /* Support 802.11v Wireless Network Management */
-#ifndef CFG_SUPPORT_802_11V
 #define CFG_SUPPORT_802_11V                     1
-#endif
-
-#define CFG_SUPPORT_802_11V_TIMING_MEASUREMENT	0
-
-#if (CFG_SUPPORT_802_11V == 1)
 #define CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT  1
-#else
-#define CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT  0
-#endif
-
-#if (CFG_SUPPORT_802_11V_BSS_TRANSITION_MGT == 1) && (CFG_TC10_FEATURE == 1)
-#define CFG_SUPPORT_802_11V_BTM_OFFLOAD 1
-#else
-#define CFG_SUPPORT_802_11V_BTM_OFFLOAD 0
-#endif
+#define CFG_SUPPORT_802_11V_TIMING_MEASUREMENT	0
 
 #if (CFG_SUPPORT_802_11V_TIMING_MEASUREMENT == 1) && \
 	(CFG_SUPPORT_802_11V == 0)
@@ -994,13 +842,6 @@
 
 #define WNM_UNIT_TEST CFG_SUPPORT_802_11V
 
-#define CFG_SUPPORT_802_11V_MBSSID		0
-#if (CFG_SUPPORT_802_11AX == 1)
-/*11v MBSSID is mandatory for 11ax*/
-#undef CFG_SUPPORT_802_11V_MBSSID
-#define CFG_SUPPORT_802_11V_MBSSID		1
-#endif
-
 #define CFG_SUPPORT_PPR2			1
 #define CFG_DRIVER_COMPOSE_ASSOC_REQ		1
 #define CFG_SUPPORT_802_11AC			1
@@ -1008,9 +849,6 @@
 
 #define CFG_SUPPORT_WFD				1
 #define CFG_SUPPORT_WFD_COMPOSE_IE		1
-
-/* Support Customer vendor IE */
-#define CFG_SUPPORT_CUSTOM_VENDOR_IE		1
 
 #define CFG_SUPPORT_HOTSPOT_WPS_MANAGER		1
 #define CFG_SUPPORT_NFC_BEAM_PLUS		1
@@ -1021,24 +859,15 @@
 /* Enable driver support multicore */
 #define CFG_SUPPORT_MULTITHREAD			1
 
-#define CFG_SUPPORT_MTK_SYNERGY			1
+#define CFG_SUPPORT_MTK_SYNERGY             1
 
-#define CFG_SUPPORT_VHT_IE_IN_2G		1
+#define CFG_SUPPORT_VHT_IE_IN_2G             1
 
-#define CFG_SUPPORT_PWR_LIMIT_COUNTRY		1
+#define CFG_SUPPORT_PWR_LIMIT_COUNTRY       1
 
-#if (CFG_SUPPORT_WIFI_6G == 1)
-/* Add dynamic tx power support for 6G before turning on this option !!! */
-#define CFG_SUPPORT_DYNAMIC_PWR_LIMIT		1
-#else
-#define CFG_SUPPORT_DYNAMIC_PWR_LIMIT		1
-#endif
+#define CFG_FIX_2_TX_PORT					0
 
-#define CFG_SUPPORT_DYNAMIC_PWR_LIMIT_ANT_TAG	1
-
-#define CFG_FIX_2_TX_PORT			0
-
-#define CFG_CHANGE_CRITICAL_PACKET_PRIORITY	1
+#define CFG_CHANGE_CRITICAL_PACKET_PRIORITY 0
 
 /*------------------------------------------------------------------------------
  * Flags of bus error tolerance
@@ -1056,7 +885,7 @@
  * Flags of SDIO test pattern support
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_SDIO_READ_WRITE_PATTERN 0
+#define CFG_SUPPORT_SDIO_READ_WRITE_PATTERN 1
 
 /*------------------------------------------------------------------------------
  * Flags of Workaround
@@ -1066,6 +895,13 @@
 
 /* Handle IOT issue for 11ac certification */
 #define CFG_OPMODE_CONFLICT_OPINFO	1
+
+
+/*------------------------------------------------------------------------------
+ * Flags of 5G NVRAM SUPPORT
+ *------------------------------------------------------------------------------
+ */
+#define CFG_SUPPORT_NVRAM_5G                0
 
 /*------------------------------------------------------------------------------
  * Flags of Packet Lifetime Profiling Mechanism
@@ -1077,10 +913,6 @@
 #define CFG_ENABLE_PER_STA_STATISTICS       1
 
 #define CFG_ENABLE_PER_STA_STATISTICS_LOG 1
-
-#define CFG_SUPPORT_TX_LATENCY_STATS 1
-
-#define CFG_SUPPORT_LLS 1
 
 /*------------------------------------------------------------------------------
  * Flags for prepare the FW compile flag
@@ -1100,14 +932,18 @@
  * Flags of SCHEDULE SCAN SUPPORT
  *------------------------------------------------------------------------------
  */
+#define CFG_SUPPORT_PNO                    (1)
 #define CFG_SUPPORT_SCHED_SCAN             (1)
-#define CFG_SUPPORT_SCAN_NO_AP_RECOVERY    (1)
 #define SCHED_SCAN_CMD_VERSION             (1)
 
 /* this value should be aligned to auSsid in struct CMD_SCHED_SCAN_REQ */
 #define CFG_SCAN_HIDDEN_SSID_MAX_NUM       (10)
 /* this value should be aligned to auMatchSsid in struct CMD_SCHED_SCAN_REQ */
 #define CFG_SCAN_SSID_MATCH_MAX_NUM        (16)
+
+#if CFG_SUPPORT_PNO != CFG_SUPPORT_SCHED_SCAN
+#error Value of CFG_SUPPORT_SCHED_SCAN and CFG_SUPPORT_PNO should be the same
+#endif
 
 /*------------------------------------------------------------------------------
  * Full2Partial Scan SUPPORT
@@ -1118,14 +954,6 @@
  */
 #define CFG_SUPPORT_FULL2PARTIAL_SCAN      (1)
 #define CFG_SCAN_FULL2PARTIAL_PERIOD       (60)
-
-/*------------------------------------------------------------------------------
- * Value of scan cache result
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_SCAN_CACHE_RESULT      (1)
-#define CFG_SCAN_CACHE_RESULT_PERIOD       (7000)	/* Unit: ms */
-#define CFG_SCAN_CACHE_MIN_CHANNEL_NUM     (10)
 
 /*------------------------------------------------------------------------------
  * Default value: the duration in ms to check TRX
@@ -1142,6 +970,18 @@
 #define CFG_BEACON_TIMEOUT_FILTER_DURATION_DEFAULT_VALUE	2000
 
 /*------------------------------------------------------------------------------
+ * Value of scan cache result
+ *------------------------------------------------------------------------------
+ */
+#ifdef UT_TEST_MODE
+#define CFG_SUPPORT_SCAN_CACHE_RESULT      (0)
+#else
+#define CFG_SUPPORT_SCAN_CACHE_RESULT      (1)
+#endif
+#define CFG_SCAN_CACHE_RESULT_PERIOD       (7000)	/* Unit: ms */
+#define CFG_SCAN_CACHE_MIN_CHANNEL_NUM     (10)
+
+/*------------------------------------------------------------------------------
  * Flags of Random MAC support
  *------------------------------------------------------------------------------
  */
@@ -1155,12 +995,6 @@
 
 #define WLAN_INCLUDE_PROC                   1
 
-#if CFG_TC10_FEATURE
-#define WLAN_INCLUDE_SYS                   1
-#else
-#define WLAN_INCLUDE_SYS                   0
-#endif
-
 /*------------------------------------------------------------------------------
  * Flags of Sniffer SUPPORT
  *------------------------------------------------------------------------------
@@ -1171,8 +1005,7 @@
 #define RUNNING_AP_MODE 1
 #define RUNNING_DUAL_AP_MODE 2
 #define RUNNING_P2P_AP_MODE 3
-#define RUNNING_DUAL_P2P_MODE 4
-#define RUNNING_P2P_MODE_NUM 5
+#define RUNNING_P2P_MODE_NUM 4
 
 /*------------------------------------------------------------------------------
  * Flags of MSP SUPPORT
@@ -1196,6 +1029,12 @@
  */
 
 #define CFG_EFUSE_BUFFER_MODE_DELAY_CAL         1
+
+/*------------------------------------------------------------------------------
+ * Flags for E1 IC workaround (SPI clock divided by 2)
+ *------------------------------------------------------------------------------
+ */
+#define CFG_SUPPORT_PMIC_SPI_CLOCK_SWITCH       1
 
 /*------------------------------------------------------------------------------
  * Flags of Drop Packet Replay SUPPORT
@@ -1223,15 +1062,7 @@
  */
 
 #define CFG_SUPPORT_DBDC	1
-#define CFG_SUPPORT_DBDC_NO_BLOCKING_OPMODE 1
 #define CFG_SUPPORT_SAP_DFS_CHANNEL 1
-
-/*------------------------------------------------------------------------------
- * Flags for IPv6 Offload Feature
- *------------------------------------------------------------------------------
- */
-
-#define CFG_SUPPORT_SET_IPV6_NETWORK 1 /* fos_change oneline */
 
 /*------------------------------------------------------------------------------
  * Flags for Using TC4 Resource in ROM code stage
@@ -1263,13 +1094,7 @@
  * Support CFG_SISO_SW_DEVELOP
  *------------------------------------------------------------------------------
  */
-#define CFG_SISO_SW_DEVELOP			1
-
-/*------------------------------------------------------------------------------
- * Support spatial extension control
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_SPE_IDX_CONTROL		1
+#define CFG_SISO_SW_DEVELOP			0
 
 /*------------------------------------------------------------------------------
  * Flags for a Goal for MT6632 : Cal Result Backup in Host or NVRam when Android
@@ -1296,14 +1121,9 @@
  * Single Sku
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_SINGLE_SKU	1
-#ifndef CFG_SUPPORT_SINGLE_SKU_LOCAL_DB
-#define CFG_SUPPORT_SINGLE_SKU_LOCAL_DB 1
-#endif
+#define CFG_SUPPORT_SINGLE_SKU	0
+#define CFG_SUPPORT_SINGLE_SKU_LOCAL_DB 0
 
-#ifndef CFG_SUPPORT_BW160
-#define CFG_SUPPORT_BW160 0
-#endif
 
 /*------------------------------------------------------------------------------
  * Direct Control for RF/PHY/BB/MAC for Manual Configuration via command/api
@@ -1346,377 +1166,20 @@
  * CFG_SUPPORT_NCHO_AUTO_ENABLE: sub-feature depends with CFG_SUPPORT_NCHO
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_NCHO		1
+#define CFG_SUPPORT_NCHO		0
 #define CFG_SUPPORT_NCHO_AUTO_ENABLE	0
-
-/*------------------------------------------------------------------------------
- * Flags of Assurance support
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_ASSURANCE 1
 
 /*------------------------------------------------------------------------------
  * Flags of Key Word Exception Mechanism
  *------------------------------------------------------------------------------
  */
-#define CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM  0
-
-/*------------------------------------------------------------------------------
- * Flags of Manipulate TID for UDP packets
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_MANIPULATE_TID	1
-
-/*------------------------------------------------------------------------------
- * Flags of WPA3 support
- *------------------------------------------------------------------------------
- */
-
-#define CFG_SUPPORT_WPA3	1
+#define CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM  1
 
 /*------------------------------------------------------------------------------
  * Driver supports preferred frequency list for p2p operating channel
  *------------------------------------------------------------------------------
  */
-#define CFG_SUPPORT_P2P_PREFERRED_FREQ_LIST  1
-
-/*------------------------------------------------------------------------------
- * Flag used for P2P GO to find the best channel list
- * Value 0: Disable
- * Value 1: Enable
- * Note: Must Enable CFG_SUPPORT_P2P_PREFERRED_FREQ_LIST in advance
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_P2PGO_ACS 1
-
-/*------------------------------------------------------------------------------
- * Driver supports rx buffer size query
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_RX_QUOTA_INFO 1
-
-/*-----------------------------------------------------------------------------
-* Flags to support IOT AP blacklist
-*------------------------------------------------------------------------------
-*/
-#ifndef CFG_SUPPORT_IOT_AP_BLACKLIST
-#if CFG_SUPPORT_DBDC
-#define CFG_SUPPORT_IOT_AP_BLACKLIST 1
-#else
-#define CFG_SUPPORT_IOT_AP_BLACKLIST 0
-#endif
-#endif
-
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-#define CFG_IOT_AP_RULE_MAX_CNT 32
-#define CFG_IOT_AP_DATA_MAX_LEN 16
-#endif
-/*------------------------------------------------------------------------------
- * Driver supports reporting max tx rate instead of current tx rate
- * in mtk_cfg80211_get_station
- *------------------------------------------------------------------------------
- */
-#define CFG_REPORT_MAX_TX_RATE	0
-
-/*------------------------------------------------------------------------------
- * Link Quality Monitor
- * Link quality monitor execution period base on performance monitor timer
- * CFG_LQ_MONITOR_FREQUENCY base on PERF_MON_UPDATE_INTERVAL
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_LINK_QUALITY_MONITOR
-#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
-#define CFG_LQ_MONITOR_FREQUENCY 1
-#endif /* CFG_SUPPORT_LINK_QUALITY_MONITOR */
-
-/*------------------------------------------------------------------------------
- * Driver supports SYS DVT automation
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_WIFI_SYSDVT
-#define CFG_SUPPORT_WIFI_SYSDVT  0
-#endif
-
-#ifndef CFG_SUPPORT_DMASHDL_SYSDVT
-#define CFG_SUPPORT_DMASHDL_SYSDVT  0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flags of using wlan_assistant to read/write NVRAM
- *------------------------------------------------------------------------------
- */
-#define CFG_WLAN_ASSISTANT_NVRAM		1
-
-/*------------------------------------------------------------------------------
- * SW handles WTBL_SEARCH_FAIL
- *------------------------------------------------------------------------------
- */
-#define CFG_WIFI_SW_WTBL_SEARCH_FAIL 1
-
-/*------------------------------------------------------------------------------
- * SW enables CIPHER_MISMATCH
- *------------------------------------------------------------------------------
- */
-#define CFG_WIFI_SW_CIPHER_MISMATCH 1
-
-/*------------------------------------------------------------------------------
- * Flags of enabling check if TX ethernet-II frame has empty payload. If yes,
- * then driver drops it.
- *------------------------------------------------------------------------------
- */
-#define CFG_WIFI_TX_ETH_CHK_EMPTY_PAYLOAD 1
-
-/*------------------------------------------------------------------------------
- * CONNINFRA SUPPORT (Without WMT)
- * CFG_SUPPORT_CONNINFRA: 1 : conninfra driver exist
- *                        0 : conninfra driver doesn't exist
- * We replace WMT driver with CONNINFRA driver in mobile project
- * after connac2.0.
- * CFG_MTK_ANDROID_WMT is used to separate between mobile project and others.
- * Although WMT driver is removed, CFG_MTK_ANDROID_WMT still need to be set 1
- * for some code flow in mobile gen4m.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_CONNINFRA
-#define CFG_SUPPORT_CONNINFRA 0
-#endif
-
-#ifndef CFG_SUPPORT_PRE_ON_PHY_ACTION
-#define CFG_SUPPORT_PRE_ON_PHY_ACTION 0
-#endif
-
-#ifndef CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH
-#define CFG_POWER_ON_DOWNLOAD_EMI_ROM_PATCH 0
-#endif
-
-#ifndef CFG_DOWNLOAD_DYN_MEMORY_MAP
-#define CFG_DOWNLOAD_DYN_MEMORY_MAP 0
-#endif
-
-#ifndef CFG_ROM_PATCH_NO_SEM_CTRL
-#define CFG_ROM_PATCH_NO_SEM_CTRL 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flags of Disconnect with disable channel based on REGD update
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_REGD_UPDATE_DISCONNECT_ALLOWED
-#define CFG_SUPPORT_REGD_UPDATE_DISCONNECT_ALLOWED  0
-#endif
-
-/*------------------------------------------------------------------------------
- * Notify clients to reconnect when channel switch in hotspot mode to avoid IOT
- * issues, eg. cross band switch.
- *------------------------------------------------------------------------------
- */
-#define CFG_SEND_DEAUTH_DURING_CHNL_SWITCH    0
-
-/*------------------------------------------------------------------------------
- *Smart Gear Feature Configure
- *------------------------------------------------------------------------------
-*/
-#ifndef CFG_SUPPORT_SMART_GEAR
-#define CFG_SUPPORT_SMART_GEAR 1
-#endif
-
-#define CFG_SUPPORT_WIFI_RNR  1
-
-/*------------------------------------------------------------------------------
- * Flag used for AIS persistent netdev creating.
- * Value 0: Create & register AIS netdev for each wifi on,
- *          and unregister & free AIS netdev for each wifi off.
- * Value 1: Create & register AIS netdev for first wifi on,
- *          and unregister & free AIS netdev during module exit.
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_PERSIST_NETDEV 1
-
-
-/*------------------------------------------------------------------------------
- * Dynamic tx power control:
- * Support additional tx power setting on OFDM
- *
- * No define: CCK,HT20L,HT20H,HT40L,HT40H,HT80L,HT80H,HT160L,HT160H
- * Defined: CCK,OFDM_L,OFDM_H,HT20L,HT20H,HT40L,HT40H,HT80L,HT80H,HT160L,HT160H
- *
- * note: need to confirm firmware support this feature
- *       COUNTRY_CHANNEL_TXPOWER_LIMIT_TYPE_COMP_11AG_11N
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_DYNA_TX_PWR_CTRL_OFDM_SETTING 0
-
-/*------------------------------------------------------------------------------
- * tx power control:
- * Support additional tx power setting for HE
- *
- * support power limit for RU26/RU52/RU104/RU242/RU484/RU996
- *
- * note: need to confirm firmware support HE (802.11AX)
- *------------------------------------------------------------------------------
- */
-#if (CFG_SUPPORT_802_11AX == 1)
-#if (CFG_SUPPORT_WIFI_6G == 1)
-/* Add HE tx power support for 6G before turning on this option !!! */
-#define CFG_SUPPORT_PWR_LIMIT_HE		1
-#else
-#define CFG_SUPPORT_PWR_LIMIT_HE		1
-#endif /* CFG_SUPPORT_WIFI_6G */
-#else
-#define CFG_SUPPORT_PWR_LIMIT_HE		0
-#endif /* CFG_SUPPORT_802_11AX */
-
-#define CFG_SUPPORT_STAT_STATISTICS	0 /* fos_change oneline */
-#define CFG_SUPPORT_WAKEUP_STATISTICS 0 /* fos_change oneline */
-#define CFG_SUPPORT_EXCEPTION_STATISTICS 0 /* fos_change oneline */
-/*------------------------------------------------------------------------------
- * cnm power control:
- * for power save, disable 2x2 and DBDC when power is low
- *------------------------------------------------------------------------------
- */
-#define CFG_SUPPORT_CNM_POWER_CTRL		    1
-
-/*------------------------------------------------------------------------------
- * Connsys Power Throttling feature
- * Value 1: support Connsys Power Throttling feature
- * Value 0: not support Connsys Power Throttling feature
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_POWER_THROTTLING
-#define CFG_SUPPORT_POWER_THROTTLING 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flag used for packet offload support.
- * Value 0: Do not enable packet offload.
- * Value 1: Enable packet offload.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_PKT_OFLD
-#define CFG_SUPPORT_PKT_OFLD 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flag used for APF support.
- * Value 0: Do not enable APF.
- * Value 1: Enable APF.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_APF
-#define CFG_SUPPORT_APF 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flag used for RA offload support.
- * Value 0: Do not enable RA offload.
- * Value 1: Enable RA offload.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_RA_OFLD
-#define CFG_SUPPORT_RA_OFLD 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flag used for IGMP offload support.
- * Value 0: Do not enable IGMP offload.
- * Value 1: Enable IGMP offload.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_IGMP_OFLD
-#define CFG_SUPPORT_IGMP_OFLD 0
-#endif
-
-#if (CFG_SUPPORT_CONNINFRA == 0)
-#define CFG_SUPPORT_POWER_THROTTLING 0
-#endif
-/*------------------------------------------------------------------------------
- * Support NAN or not.
- *------------------------------------------------------------------------------
- */
-#ifndef CFG_SUPPORT_NAN
-#define CFG_SUPPORT_NAN  0
-#endif
-
-#if (CFG_SUPPORT_NAN == 1)
-#define CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL 2
-#define CFG_SUPPORT_NAN_CARRIER_ON_INIT 1
-#define CFG_SUPPORT_NAN_DBDC 0
-#define CFG_NAN_BSS_SEPARATE_SEC_ROLE 0
-#define CFG_NAN_PMF_PATCH 1 /* special handle for peer send PMF w/ NMI */
-#define CFG_NAN_ACTION_FRAME_ADDR                                              \
-	1 /* 0: use NDI if available, 1: always use NMI */
-
-#define CFG_SUPPORT_NAN_SHOULD_REMOVE_FOR_NO_TYPEDEF 1
-
-/* NAN scheduler version
- * 0: AIS use last 8 slots
- * 1: AIS+NAN SCC, or AIS use 0x00FF00FF for MCC
- */
-#define CFG_NAN_SCHEDULER_VERSION  1
-
-#define CFG_SUPPORT_NAN_NDP_DUAL_BAND 1
-
-#else
-#define CFG_SUPPORT_NAN_SHOULD_REMOVE_FOR_NO_TYPEDEF 0
-#endif
-
-#ifdef SOC7_0
-#define CFG_SUPPORT_AVOID_DESENSE 1
-#else
-#define CFG_SUPPORT_AVOID_DESENSE 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flags of Tp Enhance Mechanism
- *------------------------------------------------------------------------------
- */
-
-/* 1: Enable Tp Enhance Mechanism
- * 0(default): Disable
- */
-#define CFG_SUPPORT_TPENHANCE_MODE          0
-
-/*------------------------------------------------------------------------------
- * Flags of Fast Path Feature Support
- *------------------------------------------------------------------------------
- */
-#define CFG_MSCS_SUPPORT                            1
-
-/* 1(default): Run on big core when tput over threshold
- * 0: Disable (Let system scheduler decide)
- */
-#define CFG_SUPPORT_TPUT_ON_BIG_CORE 1
-
-#if WLAN_INCLUDE_SYS
-#define CFG_SUPPORT_CABLE_DETECT 1
-#else
-#define CFG_SUPPORT_CABLE_DETECT 0
-#endif
-
-/*------------------------------------------------------------------------------
- * Flag of Wifi Standalone Log Support.
- * 1: Enable. Could be supported only if (CFG_MTK_ANDROID_WMT == 1).
- * 0: Disable.
- *------------------------------------------------------------------------------
- */
-#if CFG_MTK_ANDROID_WMT
-#define CFG_SUPPORT_SA_LOG 1
-#else
-#define CFG_SUPPORT_SA_LOG 0
-#endif
-
-#define CFG_SUPPORT_LITTLE_CPU_BOOST 0
-
-#define CFG_SUPPORT_MCC_BOOST_CPU 1
-#if CFG_SUPPORT_MCC_BOOST_CPU
-#define MCC_BOOST_LEVEL 1
-#define MCC_BOOST_MIN_TIME 70
-#define MCC_BOOST_FOR_ALL_LEVEL 3
-#endif /* CFG_SUPPORT_MCC_BOOST_CPU */
-
-#define CFG_SUPPORT_ANDROID_DUAL_STA 0
-
-#define CFG_SUPPORT_LIMITED_PKT_PID  1
+#define CFG_SUPPORT_P2P_PREFERRED_FREQ_LIST  0
 
 /*******************************************************************************
  *                             D A T A   T Y P E S

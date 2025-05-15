@@ -66,8 +66,6 @@ uint32_t p2pCalculate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 		ASSERT_BREAK((prStaRec != NULL) && (prAdapter != NULL));
 
 		prP2pBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-		if (!prP2pBssInfo)
-			break;
 
 		prP2pRoleFsmInfo =
 			P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
@@ -92,25 +90,6 @@ uint32_t p2pCalculate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 			& PHY_TYPE_SET_802_11AC)
 			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11AC)) {
 			u4RetValue += (ELEM_HDR_LEN + ELEM_MAX_LEN_VHT_CAP);
-		}
-#endif
-
-#if CFG_SUPPORT_802_11AX
-		/* ADD HE Capability */
-		if ((prAdapter->rWifiVar.ucAvailablePhyTypeSet
-			& PHY_TYPE_SET_802_11AX)
-			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11AX)) {
-			u4RetValue += heRlmCalculateHeCapIELen(prAdapter,
-				 prStaRec->ucBssIndex, prStaRec);
-		}
-#endif
-#if CFG_SUPPORT_802_11BE
-		/* ADD EHT Capability */
-		if ((prAdapter->rWifiVar.ucAvailablePhyTypeSet
-			& PHY_TYPE_SET_802_11BE)
-			&& (prStaRec->ucPhyTypeSet & PHY_TYPE_SET_802_11BE)) {
-			u4RetValue += ehtRlmCalculateCapIELen(prAdapter,
-				 prStaRec->ucBssIndex, prStaRec);
 		}
 #endif
 
@@ -148,13 +127,11 @@ void p2pGenerate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 		prBssInfo =
 			GET_BSS_INFO_BY_INDEX(prAdapter,
 				prMsduInfo->ucBssIndex);
-		if (!prBssInfo)
-			break;
+
 		prP2pRoleFsmInfo =
 			P2P_ROLE_INDEX_2_ROLE_FSM_INFO(prAdapter,
 				(uint8_t) prBssInfo->u4PrivateData);
-		if (!prP2pRoleFsmInfo)
-			break;
+
 		prConnReqInfo = &(prP2pRoleFsmInfo->rConnReqInfo);
 
 		pucIEBuf = (uint8_t *) ((unsigned long) prMsduInfo->prPacket
@@ -174,16 +151,6 @@ void p2pGenerate_IEForAssocReq(IN struct ADAPTER *prAdapter,
 #if CFG_SUPPORT_802_11AC
 		/* Add VHT IE */
 		rlmReqGenerateVhtCapIE(prAdapter, prMsduInfo);
-#endif
-
-#if CFG_SUPPORT_802_11AX
-		/* Add HE IE */
-		heRlmReqGenerateHeCapIE(prAdapter, prMsduInfo);
-#endif
-
-#if CFG_SUPPORT_802_11BE
-		/* Add EHT IE */
-		ehtRlmReqGenerateCapIE(prAdapter, prMsduInfo);
 #endif
 
 #if CFG_SUPPORT_MTK_SYNERGY

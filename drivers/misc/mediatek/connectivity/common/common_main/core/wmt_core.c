@@ -31,7 +31,6 @@
 *                    E X T E R N A L   R E F E R E N C E S
 ********************************************************************************
 */
-#include <connectivity_build_in_adapter.h>
 #include "osal_typedef.h"
 #include "connsys_debug_utility.h"
 #include "wmt_lib.h"
@@ -65,12 +64,6 @@ P_WMT_FUNC_OPS gpWmtFuncOps[WMTDRV_TYPE_MAX] = {
 	[WMTDRV_TYPE_GPS] = &wmt_func_gps_ops,
 #else
 	[WMTDRV_TYPE_GPS] = NULL,
-#endif
-
-#if CFG_FUNC_GPSL5_SUPPORT
-	[WMTDRV_TYPE_GPSL5] = &wmt_func_gpsl5_ops,
-#else
-	[WMTDRV_TYPE_GPSL5] = NULL,
 #endif
 
 #if CFG_FUNC_WIFI_SUPPORT
@@ -168,15 +161,6 @@ static INT32 opfunc_try_pwr_off(P_WMT_OP pWmtOp);
 static INT32 opfunc_gps_mcu_ctrl(P_WMT_OP pWmtOp);
 static INT32 opfunc_blank_status_ctrl(P_WMT_OP pWmtOp);
 static INT32 opfunc_met_ctrl(P_WMT_OP pWmtOp);
-static INT32 opfunc_gps_suspend(P_WMT_OP pWmtOp);
-static INT32 opfunc_get_consys_state(P_WMT_OP pWmtOp);
-static INT32 opfunc_dump_pc_log(P_WMT_OP pWmtOp);
-static INT32 opfunc_dump_cpupcr(P_WMT_OP pWmtOp);
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-static UINT32 wmt_is_wifi_turning_on(VOID);
-static INT32 wmt_core_pdma_slpprt_mode(UINT8 enable);
-#endif
 
 /*******************************************************************************
 *                            P U B L I C   D A T A
@@ -280,12 +264,24 @@ static UINT8 WMT_FLASH_PATCH_DWN_EVT[] = { 0x02, 0x01, 0x01, 0x00	/*length */
 	, 0x00
 };
 
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+static UINT8 WMT_UTC_SYNC_CMD[] = { 0x01, 0xF0, 0x09, 0x00, 0x02
+	, 0x00, 0x00, 0x00, 0x00 /*UTC time second unit*/
+	, 0x00, 0x00, 0x00, 0x00 /*UTC time microsecond unit*/
+};
+static UINT8 WMT_UTC_SYNC_EVT[] = { 0x02, 0xF0, 0x02, 0x00, 0x02, 0x00
+};
+
+static UINT8 WMT_BLANK_STATUS_CMD[] = { 0x01, 0xF0, 0x02, 0x00, 0x03, 0x00 };
+static UINT8 WMT_BLANK_STATUS_EVT[] = { 0x02, 0xF0, 0x02, 0x00, 0x03, 0x00 };
+#endif
+
 static UINT8 WMT_FW_LOG_CTRL_CMD[] = { 0x01, 0xF0, 0x04, 0x00, 0x01
 	, 0x00 /* subsys type */
 	, 0x00 /* on/off */
 	, 0x00 /* level (subsys-specific) */
 };
-static UINT8 WMT_FW_LOG_CTRL_EVT[] = { 0x02, 0xF0, 0x02, 0x00, 0x01, 0x00 };
+static UINT8 WMT_FW_LOG_CTRL_EVT[] = { 0x02, 0xF0, 0x01, 0x00, 0x01 };
 
 /* GeorgeKuo: Use designated initializers described in
  * http://gcc.gnu.org/onlinedocs/gcc-4.0.4/gcc/Designated-Inits.html
@@ -332,17 +328,9 @@ static const WMT_OPID_FUNC wmt_core_opfunc[] = {
 	[WMT_OPID_TRY_PWR_OFF] = opfunc_try_pwr_off,
 	[WMT_OPID_BLANK_STATUS_CTRL] = opfunc_blank_status_ctrl,
 	[WMT_OPID_MET_CTRL] = opfunc_met_ctrl,
-	[WMT_OPID_GPS_SUSPEND] = opfunc_gps_suspend,
-	[WMT_OPID_GET_CONSYS_STATE] = opfunc_get_consys_state,
-	[WMT_OPID_DUMP_PC_LOG] = opfunc_dump_pc_log,
-	[WMT_OPID_DUMP_CPUPCR] = opfunc_dump_cpupcr,
 };
 
 atomic_t g_wifi_on_off_ready;
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-static UINT8 g_fg_is_wifi_working;
-#endif
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -362,10 +350,6 @@ INT32 wmt_core_init(VOID)
 	}
 
 	atomic_set(&g_wifi_on_off_ready, 0);
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-	g_fg_is_wifi_working = 0;
-#endif
 
 	return 0;
 }
@@ -783,7 +767,7 @@ static INT32 wmt_core_trigger_assert(VOID)
 
 static INT32 wmt_core_stp_init(VOID)
 {
-	INT32 iRet = 0;
+	INT32 iRet = -1;
 	ULONG ctrlPa1;
 	ULONG ctrlPa2;
 	UINT8 co_clock_type;
@@ -800,8 +784,9 @@ static INT32 wmt_core_stp_init(VOID)
 	if (!(pctx->wmtInfoBit & WMT_OP_HIF_BIT)) {
 		WMT_ERR_FUNC("WMT-CORE: no hif info!\n");
 		osal_assert(0);
-		return -WMT_ERRCODE_NO_HIF_INFO;
+		return -1;
 	}
+
 
 	/* 4 <0> turn on SDIO2 for common SDIO */
 	if (pctx->wmtHifConf.hifType == WMT_HIF_SDIO) {
@@ -812,7 +797,7 @@ static INT32 wmt_core_stp_init(VOID)
 			WMT_ERR_FUNC("WMT-CORE: turn on SLOT_SDIO2 fail (%d)\n", iRet);
 			osal_assert(0);
 
-			return -WMT_ERRCODE_SDIO_SLOT_SDIO2_FAIL;
+			return -2;
 		}
 		pctx->eDrvStatus[WMTDRV_TYPE_SDIO2] = DRV_STS_FUNC_ON;
 
@@ -823,7 +808,7 @@ static INT32 wmt_core_stp_init(VOID)
 			WMT_ERR_FUNC("WMT-CORE: turn on SDIO_FUNC_STP func fail (%d)\n", iRet);
 
 			/* check all sub-func and do power off */
-			return -WMT_ERRCODE_SDIO_FUNC_STP_FAIL;
+			return -3;
 		}
 	}
 	/* 4 <1> open stp */
@@ -831,8 +816,8 @@ static INT32 wmt_core_stp_init(VOID)
 	ctrlPa2 = 0;
 	iRet = wmt_core_ctrl(WMT_CTRL_STP_OPEN, &ctrlPa1, &ctrlPa2);
 	if (iRet) {
-		WMT_ERR_FUNC("WMT-CORE: wmt open stp failed.\n");
-		return -WMT_ERRCODE_OPEN_STP_FAIL;
+		WMT_ERR_FUNC("WMT-CORE: wmt open stp\n");
+		return -4;
 	}
 
 	if (pctx->wmtHifConf.hifType == WMT_HIF_UART) {
@@ -842,7 +827,7 @@ static INT32 wmt_core_stp_init(VOID)
 		if (iRet) {
 			WMT_ERR_FUNC("WMT-CORE: change host baudrate(%d) fails\n",
 				     pctx->wmtHifConf.au4HifConf[0]);
-			return -WMT_ERRCODE_UART_BAUDRATE_FAIL;
+			return -5;
 		}
 	}
 	/* WMT_DBG_FUNC("WMT-CORE: change host baudrate(%d) ok\n", gMtkWmtCtx.wmtHifConf.au4HifConf[0]); */
@@ -850,53 +835,35 @@ static INT32 wmt_core_stp_init(VOID)
 	/* 4 <1.5> disable and un-ready stp */
 	ctrlPa1 = WMT_STP_CONF_EN;
 	ctrlPa2 = 0;
-	iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-	if (iRet) {
-		WMT_ERR_FUNC("disable WMT_STP_CONF_EN fail!\n");
-		return -WMT_ERRCODE_STP_CONFIG_FAIL;
-	}
-
+	iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
 	ctrlPa1 = WMT_STP_CONF_RDY;
 	ctrlPa2 = 0;
-	iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-	if (iRet) {
-		WMT_ERR_FUNC("un-ready WMT_STP_CONF_RDY fail!\n");
-		return -WMT_ERRCODE_STP_CONFIG_FAIL;
-	}
+	iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
 
 	/* 4 <2> set mode and enable */
 	if (pctx->wmtHifConf.hifType == WMT_HIF_UART) {
 		ctrlPa1 = WMT_STP_CONF_MODE;
 		ctrlPa2 = MTKSTP_UART_MAND_MODE;
-		iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-		if (iRet) {
-			WMT_ERR_FUNC("config MTKSTP_UART_MAND_MODE fail!\n");
-			return -WMT_ERRCODE_STP_CONFIG_FAIL;
-		}
+		iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
 	} else if (pctx->wmtHifConf.hifType == WMT_HIF_SDIO) {
 
 		ctrlPa1 = WMT_STP_CONF_MODE;
 		ctrlPa2 = MTKSTP_SDIO_MODE;
-		iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-		if (iRet) {
-			WMT_ERR_FUNC("config MTKSTP_SDIO_MODE fail!\n");
-			return -WMT_ERRCODE_STP_CONFIG_FAIL;
-		}
-	} else if (pctx->wmtHifConf.hifType == WMT_HIF_BTIF) {
+		iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
+		if (iRet)
+			WMT_ERR_FUNC(" confif SDIO_MODE fail!!!!\n");
+	}
+	if (pctx->wmtHifConf.hifType == WMT_HIF_BTIF) {
 		ctrlPa1 = WMT_STP_CONF_MODE;
 		ctrlPa2 = MTKSTP_BTIF_MAND_MODE;
-		iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-		if (iRet) {
-			WMT_ERR_FUNC("config MTKSTP_BTIF_MAND_MODE fail!\n");
-			return -WMT_ERRCODE_STP_CONFIG_FAIL;
-		}
+		iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
 	}
 	ctrlPa1 = WMT_STP_CONF_EN;
 	ctrlPa2 = 1;
-	iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
+	iRet += wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
 	if (iRet) {
-		WMT_ERR_FUNC("enable WMT_STP_CONF_EN fail:%d\n", iRet);
-		return -WMT_ERRCODE_STP_CONFIG_FAIL;
+		WMT_ERR_FUNC("WMT-CORE: stp_init <1><2> fail:%d\n", iRet);
+		return -7;
 	}
 	/* TODO: [ChangeFeature][GeorgeKuo] can we apply raise UART baud rate firstly for ALL supported chips??? */
 
@@ -908,7 +875,7 @@ static INT32 wmt_core_stp_init(VOID)
 	iRet = wmt_core_hw_check();
 	if (iRet) {
 		WMT_ERR_FUNC("hw_check fail:%d\n", iRet);
-		return iRet;
+		return -8;
 	}
 	/* mtkWmtCtx.p_ic_ops is identified and checked ok */
 	if ((pctx->p_ic_ops->co_clock_ctrl != NULL) && (pWmtGenConf != NULL)) {
@@ -923,11 +890,11 @@ static INT32 wmt_core_stp_init(VOID)
 		iRet = (*(pctx->p_ic_ops->sw_init)) (&pctx->wmtHifConf);
 	} else {
 		WMT_ERR_FUNC("gMtkWmtCtx.p_ic_ops->sw_init is NULL\n");
-		return -WMT_ERRCODE_NULL_FUNC_POINTER;
+		return -9;
 	}
 	if (iRet) {
 		WMT_ERR_FUNC("gMtkWmtCtx.p_ic_ops->sw_init fail:%d\n", iRet);
-		return iRet;
+		return -10;
 	}
 
 	/* send UTC time sync command after connsys power on or chip reset */
@@ -937,12 +904,7 @@ static INT32 wmt_core_stp_init(VOID)
 	ctrlPa1 = WMT_STP_CONF_RDY;
 	ctrlPa2 = 1;
 	iRet = wmt_core_ctrl(WMT_CTRL_STP_CONF, &ctrlPa1, &ctrlPa2);
-	if (iRet) {
-		WMT_ERR_FUNC("set WMT_STP_CONF_RDY fail!\n");
-		return -WMT_ERRCODE_STP_CONFIG_FAIL;
-	}
-
-	return 0;
+	return iRet;
 }
 
 static INT32 wmt_core_stp_deinit(VOID)
@@ -1010,10 +972,9 @@ deinit_ic_ops_done:
 static VOID wmt_core_dump_func_state(PINT8 pSource)
 {
 	WMT_INFO_FUNC
-	    ("[%s]status(b:%d f:%d g:%d gl5:%d w:%d lpbk:%d coredump:%d wmt:%d ant:%d sd1:%d sd2:%d stp:%d)\n",
+	    ("[%s]status(b:%d f:%d g:%d w:%d lpbk:%d coredump:%d wmt:%d ant:%d sd1:%d sd2:%d stp:%d)\n",
 	     (pSource == NULL ? (PINT8) "CORE" : pSource), gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_BT],
 	     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM], gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS],
-	     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPSL5],
 	     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI], gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_LPBK],
 	     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_COREDUMP], gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT],
 	     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_ANT], gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_SDIO1],
@@ -1025,8 +986,6 @@ static VOID wmt_core_dump_func_state(PINT8 pSource)
 
 ENUM_DRV_STS wmt_core_get_drv_status(ENUM_WMTDRV_TYPE_T type)
 {
-	if ((type < WMTDRV_TYPE_BT) || (type >= WMTDRV_TYPE_MAX))
-		return DRV_STS_POWER_OFF;
 	return gMtkWmtCtx.eDrvStatus[type];
 }
 
@@ -1052,11 +1011,8 @@ static INT32 wmt_core_hw_check(VOID)
 	WMT_LOUD_FUNC("before read hwcode (chip id)\n");
 	iret = wmt_core_reg_rw_raw(0, GEN_HCR, &chipid, GEN_HCR_MASK);	/* read 0x80000008 */
 	if (iret) {
-#if defined(KERNEL_clk_buf_show_status_info)
-		KERNEL_clk_buf_show_status_info();  /* dump clock buffer */
-#endif
 		WMT_ERR_FUNC("get hwcode (chip id) fail (%d)\n", iret);
-		return -WMT_ERRCODE_HW_CHECK_FAIL;
+		return -2;
 	}
 	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC) {
 		if (wmt_lib_get_icinfo(WMTCHIN_IPVER))
@@ -1112,15 +1068,8 @@ static INT32 wmt_core_hw_check(VOID)
 	case 0x0713:
 	case 0x0788:
 	case 0x6765:
+	case 0x3967:
 	case 0x6761:
-	case 0x6779:
-	case 0x6768:
-	case 0x6785:
-	case 0x6781:
-	case 0x6833:
-	case 0x6853:
-	case 0x6873:
-	case 0x8168:
 		p_ops = &wmt_ic_ops_soc;
 		break;
 #endif
@@ -1138,26 +1087,23 @@ static INT32 wmt_core_hw_check(VOID)
 
 	if (p_ops == NULL) {
 		WMT_ERR_FUNC("unsupported chip id (hw_code): 0x%x\n", chipid);
-		return -WMT_ERRCODE_CHIPID_NOT_SUPPORT;
+		return -3;
 	} else if (wmt_core_ic_ops_check(p_ops) == MTK_WCN_BOOL_FALSE) {
 		WMT_ERR_FUNC
 		    ("chip id(0x%x) with null operation fp: init(0x%p), deinit(0x%p), pin_ctrl(0x%p), ver_chk(0x%p)\n",
 		     chipid, p_ops->sw_init, p_ops->sw_deinit, p_ops->ic_pin_ctrl,
 		     p_ops->ic_ver_check);
-		return -WMT_ERRCODE_NULL_FUNC_POINTER;
+		return -4;
 	}
 	WMT_DBG_FUNC("chip id(0x%x) fp: init(0x%p), deinit(0x%p), pin_ctrl(0x%p), ver_chk(0x%p)\n",
 		     chipid, p_ops->sw_init, p_ops->sw_deinit, p_ops->ic_pin_ctrl,
 		     p_ops->ic_ver_check);
-	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC) {
+	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC)
 		wmt_ic_ops_soc.icId = chipid;
-		wmt_ic_ops_soc.options = mtk_wcn_consys_get_options();
-		WMT_INFO_FUNC("options = %llx", wmt_ic_ops_soc.options);
-	}
 	iret = p_ops->ic_ver_check();
 	if (iret) {
 		WMT_ERR_FUNC("chip id(0x%x) ver_check error:%d\n", chipid, iret);
-		return -WMT_ERRCODE_VER_CHECK_FAIL;
+		return -5;
 	}
 
 	WMT_DBG_FUNC("chip id(0x%x) ver_check ok\n", chipid);
@@ -1188,28 +1134,31 @@ static INT32 opfunc_hif_conf(P_WMT_OP pWmtOp)
 
 static INT32 opfunc_pwr_on(P_WMT_OP pWmtOp)
 {
+
 	INT32 iRet;
-	INT32 iErrHandle = 0;
 	ULONG ctrlPa1;
 	ULONG ctrlPa2;
+	INT32 retry = WMT_PWRON_RTY_DFT;
 
 	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_POWER_OFF) {
 		WMT_ERR_FUNC("WMT-CORE: already powered on, WMT DRV_STS_[0x%x]\n",
 			     gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT]);
 		osal_assert(0);
-		return -WMT_ERRCODE_ALREADY_ON;
+		return -1;
 	}
 
+pwr_on_rty:
 	/* power on control */
 	ctrlPa1 = 0;
 	ctrlPa2 = 0;
 	iRet = wmt_core_ctrl(WMT_CTRL_HW_PWR_ON, &ctrlPa1, &ctrlPa2);
 	if (iRet) {
 		WMT_ERR_FUNC("WMT-CORE: WMT_CTRL_HW_PWR_ON fail iRet(%d)\n", iRet);
-		iErrHandle = opfunc_pwr_off(pWmtOp);
-		if (iErrHandle)
-			WMT_ERR_FUNC("opfunc_pwr_off fail\n");
-		return (iErrHandle) ? iErrHandle : iRet;
+		if (retry-- == 0) {
+			WMT_INFO_FUNC("WMT-CORE: retry (%d)\n", retry);
+			goto pwr_on_rty;
+		}
+		return -2;
 	}
 	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] = DRV_STS_POWER_ON;
 
@@ -1217,8 +1166,19 @@ static INT32 opfunc_pwr_on(P_WMT_OP pWmtOp)
 	iRet = wmt_core_stp_init();
 	if (iRet) {
 		WMT_ERR_FUNC("WMT-CORE: wmt_core_stp_init fail (%d)\n", iRet);
-		wmt_lib_trigger_assert(WMTDRV_TYPE_WMT, 47);
-		return iRet;
+		osal_assert(0);
+
+		/* deinit stp */
+		iRet = wmt_core_stp_deinit();
+		iRet = opfunc_pwr_off(pWmtOp);
+		if (iRet)
+			WMT_ERR_FUNC("WMT-CORE: opfunc_pwr_off fail during pwr_on retry\n");
+
+		if (retry-- > 0) {
+			WMT_INFO_FUNC("WMT-CORE: retry (%d)\n", retry);
+			goto pwr_on_rty;
+		}
+		return -3;
 	}
 
 	WMT_DBG_FUNC("WMT-CORE: WMT [FUNC_ON]\n");
@@ -1227,14 +1187,13 @@ static INT32 opfunc_pwr_on(P_WMT_OP pWmtOp)
 	/* update blank status when ConnSys power on */
 	wmt_blank_status_ctrl(wmt_dev_get_blank_state());
 
-	mtk_wcn_consys_sleep_info_restore();
-
 	/* What to do when state is changed from POWER_OFF to POWER_ON?
 	 * 1. STP driver does s/w reset
 	 * 2. UART does 0xFF wake up
 	 * 3. SDIO does re-init command(changed to trigger by host)
 	 */
-	return 0;
+	return iRet;
+
 }
 
 static INT32 opfunc_pwr_off(P_WMT_OP pWmtOp)
@@ -1248,12 +1207,12 @@ static INT32 opfunc_pwr_off(P_WMT_OP pWmtOp)
 		WMT_WARN_FUNC("WMT-CORE: WMT already off, WMT DRV_STS_[0x%x]\n",
 			      gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT]);
 		osal_assert(0);
-		return -WMT_ERRCODE_ALREADY_OFF;
+		return -1;
 	}
 	if (g_pwr_off_flag == MTK_WCN_BOOL_FALSE) {
 		WMT_WARN_FUNC("CONNSYS power off be disabled, maybe need trigger core dump!\n");
 		osal_assert(0);
-		return -WMT_ERRCODE_READYTO_OFF;
+		return -2;
 	}
 	/* wmt and stp are initialized successfully */
 	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON) {
@@ -1263,14 +1222,7 @@ static INT32 opfunc_pwr_off(P_WMT_OP pWmtOp)
 			/*should let run to power down chip */
 		}
 	}
-
-	if (wmt_lib_power_lock_aquire() == 0) {
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] = DRV_STS_POWER_OFF;
-		wmt_lib_power_lock_release();
-	} else {
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] = DRV_STS_POWER_OFF;
-		WMT_INFO_FUNC("wmt_lib_power_lock_aquire failed\n");
-	}
+	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] = DRV_STS_POWER_ON;
 
 	/* power off control */
 	ctrlPa1 = 0;
@@ -1281,6 +1233,8 @@ static INT32 opfunc_pwr_off(P_WMT_OP pWmtOp)
 	else
 		WMT_DBG_FUNC("HW_PWR_OFF ok\n");
 
+	/*anyway, set to POWER_OFF state */
+	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] = DRV_STS_POWER_OFF;
 	return iRet;
 
 }
@@ -1291,7 +1245,7 @@ static INT32 opfunc_func_on(P_WMT_OP pWmtOp)
 	UINT32 drvType = pWmtOp->au4OpData[0];
 
 	/* Check abnormal type */
-	if (drvType >= WMTDRV_TYPE_MAX) {
+	if (drvType > WMTDRV_TYPE_COREDUMP) {
 		WMT_ERR_FUNC("abnormal Fun(%d)\n", drvType);
 		osal_assert(0);
 		return -1;
@@ -1306,22 +1260,11 @@ static INT32 opfunc_func_on(P_WMT_OP pWmtOp)
 		return -2;
 	}
 
-	if (WMTDRV_TYPE_GPSL5 == drvType)
-		mtk_wcn_stp_set_support_gpsl5(1);
-
 	/* check if func already on */
 	if (gMtkWmtCtx.eDrvStatus[drvType] == DRV_STS_FUNC_ON) {
 		WMT_WARN_FUNC("func(%d) already on\n", drvType);
 		return 0;
 	}
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-	if ((drvType == WMTDRV_TYPE_WIFI)
-		&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON)
-		&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] != DRV_STS_FUNC_ON))
-		wmt_core_pdma_slpprt_mode(0);
-#endif
-
 	/*enable power off flag, if flag=0, power off connsys will not be executed */
 	mtk_wcn_set_connsys_power_off_flag(MTK_WCN_BOOL_TRUE);
 	/* check if chip power on is needed */
@@ -1336,23 +1279,18 @@ static INT32 opfunc_func_on(P_WMT_OP pWmtOp)
 		}
 	}
 
-	if (WMTDRV_TYPE_WMT > drvType || WMTDRV_TYPE_ANT == drvType || WMTDRV_TYPE_GPSL5 == drvType) {
+	if (WMTDRV_TYPE_WMT > drvType || WMTDRV_TYPE_ANT == drvType) {
 		if (gpWmtFuncOps[drvType] && gpWmtFuncOps[drvType]->func_on) {
 
 			/* special handling for Wi-Fi */
 			if (drvType == WMTDRV_TYPE_WIFI) {
 				P_OSAL_OP pOp = wmt_lib_get_current_op(&gDevWmt);
 				atomic_set(&g_wifi_on_off_ready, 1);
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-				g_fg_is_wifi_working = 1;
-#endif
+
 				pOp->op.opId = WMT_OPID_WLAN_PROBE;
 				if (wmt_lib_put_worker_op(pOp) == MTK_WCN_BOOL_FALSE) {
 					WMT_WARN_FUNC("put to activeWorker queue fail\n");
 					atomic_set(&g_wifi_on_off_ready, 0);
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-					g_fg_is_wifi_working = 0;
-#endif
 					return -4;
 				}
 				return 0;
@@ -1363,12 +1301,6 @@ static INT32 opfunc_func_on(P_WMT_OP pWmtOp)
 				gMtkWmtCtx.eDrvStatus[drvType] = DRV_STS_POWER_OFF;
 			else
 				gMtkWmtCtx.eDrvStatus[drvType] = DRV_STS_FUNC_ON;
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-			if ((gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON)
-				&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] != DRV_STS_FUNC_ON))
-				wmt_core_pdma_slpprt_mode(1);
-#endif
 		} else {
 			WMT_WARN_FUNC("WMT-CORE: ops for type(%d) not found\n", drvType);
 			iRet = -5;
@@ -1400,7 +1332,7 @@ static INT32 opfunc_func_off(P_WMT_OP pWmtOp)
 	UINT32 drvType = pWmtOp->au4OpData[0];
 
 	/* Check abnormal type */
-	if (drvType >= WMTDRV_TYPE_MAX) {
+	if (drvType > WMTDRV_TYPE_COREDUMP) {
 		WMT_ERR_FUNC("WMT-CORE: abnormal Fun(%d) in wmt_func_off\n", drvType);
 		osal_assert(0);
 		return -1;
@@ -1420,7 +1352,7 @@ static INT32 opfunc_func_off(P_WMT_OP pWmtOp)
 		     drvType, gMtkWmtCtx.eDrvStatus[drvType]);
 		/* needs to check 4 subsystem's state? */
 		return 0;
-	} else if (WMTDRV_TYPE_WMT > drvType || WMTDRV_TYPE_ANT == drvType || WMTDRV_TYPE_GPSL5 == drvType) {
+	} else if (WMTDRV_TYPE_WMT > drvType || WMTDRV_TYPE_ANT == drvType) {
 		if (gpWmtFuncOps[drvType] && gpWmtFuncOps[drvType]->func_off) {
 			/* special handling for Wi-Fi */
 			if (drvType == WMTDRV_TYPE_WIFI) {
@@ -1436,12 +1368,6 @@ static INT32 opfunc_func_off(P_WMT_OP pWmtOp)
 				return 0;
 			}
 			iRet = (*(gpWmtFuncOps[drvType]->func_off)) (gMtkWmtCtx.p_ic_ops, wmt_conf_get_cfg());
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-			/* function off and check to enable slpprt mode */
-			if ((gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON)
-				&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] != DRV_STS_FUNC_ON))
-				wmt_core_pdma_slpprt_mode(1);
-#endif
 		} else {
 			WMT_WARN_FUNC("WMT-CORE: ops for type(%d) not found\n", drvType);
 			iRet = -3;
@@ -1470,99 +1396,6 @@ static INT32 opfunc_func_off(P_WMT_OP pWmtOp)
 	opfunc_try_pwr_off(pWmtOp);
 	wmt_core_dump_func_state("AF FUNC OFF");
 	return iRet;
-}
-
-static INT32 opfunc_gps_suspend_by_type(ENUM_WMTDRV_TYPE_T type, P_WMT_OP pWmtOp)
-{
-	INT32 iRet = -1;
-	P_WMT_GEN_CONF pWmtGenConf = NULL;
-	MTK_WCN_BOOL suspend = (pWmtOp->au4OpData[0] != 0);
-	UINT32 suspend_flag = WMT_GPS_SUSPEND;
-
-	if (WMTDRV_TYPE_GPS != type && WMTDRV_TYPE_GPSL5 != type)
-		return 0;
-
-	if (WMTDRV_TYPE_GPSL5 == type)
-		suspend_flag = WMT_GPSL5_SUSPEND;
-
-	pWmtGenConf = wmt_conf_get_cfg();
-
-	if (gMtkWmtCtx.eDrvStatus[type] != DRV_STS_FUNC_ON) {
-		WMT_WARN_FUNC("WMT-CORE: GPS(%d) driver non-FUN_ON in opfunc_gps_suspend\n", type);
-		return 0;
-	}
-
-	if (MTK_WCN_BOOL_TRUE == suspend) {
-		if (osal_test_bit(suspend_flag, &gGpsFmState)) {
-			WMT_WARN_FUNC("WMT-CORE: GPS(%d) already suspend\n", type);
-			return 0;
-		}
-	} else {
-		if (!osal_test_bit(suspend_flag, &gGpsFmState)) {
-			WMT_WARN_FUNC("WMT-CORE: GPS(%d) already resume on\n", type);
-			return 0;
-		}
-	}
-
-	if (MTK_WCN_BOOL_TRUE == suspend) {
-		if (gpWmtFuncOps[type] && gpWmtFuncOps[type]->func_off) {
-			if (pWmtGenConf != NULL)
-				pWmtGenConf->wmt_gps_suspend_ctrl = 1;
-			iRet = (*(gpWmtFuncOps[type]->func_off)) (gMtkWmtCtx.p_ic_ops, wmt_conf_get_cfg());
-			if (pWmtGenConf != NULL)
-				pWmtGenConf->wmt_gps_suspend_ctrl = 0;
-		} else {
-			WMT_WARN_FUNC("WMT-CORE: GPS(%d) suspend ops not found\n", type);
-			iRet = -3;
-		}
-	} else {
-		/*enable power off flag, if flag=0, power off connsys will not be executed */
-		mtk_wcn_set_connsys_power_off_flag(MTK_WCN_BOOL_TRUE);
-		/* check if chip power on is needed */
-		if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_FUNC_ON) {
-			iRet = opfunc_pwr_on(pWmtOp);
-			if (iRet) {
-				WMT_ERR_FUNC("WMT-CORE: func(%d) hw resume fail(%d)\n", type, iRet);
-				osal_assert(0);
-
-				/* check all sub-func and do power off */
-				return -5;
-			}
-		}
-
-		if (gpWmtFuncOps[type] && gpWmtFuncOps[type]->func_on) {
-			if (pWmtGenConf != NULL)
-				pWmtGenConf->wmt_gps_suspend_ctrl = 1;
-			iRet = (*(gpWmtFuncOps[type]->func_on)) (gMtkWmtCtx.p_ic_ops, wmt_conf_get_cfg());
-			if (pWmtGenConf != NULL)
-				pWmtGenConf->wmt_gps_suspend_ctrl = 0;
-		} else {
-			WMT_WARN_FUNC("WMT-CORE: GPS(%d) resume ops not found\n", type);
-			iRet = -7;
-		}
-	}
-
-	if (iRet) {
-		WMT_ERR_FUNC("WMT-CORE: gps(%d) %s function failed, ret(%d)\n",
-			type, ((pWmtOp->au4OpData[0] != 0) ? "suspend" : "resume"), iRet);
-		osal_assert(0);
-	}
-
-	if (MTK_WCN_BOOL_FALSE == suspend)
-		opfunc_utc_time_sync(NULL);
-
-	return iRet;
-}
-
-static INT32 opfunc_gps_suspend(P_WMT_OP pWmtOp)
-{
-	if (pWmtOp->au4OpData[1] == 1)
-		opfunc_gps_suspend_by_type(WMTDRV_TYPE_GPS, pWmtOp);
-
-	if (pWmtOp->au4OpData[2] == 1)
-		opfunc_gps_suspend_by_type(WMTDRV_TYPE_GPSL5, pWmtOp);
-
-	return 0;
 }
 
 /* TODO:[ChangeFeature][George] is this OP obsoleted? */
@@ -1597,7 +1430,7 @@ static INT32 opfunc_pwr_sv(P_WMT_OP pWmtOp)
 	ULONG ctrlPa1 = 0;
 	ULONG ctrlPa2 = 0;
 
-	typedef INT32(*STP_PSM_CB) (const MTKSTP_PSM_ACTION_T);
+	typedef INT32(*STP_PSM_CB) (INT32);
 	STP_PSM_CB psm_cb = NULL;
 
 	if (pWmtOp->au4OpData[0] == SLEEP) {
@@ -1989,7 +1822,7 @@ static INT32 opfunc_cmd_test(P_WMT_OP pWmtOp)
 		cmdNoPa = pWmtOp->au4OpData[1];
 		pRes = (PUINT8) pWmtOp->au4OpData[2];
 		resBufRoom = pWmtOp->au4OpData[3];
-		if (cmdNoPa <= 0xf) {
+		if ((cmdNoPa >= 0x0) && (cmdNoPa <= 0xf)) {
 			WMT_INFO_FUNC("Send Coexistence Debug command [0x%x]!\n", cmdNoPa);
 			tstCmdSz = osal_sizeof(WMT_COEXDBG_CMD);
 			osal_memcpy(tstCmd, WMT_COEXDBG_CMD, tstCmdSz);
@@ -1997,7 +1830,7 @@ static INT32 opfunc_cmd_test(P_WMT_OP pWmtOp)
 				tstCmd[5] = cmdNoPa;
 
 			/*setup the expected event length */
-			if (cmdNoPa <= 0x4) {
+			if (cmdNoPa >= 0x0 && cmdNoPa <= 0x4) {
 				tstEvtSz = osal_sizeof(WMT_COEXDBG_1_EVT);
 				osal_memcpy(tstEvt, WMT_COEXDBG_1_EVT, tstEvtSz);
 			} else if (cmdNoPa == 0x5) {
@@ -2078,11 +1911,18 @@ static INT32 opfunc_hw_rst(P_WMT_OP pWmtOp)
 {
 
 	INT32 iRet = -1;
-	ULONG ctrlPa1 = 0;
-	ULONG ctrlPa2 = 0;
+	ULONG ctrlPa1;
+	ULONG ctrlPa2;
 
 	wmt_core_dump_func_state("BE HW RST");
     /*-->Reset WMT  data structure*/
+	/*gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_BT] = DRV_STS_POWER_OFF;*/
+	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM] = DRV_STS_POWER_OFF;
+	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS] = DRV_STS_POWER_OFF;
+	/* gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] = DRV_STS_POWER_OFF; */
+	/*gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_LPBK] = DRV_STS_POWER_OFF;*/
+	/* gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_SDIO1]= DRV_STS_POWER_OFF; */
+	/* gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_SDIO2]= DRV_STS_POWER_OFF; */
 	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_STP] = DRV_STS_POWER_OFF;
 	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_ANT] = DRV_STS_POWER_OFF;
 	gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_COREDUMP] = DRV_STS_POWER_OFF;
@@ -2113,22 +1953,6 @@ static INT32 opfunc_hw_rst(P_WMT_OP pWmtOp)
 						iRet, ctrlPa1, ctrlPa2);
 		}
 		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_BT] = DRV_STS_POWER_OFF;
-	}
-
-	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS] == DRV_STS_FUNC_ON ||
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPSL5] == DRV_STS_FUNC_ON ||
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM] == DRV_STS_FUNC_ON) {
-		if (mtk_wcn_stp_is_btif_fullset_mode()) {
-			ctrlPa1 = GPS_PALDO;
-			ctrlPa2 = PALDO_OFF;
-			iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
-			if (iRet)
-				WMT_ERR_FUNC("WMT-CORE: wmt_ctrl_soc_paldo_ctrl failed(%d)(%lu)(%lu)\n",
-						iRet, ctrlPa1, ctrlPa2);
-		}
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM] = DRV_STS_POWER_OFF;
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS] = DRV_STS_POWER_OFF;
-		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPSL5] = DRV_STS_POWER_OFF;
 	}
 
 	iRet = wmt_lib_wlan_lock_aquire();
@@ -2182,8 +2006,6 @@ static INT32 opfunc_hw_rst(P_WMT_OP pWmtOp)
 		gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] = DRV_STS_POWER_OFF;
 	}
 	wmt_lib_wlan_lock_release();
-
-	mtk_wcn_wmt_system_state_reset();
 
 	if (gMtkWmtCtx.wmtHifConf.hifType == WMT_HIF_SDIO) {
 		ctrlPa1 = WMT_SDIO_FUNC_STP;
@@ -2705,7 +2527,7 @@ static INT32 wmt_core_set_mcu_clk(UINT32 kind)
 	UINT8 evt_buffer[12] = { 0 };
 	MTK_WCN_BOOL fgFail;
 
-	UINT8 WMT_SET_MCU_CLK_CMD[] = { 0x01, 0x0a, 0x04, 0x00, 0x09, 0x01, 0x00, 0x00 };
+	UINT8 WMT_SET_MCU_CLK_CMD[] = { 0x01, 0x0a, 0x04, 0x00, 0x09, 0x03, 0x00, 0x00 };
 	UINT8 WMT_SET_MCU_CLK_EVT[] = { 0x02, 0x0a, 0x01, 0x00, 0x00 };
 
 
@@ -3337,7 +3159,55 @@ UINT32 wmt_core_get_flag_for_test(VOID)
 
 static INT32 opfunc_utc_time_sync(P_WMT_OP pWmtOp)
 {
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+	INT32 iRet;
+	UINT32 u4Res;
+	UINT32 evtLen;
+	UINT8 evtBuf[16] = { 0 };
+	UINT32 tsec;
+	UINT32 tusec;
+
+	connsys_dedicated_log_get_utc_time(&tsec, &tusec);
+	/* UTC time second unit */
+	osal_memcpy(&WMT_UTC_SYNC_CMD[5], &tsec, 4);
+	/* UTC time microsecond unit */
+	osal_memcpy(&WMT_UTC_SYNC_CMD[9], &tusec, 4);
+
+	/* send command */
+	iRet = wmt_core_tx(WMT_UTC_SYNC_CMD, sizeof(WMT_UTC_SYNC_CMD),
+		&u4Res, MTK_WCN_BOOL_FALSE);
+	if (iRet) {
+		WMT_ERR_FUNC("Tx WMT_UTC_SYNC_CMD fail!(%d) len (%d, %zu)\n",
+			iRet, u4Res, sizeof(WMT_UTC_SYNC_CMD));
+		return -1;
+	}
+
+	/* receive event */
+	evtLen = osal_sizeof(WMT_UTC_SYNC_EVT);
+	iRet = wmt_core_rx(evtBuf, evtLen, &u4Res);
+	if (iRet || (u4Res != evtLen)) {
+		WMT_ERR_FUNC("WMT-CORE: read WMT_UTC_SYNC_EVT fail(%d) len(%d, %d)\n",
+			iRet, u4Res, evtLen);
+		osal_assert(0);
+		return iRet;
+	}
+
+	if (osal_memcmp(evtBuf, WMT_UTC_SYNC_EVT,
+		osal_sizeof(WMT_UTC_SYNC_EVT)) != 0) {
+		WMT_ERR_FUNC("WMT-CORE: compare WMT_UTC_SYNC_EVT error\n");
+		WMT_ERR_FUNC("WMT-CORE: rx(%d):[%02X,%02X,%02X,%02X,%02X,%02X]\n",
+			u4Res, evtBuf[0], evtBuf[1], evtBuf[2], evtBuf[3], evtBuf[4], evtBuf[5]);
+		WMT_ERR_FUNC("WMT-CORE: exp(%zu):[%02X,%02X,%02X,%02X,%02X,%02X]\n",
+			osal_sizeof(WMT_UTC_SYNC_EVT), WMT_UTC_SYNC_EVT[0],
+			WMT_UTC_SYNC_EVT[1], WMT_UTC_SYNC_EVT[2], WMT_UTC_SYNC_EVT[3],
+			WMT_UTC_SYNC_EVT[4], WMT_UTC_SYNC_EVT[5]);
+	} else {
+		WMT_INFO_FUNC("Send WMT_UTC_SYNC_CMD command OK!\n");
+	}
+	return 0;
+#else
 	return -1;
+#endif
 }
 
 static INT32 opfunc_fw_log_ctrl(P_WMT_OP pWmtOp)
@@ -3388,12 +3258,8 @@ static INT32 opfunc_wlan_probe(P_WMT_OP pWmtOp)
 	ULONG ctrlPa1;
 	ULONG ctrlPa2;
 	INT32 iRet;
-	UINT32 drvType = (UINT32)pWmtOp->au4OpData[0];
+	UINT32 drvType = pWmtOp->au4OpData[0];
 
-	if (drvType >= WMTDRV_TYPE_MAX) {
-		WMT_INFO_FUNC("drvType(%d) is invalid.\n", drvType);
-		return -1;
-	}
 
 	iRet = wmt_lib_wlan_lock_aquire();
 	atomic_set(&g_wifi_on_off_ready, 0);
@@ -3455,14 +3321,6 @@ static INT32 opfunc_wlan_probe(P_WMT_OP pWmtOp)
 			gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_SDIO1] = DRV_STS_POWER_OFF;
 		}
 		gMtkWmtCtx.eDrvStatus[drvType] = DRV_STS_POWER_OFF;
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-		g_fg_is_wifi_working = 0;
-
-		/* turn wifi on fail, check if need enable slpprt mod. */
-		if ((gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON)
-		&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] != DRV_STS_FUNC_ON))
-			wmt_core_pdma_slpprt_mode(1);
-#endif
 	} else
 		gMtkWmtCtx.eDrvStatus[drvType] = DRV_STS_FUNC_ON;
 
@@ -3521,14 +3379,6 @@ static INT32 opfunc_wlan_remove(P_WMT_OP pWmtOp)
 
 	gMtkWmtCtx.eDrvStatus[drvType] = DRV_STS_POWER_OFF;
 
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-	g_fg_is_wifi_working = 0;
-	/* function off and check to enable slpprt mode */
-	if ((gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] == DRV_STS_FUNC_ON)
-	&& (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] != DRV_STS_FUNC_ON))
-		wmt_core_pdma_slpprt_mode(1);
-#endif
-
 	if (iRet) {
 		WMT_ERR_FUNC("WMT-CORE: type(0x%x) function off failed, ret(%d)\n", drvType, iRet);
 		osal_assert(0);
@@ -3569,7 +3419,6 @@ static INT32 opfunc_try_pwr_off(P_WMT_OP pWmtOp)
 
 	if ((gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_BT] == DRV_STS_POWER_OFF) &&
 	    (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPS] == DRV_STS_POWER_OFF) &&
-	    (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_GPSL5] == DRV_STS_POWER_OFF) &&
 	    (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_FM] == DRV_STS_POWER_OFF) &&
 	    (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WIFI] == DRV_STS_POWER_OFF) &&
 	    (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_LPBK] == DRV_STS_POWER_OFF) &&
@@ -3604,9 +3453,9 @@ static INT32 opfunc_gps_mcu_ctrl(P_WMT_OP pWmtOp)
 	PUINT8 p_rx_buf = NULL;
 
 	p_tx_data_buf = (PUINT8)pWmtOp->au4OpData[0];
-	tx_data_len = (UINT32)pWmtOp->au4OpData[1];
+	tx_data_len = pWmtOp->au4OpData[1];
 	p_rx_data_buf = (PUINT8)pWmtOp->au4OpData[2];
-	rx_data_buf_len = (UINT32)pWmtOp->au4OpData[3];
+	rx_data_buf_len = pWmtOp->au4OpData[3];
 	p_rx_data_len = (PINT32)(pWmtOp->au4OpData[4]);
 
 	if ((!p_tx_data_buf) || (tx_data_len == 0) || (!p_rx_data_buf) || (rx_data_buf_len == 0)) {
@@ -3683,7 +3532,39 @@ UINT32 wmt_core_get_blank_status(VOID)
 
 INT32 wmt_blank_status_ctrl(UINT32 on_off_flag)
 {
-	return 0;
+	INT32 iRet = 0;
+#ifdef CONFIG_MTK_CONNSYS_DEDICATED_LOG_PATH
+	UINT32 u4Res;
+	UINT32 evtLen;
+	UINT8 evtBuf[16] = { 0 };
+
+	WMT_BLANK_STATUS_CMD[5] = (on_off_flag) ? 0x1 : 0x0;
+
+	/* send command */
+	iRet = wmt_core_tx((PUINT8)WMT_BLANK_STATUS_CMD, osal_sizeof(WMT_BLANK_STATUS_CMD), &u4Res,
+			   MTK_WCN_BOOL_FALSE);
+
+	if (iRet || (u4Res != osal_sizeof(WMT_BLANK_STATUS_CMD))) {
+		WMT_ERR_FUNC("WMT-CORE: WMT_BLANK_STATUS_CMD iRet(%d) cmd len err(%d, %zu)\n",
+			     (iRet == 0 ? -1 : iRet), u4Res, osal_sizeof(WMT_BLANK_STATUS_CMD));
+		return iRet;
+	}
+
+	evtLen = osal_sizeof(WMT_BLANK_STATUS_EVT);
+	iRet = wmt_core_rx(evtBuf, evtLen, &u4Res);
+	if (iRet || (u4Res != evtLen)) {
+		WMT_ERR_FUNC("WMT-CORE: read WMT_BLANK_STATUS_EVT fail(%d) len(%d, %d)\n",
+			     iRet, u4Res, evtLen);
+		WMT_INFO_FUNC("buf:[%2X,%2X,%2X,%2X,%2X] evt:[%2X,%2X,%2X,%2X,%2X]\n",
+				evtBuf[0], evtBuf[1], evtBuf[2], evtBuf[3], evtBuf[4],
+				WMT_BLANK_STATUS_EVT[0], WMT_BLANK_STATUS_EVT[1],
+				WMT_BLANK_STATUS_EVT[2], WMT_BLANK_STATUS_EVT[3],
+				WMT_BLANK_STATUS_EVT[4]);
+	}
+	else
+		wmt_lib_set_blank_status(WMT_BLANK_STATUS_CMD[5]);
+#endif
+	return iRet;
 }
 
 static INT32 opfunc_blank_status_ctrl(P_WMT_OP pWmtOp)
@@ -3727,168 +3608,3 @@ static INT32 opfunc_met_ctrl(P_WMT_OP pWmtOp)
 
 	return 0;
 }
-
-static INT32 opfunc_get_consys_state(P_WMT_OP pWmtOp)
-{
-	INT32 ret = 0, i;
-	INT32 times = 0, slp_ms;
-	P_CONSYS_STATE_DMP_OP dmp_op = (P_CONSYS_STATE_DMP_OP)pWmtOp->au4OpData[0];
-	ULONG ver = (ULONG)pWmtOp->au4OpData[1];
-
-	osal_lock_sleepable_lock(&dmp_op->lock);
-	if (dmp_op->status == WMT_DUMP_STATE_NONE
-		|| dmp_op->version != ver) {
-		ret = -1;
-		goto done;
-	}
-
-	/* WMT should be ON */
-	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_FUNC_ON) {
-		WMT_INFO_FUNC("WMT is not on");
-		ret = -1;
-		goto done;
-	}
-
-	if (mtk_wcn_consys_sleep_info_read_all_ctrl(&dmp_op->dmp_info.state) != 0)
-		ret = -1;
-
-	/* Consys register should be readable */
-	if (mtk_consys_check_reg_readable() == 0) {
-		WMT_INFO_FUNC("cr cannot readable");
-		ret = -1;
-		goto done;
-	}
-
-	times = dmp_op->times;
-	slp_ms = dmp_op->cpu_sleep_ms;
-
-	/* dmp cpu_pcr */
-	for (i = 0; i < times; i++) {
-		dmp_op->dmp_info.cpu_pcr[i] = wmt_plat_read_cpupcr();
-		osal_get_local_time(&(dmp_op->dmp_info.sec[i]),
-							&(dmp_op->dmp_info.nsec[i]));
-		if (slp_ms > 0)
-			osal_sleep_ms(slp_ms);
-	}
-
-	ret = mtk_consys_dump_osc_state(&dmp_op->dmp_info.state);
-	if (ret != MTK_WCN_BOOL_TRUE)
-		ret = -2;
-
-	ret = mtk_wcn_consys_dump_gating_state(&dmp_op->dmp_info.state);
-	if (ret != MTK_WCN_BOOL_TRUE)
-		ret = -3;
-
-done:
-	osal_unlock_sleepable_lock(&dmp_op->lock);
-	return 0;
-}
-
-INT32 opfunc_dump_pc_log(P_WMT_OP pWmtOp)
-{
-
-	/* WMT should be ON */
-	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_FUNC_ON) {
-		WMT_INFO_FUNC("WMT is not on");
-		return -1;
-	}
-	if (wmt_detect_get_chip_type() == WMT_CHIP_TYPE_SOC)
-		mtk_wcn_consys_pc_log_dump();
-
-	return 0;
-}
-
-INT32 opfunc_dump_cpupcr(P_WMT_OP pWmtOp)
-{
-	UINT32 times, sleep_ms;
-
-	/* WMT should be ON */
-	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_FUNC_ON) {
-		WMT_INFO_FUNC("WMT is not on");
-		return -1;
-	}
-
-	times = (UINT32)pWmtOp->au4OpData[0];
-	sleep_ms = (UINT32)pWmtOp->au4OpData[1];
-
-	if (sleep_ms > 10 || times > 10)
-		return -1;
-
-	return mtk_wcn_consys_poll_cpucpr_dump(times, sleep_ms);
-}
-
-#ifdef	WMT_PDMA_SLPPRT_MODE_SUPPORT
-
-#define CSR_BASE_ADDRESS	0x18000000
-#define PCIE_HIF_BASE		0x4000
-#define CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR 0x154
-#define SLP_PRT_MOD_MASK		0xFFFFFFFE
-#define SLP_PRT_MOD_BITMAP_BIT	0x1
-
-static UINT32 wmt_slpprt_mod_cr(UINT8 enable)
-{
-	UINT8 *consys_reg_base = NULL;
-	UINT32 value = 0;
-
-	WMT_INFO_FUNC("wmt_slpprt_mod_cr.\n");
-	consys_reg_base = ioremap_nocache((CSR_BASE_ADDRESS + PCIE_HIF_BASE), 0x200);
-
-	if (consys_reg_base) {
-		value = CONSYS_REG_READ(consys_reg_base + CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR);
-		WMT_INFO_FUNC("read 0x50000154 0x%08x.\n", value);
-		if (enable == 1)
-			value = (value & SLP_PRT_MOD_MASK) | SLP_PRT_MOD_BITMAP_BIT;
-		else if (enable == 0)
-			value = value & SLP_PRT_MOD_MASK;
-
-		WMT_INFO_FUNC("write 0x50000154 0x%08x.\n", value);
-		CONSYS_REG_WRITE(consys_reg_base + CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, value);
-
-		value = CONSYS_REG_READ(consys_reg_base + CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR);
-		WMT_INFO_FUNC("read after write 0x50000154 0x%08x.\n", value);
-
-		iounmap(consys_reg_base);
-	} else
-		WMT_INFO_FUNC("ioremap fail 0x%x.\n", consys_reg_base);
-	return 0;
-}
-
-static UINT32 wmt_is_wifi_turning_on(VOID)
-{
-	return g_fg_is_wifi_working;
-}
-
-static INT32 wmt_core_pdma_slpprt_mode(UINT8 enable)
-{
-	static UINT8 ucLastEnable = 0xff;
-
-	WMT_INFO_FUNC("pdma_slpprt_mode (%u)->(%u).\n",
-		ucLastEnable, enable);
-
-	if (enable == ucLastEnable) {
-		WMT_INFO_FUNC("already done.\n");
-		return 0;
-	}
-
-	if ((enable == 1) && wmt_is_wifi_turning_on()) {
-		WMT_INFO_FUNC("wifi is turning on, skip enable.\n");
-		return 0;
-	}
-
-	if (gMtkWmtCtx.eDrvStatus[WMTDRV_TYPE_WMT] != DRV_STS_FUNC_ON) {
-		WMT_ERR_FUNC("reg_rw when WMT is powered off\n");
-		return -1;
-	}
-
-	/* Enable pdma sleep protect mod when wifi off.
-	 * 0x50000154 bit0 = 1 enable.
-	 * Disable pdma sleep protect mod when wifi on.
-	 * 0x50000154 bit0 = 0 disable.
-	 */
-	wmt_slpprt_mod_cr(enable);
-	ucLastEnable = enable;
-
-	return 0;
-}
-
-#endif

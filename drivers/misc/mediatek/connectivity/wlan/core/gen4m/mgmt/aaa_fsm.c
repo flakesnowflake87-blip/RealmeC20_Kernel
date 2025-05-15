@@ -223,16 +223,18 @@ void aaaFsmRunEventTxReqTimeOut(IN struct ADAPTER *prAdapter,
 	struct STA_RECORD *prStaRec = (struct STA_RECORD *) plParamPtr;
 	struct BSS_INFO *prBssInfo;
 
+	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
+
+	ASSERT(prStaRec);
 	if (!prStaRec)
 		return;
-	if (prStaRec->ucBssIndex > MAX_BSSID_NUM)
-		return;
-
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
 
 	DBGLOG(AAA, LOUD,
 		"EVENT-TIMER: TX REQ TIMEOUT, Current Time = %d\n",
 		kalGetTimeTick());
+
+	/* Trigger statistics log if Auth/Assoc Tx timeout */
+	wlanTriggerStatsLog(prAdapter, prAdapter->rWifiVar.u4StatsLogDuration);
 
 	switch (prStaRec->eAuthAssocState) {
 	case AAA_STATE_SEND_AUTH2:
@@ -311,11 +313,9 @@ void aaaFsmRunEventRxAuth(IN struct ADAPTER *prAdapter,
 		prAuthFrame = (struct WLAN_AUTH_FRAME *) prSwRfb->pvHeader;
 
 		DBGLOG(AAA, INFO,
-			"SA: " MACSTR ", bssid: " MACSTR ", %d %d sta: %d\n",
+			"SA: " MACSTR ", bssid: " MACSTR ", sta idx: %d\n",
 			MAC2STR(prAuthFrame->aucSrcAddr),
 			MAC2STR(prAuthFrame->aucBSSID),
-			prAuthFrame->u2AuthTransSeqNo,
-			prAuthFrame->u2AuthAlgNum,
 			prSwRfb->ucStaRecIdx);
 
 #if CFG_ENABLE_WIFI_DIRECT
@@ -336,9 +336,11 @@ void aaaFsmRunEventRxAuth(IN struct ADAPTER *prAdapter,
 			 * by Auth Algorithm/Transation Seq
 			 */
 			if (WLAN_STATUS_SUCCESS ==
-				authProcessRxAuthFrame(prAdapter,
+				authProcessRxAuth1Frame(prAdapter,
 					prSwRfb,
-					prBssInfo,
+					prBssInfo->aucBSSID,
+					AUTH_ALGORITHM_NUM_OPEN_SYSTEM,
+					AUTH_TRANSACTION_SEQ_1,
 					&u2StatusCode)) {
 
 				if (u2StatusCode == STATUS_CODE_SUCCESSFUL) {
@@ -355,25 +357,11 @@ void aaaFsmRunEventRxAuth(IN struct ADAPTER *prAdapter,
 						&u2StatusCode);
 
 #if CFG_SUPPORT_802_11W
-					if (prBssInfo->u4RsnSelectedAKMSuite ==
-						RSN_AKM_SUITE_SAE)
-						break;
-					if (prBssInfo->u4RsnSelectedAKMSuite ==
-						RSN_AKM_SUITE_OWE)
-						break;
-
 					/* AP PMF, if PMF connection,
 					 * ignore Rx auth
 					 */
 					/* Certification 4.3.3.4 */
-
-					if (prAdapter->rWifiVar
-						.fgSapAuthPolicy ==
-						P2P_AUTH_POLICY_RESET)
-						DBGLOG(P2P, INFO,
-							"Ignore PMF check\n");
-					else if (rsnCheckBipKeyInstalled(
-						prAdapter,
+					if (rsnCheckBipKeyInstalled(prAdapter,
 						prStaRec)) {
 						DBGLOG(AAA, INFO,
 							"Drop RxAuth\n");
@@ -447,9 +435,7 @@ bow_proc:
 	if (prStaRec) {
 		/* update RCPI */
 		ASSERT(prSwRfb->prRxStatusGroup3);
-		prStaRec->ucRCPI = nicRxGetRcpiValueFromRxv(
-			prAdapter,
-			RCPI_MODE_MAX,
+		prStaRec->ucRCPI = nicRxGetRcpiValueFromRxv(RCPI_MODE_MAX,
 			prSwRfb);
 	}
 	/* 4 <3> Update STA_RECORD_T and
@@ -484,32 +470,12 @@ bow_proc:
 			/* Update Station Record - Status/Reason Code */
 			prStaRec->u2StatusCode = u2StatusCode;
 
-			prStaRec->ucAuthAlgNum = prAuthFrame->u2AuthAlgNum;
+			prStaRec->ucAuthAlgNum = AUTH_ALGORITHM_NUM_OPEN_SYSTEM;
 		} else {
 			/* NOTE(Kevin): We should have STA_RECORD_T
 			 * if the status code was successful
 			 */
 			ASSERT(!(u2StatusCode == STATUS_CODE_SUCCESSFUL));
-		}
-
-		if (prBssInfo->u4RsnSelectedAKMSuite ==
-			RSN_AKM_SUITE_SAE) {
-			kalP2PIndicateRxMgmtFrame(prAdapter,
-				prAdapter->prGlueInfo,
-				prSwRfb,
-				FALSE,
-				(uint8_t)prBssInfo->u4PrivateData);
-			DBGLOG(AAA, INFO, "Forward RxAuth\n");
-			return;
-		} else if (prBssInfo->u4RsnSelectedAKMSuite ==
-			RSN_AKM_SUITE_OWE) {
-			kalP2PIndicateRxMgmtFrame(prAdapter,
-				prAdapter->prGlueInfo,
-				prSwRfb,
-				FALSE,
-				(uint8_t)prBssInfo->u4PrivateData);
-			DBGLOG(AAA, INFO, "[OWE] Forward RxAuth\n");
-			return;
 		}
 
 		/* NOTE: Ignore the return status for AAA */
@@ -588,12 +554,6 @@ uint32_t aaaFsmRunEventRxAssoc(IN struct ADAPTER *prAdapter,
 		 */
 		prStaRec = cnmGetStaRecByIndex(prAdapter, prSwRfb->ucStaRecIdx);
 
-		/* No Wtbl handling */
-		if (!prStaRec) {
-			secHandleNoWtbl(prAdapter, prSwRfb);
-			prStaRec = prSwRfb->prStaRec;
-		}
-
 		/* We should have the corresponding Sta Record. */
 		if ((!prStaRec) || (!prStaRec->fgIsInUse)) {
 			/* Not to reply association response
@@ -642,8 +602,7 @@ uint32_t aaaFsmRunEventRxAssoc(IN struct ADAPTER *prAdapter,
 		/* update RCPI */
 		ASSERT(prSwRfb->prRxStatusGroup3);
 		prStaRec->ucRCPI =
-			nicRxGetRcpiValueFromRxv(
-				prAdapter, RCPI_MODE_MAX, prSwRfb);
+			nicRxGetRcpiValueFromRxv(RCPI_MODE_MAX, prSwRfb);
 
 		/* 4 <2> Check P2P network conditions */
 #if CFG_ENABLE_WIFI_DIRECT
@@ -654,8 +613,7 @@ uint32_t aaaFsmRunEventRxAssoc(IN struct ADAPTER *prAdapter,
 				GET_BSS_INFO_BY_INDEX(prAdapter,
 					prStaRec->ucBssIndex);
 
-			if (prBssInfo &&
-				prBssInfo->fgIsNetActive) {
+			if (prBssInfo->fgIsNetActive) {
 
 				/* 4 <2.1> Validate Assoc Req Frame and
 				 * get Status Code
@@ -695,8 +653,7 @@ uint32_t aaaFsmRunEventRxAssoc(IN struct ADAPTER *prAdapter,
 			prBssInfo =
 				GET_BSS_INFO_BY_INDEX(prAdapter,
 					prStaRec->ucBssIndex);
-			if (!prBssInfo)
-				break;
+
 			if ((prBssInfo->fgIsNetActive)
 				&& (prBssInfo->eCurrentOPMode == OP_MODE_BOW)) {
 
@@ -902,16 +859,7 @@ uint32_t aaaFsmRunEventRxAssoc(IN struct ADAPTER *prAdapter,
 
 		/* NOTE: Ignore the return status for AAA */
 		/* 4 <4.2> Reply  Assoc Resp */
-		if (prBssInfo->u4RsnSelectedAKMSuite ==
-			RSN_AKM_SUITE_OWE) {
-			kalP2PIndicateRxMgmtFrame(prAdapter,
-				prAdapter->prGlueInfo,
-				prSwRfb,
-				FALSE,
-				(uint8_t)prBssInfo->u4PrivateData);
-			DBGLOG(AAA, INFO, "[OWE] Forward RxAssoc\n");
-		} else
-			assocSendReAssocRespFrame(prAdapter, prStaRec);
+		assocSendReAssocRespFrame(prAdapter, prStaRec);
 
 #if CFG_SUPPORT_802_11W
 		/* AP PMF */
@@ -968,6 +916,11 @@ aaaFsmRunEventTxDone(IN struct ADAPTER *prAdapter,
 
 	DBGLOG(AAA, TRACE, "TxDone ucStaState:%d, eAuthAssocState:%d\n",
 		prStaRec->ucStaState, prStaRec->eAuthAssocState);
+
+	/* Trigger statistics log if Auth/Assoc Tx failed */
+	if (rTxDoneStatus != TX_RESULT_SUCCESS)
+		wlanTriggerStatsLog(prAdapter,
+			prAdapter->rWifiVar.u4StatsLogDuration);
 
 	switch (prStaRec->eAuthAssocState) {
 	case AAA_STATE_SEND_AUTH2:

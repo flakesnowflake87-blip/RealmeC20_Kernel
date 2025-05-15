@@ -79,8 +79,6 @@
 #endif
 
 #include "mt66xx_reg.h"
-#include "gl_kal.h"
-#include "host_csr.h"
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -118,67 +116,6 @@
  *                              F U N C T I O N S
  *******************************************************************************
  */
-
-static uint8_t halRingDataSelectByWmmIndex(
-	IN struct ADAPTER *prAdapter,
-	IN uint8_t ucWmmIndex)
-{
-	struct BUS_INFO *bus_info;
-	uint16_t u2Port = TX_RING_DATA0_IDX_0;
-
-	bus_info = prAdapter->chip_info->bus_info;
-	if (bus_info->tx_ring0_data_idx != bus_info->tx_ring1_data_idx) {
-		u2Port = (ucWmmIndex % 2) ?
-			TX_RING_DATA1_IDX_1 : TX_RING_DATA0_IDX_0;
-	}
-	return u2Port;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief Decide TxRingData number by MsduInfo
- *
- * @param prGlueInfo
- *
- * @param prMsduInfo
- *
- * @return TxRingData number
- */
-/*----------------------------------------------------------------------------*/
-uint8_t halTxRingDataSelect(IN struct ADAPTER *prAdapter,
-	IN struct MSDU_INFO *prMsduInfo)
-{
-	struct BUS_INFO *bus_info;
-
-	ASSERT(prAdapter);
-
-	bus_info = prAdapter->chip_info->bus_info;
-	if (bus_info->tx_ring2_data_idx &&
-			nicTxIsPrioPackets(prAdapter, prMsduInfo))
-		return TX_RING_DATA2_IDX_2;
-	return halRingDataSelectByWmmIndex(prAdapter, prMsduInfo->ucWmmQueSet);
-}
-
-#ifdef CFG_PDMA_SLPPRT_MODE_SUPPORT
-void halPdmaSlpprotOp(IN struct GLUE_INFO *prGlueInfo,
-							IN uint8_t ucEnable)
-{
-	uint32_t u4Val = 0;
-
-	kalDevRegRead(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, &u4Val);
-	DBGLOG(INIT, TRACE,
-		"CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR read(0x%x)\n", u4Val);
-	if (ucEnable == 1)
-		u4Val |=
-		CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_ENABLE_MASK;
-	else
-		u4Val &=
-		~CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_ENABLE_MASK;
-	DBGLOG(INIT, TRACE,
-		"CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR write(0x%x)\n", u4Val);
-	kalDevRegWrite(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, u4Val);
-}
-#endif
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -247,23 +184,19 @@ u_int8_t halVerifyChipID(IN struct ADAPTER *prAdapter)
 
 uint32_t halRxWaitResponse(IN struct ADAPTER *prAdapter, IN uint8_t ucPortIdx,
 	OUT uint8_t *pucRspBuffer, IN uint32_t u4MaxRespBufferLen,
-	OUT uint32_t *pu4Length, IN uint32_t u4WaitingInterval)
+	OUT uint32_t *pu4Length)
 {
 	struct GLUE_INFO *prGlueInfo;
-	uint32_t u4PktLen = 0, u4Time;
+	uint32_t u4PktLen = 0, u4Value = 0, u4Time;
 	u_int8_t fgStatus;
-	struct mt66xx_chip_info *prChipInfo;
 
 	DEBUGFUNC("nicRxWaitResponse");
 
 	ASSERT(prAdapter);
 	prGlueInfo = prAdapter->prGlueInfo;
-	prChipInfo = prAdapter->chip_info;
 	ASSERT(prGlueInfo);
 	ASSERT(pucRspBuffer);
-
 	ASSERT(ucPortIdx < 2);
-	ucPortIdx = HIF_IMG_DL_STATUS_PORT_IDX;
 
 	u4Time = kalGetTimeTick();
 	u4PktLen = u4MaxRespBufferLen;
@@ -275,7 +208,7 @@ uint32_t halRxWaitResponse(IN struct ADAPTER *prAdapter, IN uint8_t ucPortIdx,
 		}
 
 		fgStatus = kalDevPortRead(
-			prGlueInfo, ucPortIdx, u4PktLen,
+			prGlueInfo, HIF_IMG_DL_STATUS_PORT_IDX, u4PktLen,
 			pucRspBuffer, HIF_RX_COALESCING_BUFFER_SIZE);
 		if (fgStatus) {
 			*pu4Length = u4PktLen;
@@ -283,20 +216,15 @@ uint32_t halRxWaitResponse(IN struct ADAPTER *prAdapter, IN uint8_t ucPortIdx,
 		}
 
 		if (halIsTimeout(u4Time, RX_RESPONSE_TIMEOUT)) {
-#if (CFG_SUPPORT_CONNAC2X == 0)
-			uint32_t u4Value = 0;
-
 			kalDevRegRead(prGlueInfo, CONN_HIF_ON_DBGCR01,
 				      &u4Value);
 			DBGLOG(HAL, ERROR, "CONN_HIF_ON_DBGCR01[0x%x]\n",
 			       u4Value);
-#endif
 			return WLAN_STATUS_FAILURE;
 		}
 
 		/* Response packet is not ready */
-		/* use sleep waiting instead of busy waiting */
-		kalUsleep(u4WaitingInterval);
+		kalUdelay(50);
 	} while (TRUE);
 
 	return WLAN_STATUS_SUCCESS;
@@ -383,7 +311,7 @@ static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 			       LP_OWN_BACK_FAILED_LOG_SKIP_MS);
 			fgStatus = FALSE;
 #if CFG_CHIP_RESET_SUPPORT
-			glSetRstReason(RST_DRV_OWN_FAIL);
+			glGetRstReason(RST_DRV_OWN_FAIL);
 			GL_RESET_TRIGGER(prAdapter,
 					 RST_FLAG_CHIP_RESET);
 #endif
@@ -406,23 +334,9 @@ static u_int8_t halDriverOwnCheckCR4(struct ADAPTER *prAdapter)
 static void halDriverOwnTimeout(struct ADAPTER *prAdapter,
 				uint32_t u4CurrTick, u_int8_t fgTimeout)
 {
-	struct mt66xx_chip_info *prChipInfo;
-	struct CHIP_DBG_OPS *prChipDbgOps;
-	uint32_t u4DrvOwnTimeoutMs = LP_OWN_BACK_FAILED_LOG_SKIP_MS;
-
-	if (prAdapter->u4CasanLoadType == 1)
-		u4DrvOwnTimeoutMs = LP_OWN_BACK_FAILED_LOG_SKIP_CASAN_MS;
-
-	DBGLOG(INIT, INFO,
-		   "Driver own timeout %u ms\n",
-		   u4DrvOwnTimeoutMs);
-
-	prChipInfo = prAdapter->chip_info;
-	prChipDbgOps = prChipInfo->prDebugOps;
-
 	if ((prAdapter->u4OwnFailedCount == 0) ||
 	    CHECK_FOR_TIMEOUT(u4CurrTick, prAdapter->rLastOwnFailedLogTime,
-			      MSEC_TO_SYSTIME(u4DrvOwnTimeoutMs))
+			      MSEC_TO_SYSTIME(LP_OWN_BACK_FAILED_LOG_SKIP_MS))
 		) {
 		DBGLOG(INIT, ERROR,
 		       "LP cannot be own back, Timeout[%u](%ums), BusAccessError[%u]",
@@ -435,28 +349,19 @@ static void halDriverOwnTimeout(struct ADAPTER *prAdapter,
 		       kalIsCardRemoved(prAdapter->prGlueInfo),
 		       wlanIsChipNoAck(prAdapter),
 		       prAdapter->u4OwnFailedCount);
+
 		DBGLOG(INIT, INFO,
 		       "Skip LP own back failed log for next %ums\n",
-		       u4DrvOwnTimeoutMs);
-		if (prAdapter->chip_info->dumpwfsyscpupcr)
-			prAdapter->chip_info->dumpwfsyscpupcr(prAdapter);
+		       LP_OWN_BACK_FAILED_LOG_SKIP_MS);
 
 		prAdapter->u4OwnFailedLogCount++;
 		if (prAdapter->u4OwnFailedLogCount >
 		    LP_OWN_BACK_FAILED_RESET_CNT) {
-			if (prChipDbgOps->showCsrInfo)
-				prChipDbgOps->showCsrInfo(prAdapter);
-			if (prChipInfo->dumpBusHangCr)
-				prChipInfo->dumpBusHangCr(prAdapter);
+			halShowHostCsrInfo(prAdapter);
 #if CFG_CHIP_RESET_SUPPORT
 			/* Trigger RESET */
-			glSetRstReason(RST_DRV_OWN_FAIL);
-#if (CFG_SUPPORT_CONNINFRA == 0)
+			glGetRstReason(RST_DRV_OWN_FAIL);
 			GL_RESET_TRIGGER(prAdapter, RST_FLAG_CHIP_RESET);
-#else
-			GL_RESET_TRIGGER(prAdapter, RST_FLAG_WF_RESET);
-#endif
-
 #endif
 		}
 		GET_CURRENT_SYSTIME(&prAdapter->rLastOwnFailedLogTime);
@@ -479,7 +384,7 @@ u_int8_t halSetDriverOwn(IN struct ADAPTER *prAdapter)
 	struct mt66xx_chip_info *prChipInfo;
 	struct BUS_INFO *prBusInfo;
 	u_int8_t fgStatus = TRUE;
-	uint32_t i, u4CurrTick;
+	uint32_t i, u4CurrTick, u4WriteTick, u4WriteTickTemp;
 	u_int8_t fgTimeout;
 	u_int8_t fgResult;
 
@@ -498,6 +403,7 @@ u_int8_t halSetDriverOwn(IN struct ADAPTER *prAdapter)
 	DBGLOG(INIT, TRACE, "DRIVER OWN Start\n");
 	KAL_REC_TIME_START();
 
+	u4WriteTick = 0;
 	u4CurrTick = kalGetTimeTick();
 	i = 0;
 
@@ -516,24 +422,29 @@ u_int8_t halSetDriverOwn(IN struct ADAPTER *prAdapter)
 		if (fgResult) {
 			/* Check WPDMA FW own interrupt status and clear */
 			if (prBusInfo->fgCheckDriverOwnInt)
-				HAL_MCR_WR(prAdapter,
-					prBusInfo->fw_own_clear_addr,
-					prBusInfo->fw_own_clear_bit);
+				HAL_MCR_WR(prAdapter, WPDMA_INT_STA,
+					   WPDMA_FW_CLR_OWN_INT);
 			prAdapter->fgIsFwOwn = FALSE;
 			prAdapter->u4OwnFailedCount = 0;
 			prAdapter->u4OwnFailedLogCount = 0;
 			break;
-		} else if (wlanIsChipNoAck(prAdapter)) {
-			DBGLOG(INIT, INFO,
-			"Driver own return due to chip reset and chip no response.\n");
-			fgStatus = FALSE;
-			break;
 		} else if ((i > LP_OWN_BACK_FAILED_RETRY_CNT) &&
 			   (kalIsCardRemoved(prAdapter->prGlueInfo) ||
-			    fgIsBusAccessFailed || fgTimeout)) {
+			    fgIsBusAccessFailed || fgTimeout ||
+			    wlanIsChipNoAck(prAdapter))) {
 			halDriverOwnTimeout(prAdapter, u4CurrTick, fgTimeout);
 			fgStatus = FALSE;
 			break;
+		}
+
+		u4WriteTickTemp = kalGetTimeTick();
+		if ((i == 0) || TIME_AFTER(u4WriteTickTemp,
+			(u4WriteTick + LP_OWN_REQ_CLR_INTERVAL_MS))) {
+			/* Driver get LP ownership per 200 ms,
+			 * to avoid iteration time not accurate
+			 */
+			HAL_LP_OWN_CLR(prAdapter, &fgResult);
+			u4WriteTick = u4WriteTickTemp;
 		}
 
 		/* Delay for LP engine to complete its operation. */
@@ -552,11 +463,6 @@ u_int8_t halSetDriverOwn(IN struct ADAPTER *prAdapter)
 		fgStatus &= halDriverOwnCheckCR4(prAdapter);
 
 	if (fgStatus) {
-		if (prAdapter->fgIsFwDownloaded) {
-			/*WFDMA re-init flow after chip deep sleep*/
-			if (prChipInfo->asicWfdmaReInit)
-				prChipInfo->asicWfdmaReInit(prAdapter);
-		}
 		/* Check consys enter sleep mode DummyReg(0x0F) */
 		if (prBusInfo->checkDummyReg)
 			prBusInfo->checkDummyReg(prAdapter->prGlueInfo);
@@ -581,13 +487,12 @@ u_int8_t halSetDriverOwn(IN struct ADAPTER *prAdapter)
 void halSetFWOwn(IN struct ADAPTER *prAdapter, IN u_int8_t fgEnableGlobalInt)
 {
 	struct BUS_INFO *prBusInfo;
-	struct GL_HIF_INFO *prHifInfo;
 	u_int8_t fgResult;
 
 	ASSERT(prAdapter);
+	ASSERT(prAdapter->u4PwrCtrlBlockCnt != 0);
 
 	prBusInfo = prAdapter->chip_info->bus_info;
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
 
 	/* Decrease Block to Enter Low Power Semaphore count */
 	GLUE_DEC_REF_CNT(prAdapter->u4PwrCtrlBlockCnt);
@@ -598,8 +503,7 @@ void halSetFWOwn(IN struct ADAPTER *prAdapter, IN u_int8_t fgEnableGlobalInt)
 	if (prAdapter->fgIsFwOwn == TRUE)
 		return;
 
-	if (!prHifInfo->fgIsPowerOff &&
-		nicProcessIST(prAdapter) != WLAN_STATUS_NOT_INDICATING) {
+	if (nicProcessIST(prAdapter) != WLAN_STATUS_NOT_INDICATING) {
 		DBGLOG(INIT, STATE, "Skip FW OWN due to pending INT\n");
 		/* pending interrupts */
 		return;
@@ -615,10 +519,8 @@ void halSetFWOwn(IN struct ADAPTER *prAdapter, IN u_int8_t fgEnableGlobalInt)
 		HAL_LP_OWN_SET(prAdapter, &fgResult);
 
 		prAdapter->fgIsFwOwn = TRUE;
-		prHifInfo->fgIsBackupIntSta = false;
 
-		DBGLOG(INIT, INFO, "FW OWN:%u, IntSta:0x%08x\n",
-		       fgResult, prHifInfo->u4WakeupIntSta);
+		DBGLOG(INIT, INFO, "FW OWN:%u\n", fgResult);
 	}
 }
 
@@ -638,126 +540,49 @@ void halTxCancelSendingCmd(IN struct ADAPTER *prAdapter,
 {
 }
 
-u_int8_t halTxIsCmdBufEnough(IN struct ADAPTER *prAdapter)
-{
-	struct mt66xx_chip_info *prChipInfo;
-	struct GL_HIF_INFO *prHifInfo;
-	struct BUS_INFO *prBusInfo;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
-	struct RTMP_TX_RING *prTxRing;
-	uint16_t u2Port = TX_RING_CMD_IDX_3;
-
-	prChipInfo = prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
-
-	if (prSwWfdmaInfo->fgIsEnSwWfdma)
-		return TRUE;
-
-#if (CFG_SUPPORT_CONNAC2X == 1)
-	if (prChipInfo->is_support_wacpu)
-		u2Port = TX_RING_WA_CMD_IDX_5;
-#endif /* CFG_SUPPORT_CONNAC2X == 1 */
-
-	prTxRing = &prHifInfo->TxRing[u2Port];
-
-	if (prTxRing->u4UsedCnt + 1 < TX_RING_SIZE)
-		return TRUE;
-
-	halWpdmaProcessCmdDmaDone(prAdapter->prGlueInfo, u2Port);
-	DBGLOG(HAL, INFO, "Force recycle port %d DMA resource UsedCnt[%d].\n",
-	       u2Port, prTxRing->u4UsedCnt);
-
-	if (prTxRing->u4UsedCnt + 1 < TX_RING_SIZE)
-		return TRUE;
-
-	return FALSE;
-}
-
 u_int8_t halTxIsDataBufEnough(IN struct ADAPTER *prAdapter,
 	IN struct MSDU_INFO *prMsduInfo)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct RTMP_TX_RING *prTxRing;
-	uint16_t u2Port;
 
-	u2Port = halTxRingDataSelect(prAdapter, prMsduInfo);
 	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prTxRing = &prHifInfo->TxRing[u2Port];
+	prTxRing = &prHifInfo->TxRing[TX_RING_DATA0_IDX_0];
 
 	if ((prHifInfo->u4TxDataQLen < halGetMsduTokenFreeCnt(prAdapter)) &&
 	    (prTxRing->u4UsedCnt + prHifInfo->u4TxDataQLen + 1 < TX_RING_SIZE))
 		return TRUE;
 
 	DBGLOG(HAL, TRACE,
-		"Low Tx Data Resource Tok[%u] Ring%d[%u] List[%u]\n",
-		halGetMsduTokenFreeCnt(prAdapter),
-		u2Port,
-		(TX_RING_SIZE - prTxRing->u4UsedCnt),
-		prHifInfo->u4TxDataQLen);
-	kalTraceEvent("Low T[%u]Ring%d[%u]L[%u] id=0x%04x sn=%d",
-		halGetMsduTokenFreeCnt(prAdapter),
-		u2Port,
-		(TX_RING_SIZE - prTxRing->u4UsedCnt),
-		prHifInfo->u4TxDataQLen,
-		GLUE_GET_PKT_IP_ID(prMsduInfo->prPacket),
-		GLUE_GET_PKT_SEQ_NO(prMsduInfo->prPacket));
+	       "Low Tx Data Resource Tok[%u] Ring[%u] List[%u]\n",
+	       halGetMsduTokenFreeCnt(prAdapter),
+	       (TX_RING_SIZE - prTxRing->u4UsedCnt), prHifInfo->u4TxDataQLen);
 	return FALSE;
 }
 
-static void halDefaultProcessTxInterrupt(IN struct ADAPTER *prAdapter)
+void halProcessTxInterrupt(IN struct ADAPTER *prAdapter)
 {
 	struct BUS_INFO *prBusInfo = prAdapter->chip_info->bus_info;
 	struct GL_HIF_INFO *prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
 	union WPDMA_INT_STA_STRUCT rIntrStatus;
-	bool fgIsSetHifTxEvent = false;
 
 	rIntrStatus = (union WPDMA_INT_STA_STRUCT)prHifInfo->u4IntStatus;
 
 	if (rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring_fwdl_idx))
 		halWpdmaProcessCmdDmaDone(prAdapter->prGlueInfo,
-			TX_RING_FWDL_IDX_4);
+			TX_RING_FWDL_IDX_3);
 
 	if (rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring_cmd_idx))
 		halWpdmaProcessCmdDmaDone(prAdapter->prGlueInfo,
-			TX_RING_CMD_IDX_3);
+			TX_RING_CMD_IDX_2);
 
-	if (rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring0_data_idx)) {
+	if (rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring_data_idx)) {
 		halWpdmaProcessDataDmaDone(prAdapter->prGlueInfo,
 			TX_RING_DATA0_IDX_0);
-		fgIsSetHifTxEvent = true;
-	}
 
-	if (prBusInfo->tx_ring0_data_idx != prBusInfo->tx_ring1_data_idx &&
-		rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring1_data_idx)) {
-		halWpdmaProcessDataDmaDone(prAdapter->prGlueInfo,
-			TX_RING_DATA1_IDX_1);
-		fgIsSetHifTxEvent = true;
-	}
-
-	if (prBusInfo->tx_ring2_data_idx &&
-		rIntrStatus.field.tx_done & BIT(prBusInfo->tx_ring2_data_idx)) {
-		halWpdmaProcessDataDmaDone(prAdapter->prGlueInfo,
-			TX_RING_DATA2_IDX_2);
-		fgIsSetHifTxEvent = true;
-	}
-
-	if (fgIsSetHifTxEvent)
 		kalSetTxEvent2Hif(prAdapter->prGlueInfo);
+	}
 }
-
-
-void halProcessTxInterrupt(IN struct ADAPTER *prAdapter)
-{
-	struct BUS_INFO *prBusInfo = prAdapter->chip_info->bus_info;
-
-	if (prBusInfo->processTxInterrupt)
-		prBusInfo->processTxInterrupt(prAdapter);
-	else
-		halDefaultProcessTxInterrupt(prAdapter);
-}
-
 
 void halInitMsduTokenInfo(IN struct ADAPTER *prAdapter)
 {
@@ -774,7 +599,7 @@ void halInitMsduTokenInfo(IN struct ADAPTER *prAdapter)
 	prTokenInfo = &prHifInfo->rTokenInfo;
 	prChipInfo = prAdapter->chip_info;
 
-	prTokenInfo->u4UsedCnt = 0;
+	prTokenInfo->i4UsedCnt = 0;
 	u4TxHeadRoomSize = NIC_TX_DESC_AND_PADDING_LENGTH +
 		prChipInfo->txd_append_size;
 
@@ -784,19 +609,17 @@ void halInitMsduTokenInfo(IN struct ADAPTER *prAdapter)
 		prToken->prMsduInfo = NULL;
 
 #if HIF_TX_PREALLOC_DATA_BUFFER
-		prToken->u4DmaLength = NIC_TX_MAX_SIZE_PER_FRAME +
-			u4TxHeadRoomSize;
+		prToken->u4DmaLength = NIC_TX_MAX_SIZE_PER_FRAME + u4TxHeadRoomSize;
 		if (prMemOps->allocTxDataBuf)
 			prMemOps->allocTxDataBuf(prToken, u4Idx);
 
 		if (prToken->prPacket) {
-			/* DBGLOG(HAL, TRACE,
+			DBGLOG(HAL, TRACE,
 				"Msdu Entry[0x%p] Tok[%u] Buf[0x%p] len[%u]\n",
 				prToken, u4Idx, prToken->prPacket,
 				prToken->u4DmaLength);
-			*/
 		} else {
-			prTokenInfo->u4UsedCnt++;
+			prTokenInfo->i4UsedCnt++;
 			DBGLOG(HAL, WARN,
 				"Msdu Token Memory alloc failed[%u]\n",
 				u4Idx);
@@ -815,14 +638,10 @@ void halInitMsduTokenInfo(IN struct ADAPTER *prAdapter)
 		prTokenInfo->aprTokenStack[u4Idx] = prToken;
 	}
 
-	prTokenInfo->u4MaxBssFreeCnt = HIF_TX_MSDU_TOKEN_NUM;
-	for (u4Idx = 0; u4Idx < MAX_BSSID_NUM; u4Idx++)
-		prTokenInfo->u4TxBssCnt[u4Idx] = 0;
-
 	spin_lock_init(&prTokenInfo->rTokenLock);
 
 	DBGLOG(HAL, INFO, "Msdu Token Init: Tot[%u] Used[%u]\n",
-		HIF_TX_MSDU_TOKEN_NUM, prTokenInfo->u4UsedCnt);
+		HIF_TX_MSDU_TOKEN_NUM, prTokenInfo->i4UsedCnt);
 }
 
 void halUninitMsduTokenInfo(IN struct ADAPTER *prAdapter)
@@ -868,25 +687,21 @@ void halUninitMsduTokenInfo(IN struct ADAPTER *prAdapter)
 #endif
 	}
 
-	prTokenInfo->u4UsedCnt = 0;
-
-	prTokenInfo->u4MaxBssFreeCnt = HIF_DEFAULT_BSS_FREE_CNT;
-	for (u4Idx = 0; u4Idx < MAX_BSSID_NUM; u4Idx++)
-		prTokenInfo->u4TxBssCnt[u4Idx] = 0;
+	prTokenInfo->i4UsedCnt = 0;
 
 	DBGLOG(HAL, INFO, "Msdu Token Uninit: Tot[%u] Used[%u]\n",
-		HIF_TX_MSDU_TOKEN_NUM, prTokenInfo->u4UsedCnt);
+		HIF_TX_MSDU_TOKEN_NUM, prTokenInfo->i4UsedCnt);
 }
 
 uint32_t halGetMsduTokenFreeCnt(IN struct ADAPTER *prAdapter)
 {
-	struct PERF_MONITOR *prPerMonitor;
+	struct PERF_MONITOR_T *prPerMonitor;
 	struct MSDU_TOKEN_INFO *prTokenInfo =
 		&prAdapter->prGlueInfo->rHifInfo.rTokenInfo;
 	prPerMonitor = &prAdapter->rPerMonitor;
-	prPerMonitor->u4UsedCnt = prTokenInfo->u4UsedCnt;
+	prPerMonitor->u4UsedCnt = prTokenInfo->i4UsedCnt;
 
-	return HIF_TX_MSDU_TOKEN_NUM - prTokenInfo->u4UsedCnt;
+	return (HIF_TX_MSDU_TOKEN_NUM - prTokenInfo->i4UsedCnt);
 }
 
 struct MSDU_TOKEN_ENTRY *halGetMsduTokenEntry(IN struct ADAPTER *prAdapter,
@@ -898,8 +713,7 @@ struct MSDU_TOKEN_ENTRY *halGetMsduTokenEntry(IN struct ADAPTER *prAdapter,
 	return &prTokenInfo->arToken[u4TokenNum];
 }
 
-struct MSDU_TOKEN_ENTRY *halAcquireMsduToken(IN struct ADAPTER *prAdapter,
-					     uint8_t ucBssIndex)
+struct MSDU_TOKEN_ENTRY *halAcquireMsduToken(IN struct ADAPTER *prAdapter)
 {
 	struct MSDU_TOKEN_INFO *prTokenInfo =
 		&prAdapter->prGlueInfo->rHifInfo.rTokenInfo;
@@ -908,21 +722,16 @@ struct MSDU_TOKEN_ENTRY *halAcquireMsduToken(IN struct ADAPTER *prAdapter,
 
 	if (!halGetMsduTokenFreeCnt(prAdapter)) {
 		DBGLOG(HAL, INFO, "No more free MSDU token, Used[%u]\n",
-			prTokenInfo->u4UsedCnt);
+			prTokenInfo->i4UsedCnt);
 		return NULL;
 	}
 
 	spin_lock_irqsave(&prTokenInfo->rTokenLock, flags);
 
-	prToken = prTokenInfo->aprTokenStack[prTokenInfo->u4UsedCnt];
-	ktime_get_ts64(&prToken->rTs);
+	prToken = prTokenInfo->aprTokenStack[prTokenInfo->i4UsedCnt];
+	do_gettimeofday(&prToken->rTs);
 	prToken->fgInUsed = TRUE;
-	prTokenInfo->u4UsedCnt++;
-
-	if (ucBssIndex < BSS_DEFAULT_NUM) {
-		prToken->ucBssIndex = ucBssIndex;
-		prTokenInfo->u4TxBssCnt[ucBssIndex]++;
-	}
+	prTokenInfo->i4UsedCnt++;
 
 	spin_unlock_irqrestore(&prTokenInfo->rTokenLock, flags);
 
@@ -979,24 +788,19 @@ static void halResetMsduToken(IN struct ADAPTER *prAdapter)
 		prToken->fgInUsed = FALSE;
 		prTokenInfo->aprTokenStack[u4Idx] = prToken;
 	}
-	prTokenInfo->u4UsedCnt = 0;
-	for (u4Idx = 0; u4Idx < MAX_BSSID_NUM; u4Idx++)
-		prTokenInfo->u4TxBssCnt[u4Idx] = 0;
+	prTokenInfo->i4UsedCnt = 0;
 }
 
 void halReturnMsduToken(IN struct ADAPTER *prAdapter, uint32_t u4TokenNum)
 {
-	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct MSDU_TOKEN_INFO *prTokenInfo =
 		&prAdapter->prGlueInfo->rHifInfo.rTokenInfo;
 	struct MSDU_TOKEN_ENTRY *prToken;
 	unsigned long flags = 0;
 
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-
-	if (!prTokenInfo->u4UsedCnt) {
-		DBGLOG(HAL, WARN, "MSDU token is full, Used[%u]\n",
-			prTokenInfo->u4UsedCnt);
+	if (!prTokenInfo->i4UsedCnt) {
+		DBGLOG(HAL, INFO, "MSDU token is full, Used[%u]\n",
+			prTokenInfo->i4UsedCnt);
 		return;
 	}
 
@@ -1008,18 +812,9 @@ void halReturnMsduToken(IN struct ADAPTER *prAdapter, uint32_t u4TokenNum)
 
 	spin_lock_irqsave(&prTokenInfo->rTokenLock, flags);
 
-	if (prToken->ucBssIndex < BSS_DEFAULT_NUM) {
-		if (prTokenInfo->u4TxBssCnt[prToken->ucBssIndex] == 0)
-			DBGLOG(HAL, ERROR, "TxBssCnt is zero[%u]\n",
-			       prToken->ucBssIndex);
-		else
-			prTokenInfo->u4TxBssCnt[prToken->ucBssIndex]--;
-	}
-	prToken->ucBssIndex = BSS_DEFAULT_NUM;
-
 	prToken->fgInUsed = FALSE;
-	prTokenInfo->u4UsedCnt--;
-	prTokenInfo->aprTokenStack[prTokenInfo->u4UsedCnt] = prToken;
+	prTokenInfo->i4UsedCnt--;
+	prTokenInfo->aprTokenStack[prTokenInfo->i4UsedCnt] = prToken;
 
 	spin_unlock_irqrestore(&prTokenInfo->rTokenLock, flags);
 }
@@ -1037,8 +832,8 @@ void halReturnTimeoutMsduToken(struct ADAPTER *prAdapter)
 {
 	struct MSDU_TOKEN_INFO *prTokenInfo;
 	struct MSDU_TOKEN_ENTRY *prToken;
-	struct timespec64 rNowTs, rTime;
-	struct timespec64 rTimeout;
+	struct timeval rNowTs, rTime;
+	struct timeval rTimeout;
 	uint32_t u4Idx = 0;
 
 	ASSERT(prAdapter);
@@ -1047,8 +842,8 @@ void halReturnTimeoutMsduToken(struct ADAPTER *prAdapter)
 	prTokenInfo = &prAdapter->prGlueInfo->rHifInfo.rTokenInfo;
 
 	rTimeout.tv_sec = HIF_MSDU_REPORT_RETURN_TIMEOUT;
-	rTimeout.tv_nsec = 0;
-	ktime_get_ts64(&rNowTs);
+	rTimeout.tv_usec = 0;
+	do_gettimeofday(&rNowTs);
 
 	for (u4Idx = 0; u4Idx < HIF_TX_MSDU_TOKEN_NUM; u4Idx++) {
 		prToken = &prTokenInfo->arToken[u4Idx];
@@ -1060,18 +855,18 @@ void halReturnTimeoutMsduToken(struct ADAPTER *prAdapter)
 			continue;
 
 		rTime.tv_sec = rNowTs.tv_sec - prToken->rTs.tv_sec;
-		rTime.tv_nsec = rNowTs.tv_nsec;
-		if (prToken->rTs.tv_nsec > rNowTs.tv_nsec) {
+		rTime.tv_usec = rNowTs.tv_usec;
+		if (prToken->rTs.tv_usec > rNowTs.tv_usec) {
 			rTime.tv_sec -= 1;
-			rTime.tv_nsec += SEC_TO_NSEC(1);
+			rTime.tv_usec += SEC_TO_USEC(1);
 		}
-		rTime.tv_nsec -= prToken->rTs.tv_nsec;
+		rTime.tv_usec -= prToken->rTs.tv_usec;
 
 		/* Return token to free stack */
 		if (halTimeCompare(&rTime, &rTimeout) >= 0) {
 			DBGLOG(HAL, INFO,
-			       "Free TokenId[%u] timeout[sec:%ld, nsec:%ld]\n",
-			       u4Idx, rTime.tv_sec, rTime.tv_nsec);
+			       "Free TokenId[%u] timeout[sec:%ld, usec:%ld]\n",
+			       u4Idx, rTime.tv_sec, rTime.tv_usec);
 			halReturnMsduToken(prAdapter, u4Idx);
 		}
 	}
@@ -1080,224 +875,20 @@ void halReturnTimeoutMsduToken(struct ADAPTER *prAdapter)
 bool halHifSwInfoInit(IN struct ADAPTER *prAdapter)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
-	struct BUS_INFO *prBusInfo = NULL;
-	struct mt66xx_chip_info *prChipInfo;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
 
 	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prChipInfo = prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
 
-	if (prBusInfo->DmaShdlInit)
-		prBusInfo->DmaShdlInit(prAdapter);
+	asicPcieDmaShdlInit(prAdapter);
 
 	if (!halWpdmaAllocRing(prAdapter->prGlueInfo, true))
 		return false;
 
-	halWpdmaInitRing(prAdapter->prGlueInfo, true);
+	halWpdmaInitRing(prAdapter->prGlueInfo);
 	halInitMsduTokenInfo(prAdapter);
-	/* Initialize wfdma reInit handshake parameters */
-	if ((prChipInfo->asicWfdmaReInit)
-	    && (prChipInfo->asicWfdmaReInit_handshakeInit))
-		prChipInfo->asicWfdmaReInit_handshakeInit(prAdapter);
-
-#if defined(_HIF_PCIE) || defined(_HIF_AXI)
-	prAdapter->ucSerState = SER_IDLE_DONE;
-	prHifInfo->rErrRecoveryCtl.eErrRecovState = ERR_RECOV_STOP_IDLE;
-	prHifInfo->rErrRecoveryCtl.u4Status = 0;
-
-#if (KERNEL_VERSION(4, 15, 0) <= CFG80211_VERSION_CODE)
-	timer_setup(&prHifInfo->rSerTimer, halHwRecoveryTimeout, 0);
-	prHifInfo->rSerTimerData = (unsigned long)prAdapter->prGlueInfo;
-#else
-	init_timer(&prHifInfo->rSerTimer);
-	prHifInfo->rSerTimer.function = halHwRecoveryTimeout;
-	prHifInfo->rSerTimer.data = (unsigned long)prAdapter->prGlueInfo;
-#endif
-	prHifInfo->rSerTimer.expires =
-		jiffies + HIF_SER_TIMEOUT * HZ / MSEC_PER_SEC;
-
-	INIT_LIST_HEAD(&prHifInfo->rTxCmdQ);
-	INIT_LIST_HEAD(&prHifInfo->rTxDataQ);
-	prHifInfo->u4TxDataQLen = 0;
-#endif
-
-#if (CFG_ENABLE_HOST_BUS_TIMEOUT == 1)
-	DBGLOG(HAL, INFO, "Enable Host CSR timeout mechanism.\n");
-	HAL_MCR_WR(prAdapter, HOST_CSR_BUS_TIMOUT_CTRL_ADDR, 0x80EFFFFF);
-#endif
 
 	prHifInfo->fgIsPowerOff = false;
 
-	if (prSwWfdmaInfo->rOps.init)
-		prSwWfdmaInfo->rOps.init(prAdapter->prGlueInfo);
-
 	return true;
-}
-
-void halHifSwInfoUnInit(IN struct GLUE_INFO *prGlueInfo)
-{
-#if defined(_HIF_PCIE) || defined(_HIF_AXI)
-	struct mt66xx_chip_info *prChipInfo;
-	struct BUS_INFO *prBusInfo = NULL;
-	struct GL_HIF_INFO *prHifInfo = &prGlueInfo->rHifInfo;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
-	struct list_head *prCur, *prNext;
-	struct TX_CMD_REQ *prTxCmdReq;
-	struct TX_DATA_REQ *prTxDataReq;
-
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
-
-	del_timer_sync(&prHifInfo->rSerTimer);
-
-	halUninitMsduTokenInfo(prGlueInfo->prAdapter);
-	halWpdmaFreeRing(prGlueInfo);
-
-	list_for_each_safe(prCur, prNext, &prHifInfo->rTxCmdQ) {
-		prTxCmdReq = list_entry(prCur, struct TX_CMD_REQ, list);
-		list_del(prCur);
-		kfree(prTxCmdReq);
-	}
-
-	list_for_each_safe(prCur, prNext, &prHifInfo->rTxDataQ) {
-		prTxDataReq = list_entry(prCur, struct TX_DATA_REQ, list);
-		list_del(prCur);
-		prHifInfo->u4TxDataQLen--;
-	}
-
-	if (prSwWfdmaInfo->rOps.uninit)
-		prSwWfdmaInfo->rOps.uninit(prGlueInfo);
-#endif
-}
-
-#if CFG_SUPPORT_TX_LATENCY_STATS
-void halAddDriverLatencyCount(IN struct ADAPTER *prAdapter,
-	uint32_t u4DriverLatency)
-{
-	uint32_t *pMaxDriverDelay = prAdapter->rWifiVar.au4DriverTxDelayMax;
-	uint32_t *pDriverDelay =
-		prAdapter->rMsduReportStats.rCounting.au4DriverLatency;
-	int i;
-
-	for (i = 0; i < LATENCY_STATS_MAX_SLOTS; i++, pDriverDelay++) {
-		if (u4DriverLatency < *pMaxDriverDelay++) {
-			GLUE_INC_REF_CNT(*pDriverDelay);
-			break;
-		}
-	}
-}
-
-static void halAddConnsysLatencyCount(IN struct ADAPTER *prAdapter,
-	uint32_t u4ConnsysLatency)
-{
-	uint32_t *pMaxConnsysDelay = prAdapter->rWifiVar.au4ConnsysTxDelayMax;
-	uint32_t *pConnsysDelay =
-		prAdapter->rMsduReportStats.rCounting.au4ConnsysLatency;
-	uint8_t i;
-
-	for (i = 0; i < LATENCY_STATS_MAX_SLOTS; i++, pConnsysDelay++) {
-		if (u4ConnsysLatency <= *pMaxConnsysDelay++) {
-			GLUE_INC_REF_CNT(*pConnsysDelay);
-			break;
-		}
-	}
-}
-
-static void halAddTxFailConnsysLatencyCount(IN struct ADAPTER *prAdapter,
-	uint32_t u4ConnsysLatency)
-{
-	uint32_t *pMaxFailConnsysDelay =
-		prAdapter->rWifiVar.au4ConnsysTxFailDelayMax;
-	uint32_t *pFailConnsysDelay =
-		prAdapter->rMsduReportStats.rCounting.au4FailConnsysLatency;
-	uint8_t i;
-
-	for (i = 0; i < LATENCY_STATS_MAX_SLOTS; i++) {
-		if (u4ConnsysLatency <= *pMaxFailConnsysDelay++) {
-			GLUE_INC_REF_CNT(*pFailConnsysDelay);
-			break;
-		}
-	}
-}
-
-static void halAddMacLatencyCount(IN struct ADAPTER *prAdapter,
-	uint32_t u4MacLatency)
-{
-	uint32_t *pMaxMacDelay = prAdapter->rWifiVar.au4ConnsysTxFailDelayMax;
-	uint32_t *pMacDelay =
-		prAdapter->rMsduReportStats.rCounting.au4MacLatency;
-	uint8_t i;
-
-	for (i = 0; i < LATENCY_STATS_MAX_SLOTS; i++) {
-		if (u4MacLatency <= *pMaxMacDelay++) {
-			GLUE_INC_REF_CNT(*pMacDelay);
-			break;
-		}
-	}
-}
-#endif
-
-static void halMsduReportStatsP0(IN struct ADAPTER *prAdapter,
-		union HW_MAC_MSDU_TOKEN_T *msduToken, uint32_t u4Token)
-{
-#if CFG_SUPPORT_TX_LATENCY_STATS
-	struct TX_LATENCY_REPORT_STATS *report = &prAdapter->rMsduReportStats;
-	struct TX_LATENCY_STATS *stats = &prAdapter->rMsduReportStats.rCounting;
-	struct MSDU_TOKEN_ENTRY *prTokenEntry;
-	struct WIFI_VAR *prWifiVar = NULL;
-	uint32_t u4ConnsysLatency;
-	uint32_t u4MacLatency;
-	struct timespec64 rNowTs;
-
-	if (u4Token >= HIF_TX_MSDU_TOKEN_NUM)
-		return;
-
-	prTokenEntry = halGetMsduTokenEntry(prAdapter, u4Token);
-	prWifiVar = &prAdapter->rWifiVar;
-	report->fgTxLatencyEnabled = 1;
-
-	/*
-	 * Driver latency counted in wlanTxLifetimeTagPacket,
-	 * since MSDU info freed on passed to DMA.
-	 */
-
-	ktime_get_ts64(&rNowTs);
-	if (rNowTs.tv_nsec < prTokenEntry->rTs.tv_nsec) {
-		rNowTs.tv_sec -= 1;
-		rNowTs.tv_nsec += NSEC_PER_SEC;
-	}
-	u4ConnsysLatency =
-		(rNowTs.tv_sec - prTokenEntry->rTs.tv_sec) * MSEC_PER_SEC +
-		(rNowTs.tv_nsec - prTokenEntry->rTs.tv_nsec) / NSEC_PER_MSEC;
-
-	u4MacLatency = msduToken->rFormatV3.rP0.u4TxCnt;
-	halAddMacLatencyCount(prAdapter, u4MacLatency);
-
-	if (unlikely(msduToken->rFormatV3.rP0.u4Stat)) {
-		GLUE_INC_REF_CNT(stats->u4TxFail);
-		GLUE_INC_REF_CNT(report->u4ContinuousTxFail);
-		halAddTxFailConnsysLatencyCount(prAdapter, u4ConnsysLatency);
-		if (prAdapter->rWifiVar.u4ContinuousTxFailThreshold <=
-			report->u4ContinuousTxFail) {
-			char uevent[64];
-
-			kalSnprintf(uevent, sizeof(uevent),
-				"abnormaltrx=DIR:TX,event:AbDrop,Count:%u",
-				report->u4ContinuousTxFail);
-			kalSendUevent(uevent);
-		}
-	} else {
-		halAddConnsysLatencyCount(prAdapter, u4ConnsysLatency);
-		report->u4ContinuousTxFail = 0;
-	}
-
-	if (prWifiVar->fgPacketLatencyLog)
-		DBGLOG(HAL, INFO, "Latency C: %u M: %u; tok=%u",
-			u4ConnsysLatency, u4MacLatency, u4Token);
-#endif
 }
 
 void halRxProcessMsduReport(IN struct ADAPTER *prAdapter,
@@ -1314,59 +905,28 @@ void halRxProcessMsduReport(IN struct ADAPTER *prAdapter,
 #endif
 	struct QUE rFreeQueue;
 	struct QUE *prFreeQueue;
-	uint16_t u2TokenCnt, u2TotalTokenCnt;
-	uint32_t u4Idx, u4Token;
-	uint8_t ucVer;
+	uint32_t u4TokenCnt, u4Idx, u4Token;
 
 	ASSERT(prAdapter);
 	ASSERT(prAdapter->prGlueInfo);
 
 	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
+	prTxRing = &prHifInfo->TxRing[TX_RING_DATA0_IDX_0];
 	prMemOps = &prHifInfo->rMemOps;
 
 	prFreeQueue = &rFreeQueue;
 	QUEUE_INITIALIZE(prFreeQueue);
 
 	prMsduReport = (struct HW_MAC_MSDU_REPORT *)prSwRfb->pucRecvBuff;
-	ucVer = prMsduReport->DW1.field.u4Ver;
-	if (ucVer == TFD_EVT_VER_3)
-		u2TotalTokenCnt = prMsduReport->DW0.field_v3.u2MsduCount;
-	else
-		u2TotalTokenCnt = prMsduReport->DW0.field.u2MsduCount;
+	u4TokenCnt = (uint32_t)prMsduReport->u2MsduCount;
 
-	u4Idx = u2TokenCnt = 0;
-	while (u2TokenCnt < u2TotalTokenCnt) {
-		/* Format version of this tx done event.
-		 *	0: MT7615
-		 *	1: MT7622, CONNAC (X18/P18/MT7663)
-		 *	2: MT7915 E1/Petrus
-		 *      3: MT7915 E2/Buzzard
-		 */
-		if (ucVer == TFD_EVT_VER_0)
+	for (u4Idx = 0; u4Idx < u4TokenCnt; u4Idx++) {
+		if (prMsduReport->u4Ver == 0)
 			u4Token = prMsduReport->au4MsduToken[u4Idx >> 1].
-				rFormatV0.u2MsduID[u4Idx & 1];
-		else if (ucVer == TFD_EVT_VER_1)
-			u4Token = prMsduReport->au4MsduToken[u4Idx].
-				rFormatV1.u2MsduID;
-		else if (ucVer == TFD_EVT_VER_2)
+				rFormatV1.u2MsduID[u4Idx & 1];
+		else
 			u4Token = prMsduReport->au4MsduToken[u4Idx].
 				rFormatV2.u2MsduID;
-		else {
-			if (!prMsduReport->au4MsduToken[u4Idx].
-				rFormatV3.rP0.u4Pair) {
-				u4Token = prMsduReport->au4MsduToken[u4Idx].
-						rFormatV3.rP0.u4MsduID;
-
-				halMsduReportStatsP0(prAdapter,
-					&prMsduReport->au4MsduToken[u4Idx],
-					u4Token);
-			} else {
-				u4Idx++;
-				continue;
-			}
-		}
-		u4Idx++;
-		u2TokenCnt++;
 
 		if (u4Token >= HIF_TX_MSDU_TOKEN_NUM) {
 			DBGLOG(HAL, ERROR, "Error MSDU report[%u]\n", u4Token);
@@ -1381,7 +941,7 @@ void halRxProcessMsduReport(IN struct ADAPTER *prAdapter,
 #if HIF_TX_PREALLOC_DATA_BUFFER
 		DBGLOG_LIMITED(HAL, TRACE,
 			       "MsduRpt: Cnt[%u] Tok[%u] Free[%u]\n",
-			       u2TokenCnt, u4Token,
+			       u4TokenCnt, u4Token,
 			       halGetMsduTokenFreeCnt(prAdapter));
 #else
 		prMsduInfo = prTokenEntry->prMsduInfo;
@@ -1392,7 +952,7 @@ void halRxProcessMsduReport(IN struct ADAPTER *prAdapter,
 
 		DBGLOG_LIMITED(HAL, TRACE,
 			       "MsduRpt: Cnt[%u] Tok[%u] Msdu[0x%p] TxDone[%u] Free[%u]\n",
-			       u2TokenCnt, u4Token, prMsduInfo,
+			       u4TokenCnt, u4Token, prMsduInfo,
 			       (prMsduInfo->pfTxDoneHandler ? TRUE : FALSE),
 			       halGetMsduTokenFreeCnt(prAdapter));
 #endif
@@ -1406,13 +966,11 @@ void halRxProcessMsduReport(IN struct ADAPTER *prAdapter,
 		}
 
 		if (prTokenEntry->u4CpuIdx < TX_RING_SIZE) {
-			prTxRing = &prHifInfo->TxRing[prTokenEntry->u2Port];
 			prTxCell = &prTxRing->Cell[prTokenEntry->u4CpuIdx];
 			prTxCell->prToken = NULL;
 		}
 		prTokenEntry->u4CpuIdx = TX_RING_SIZE;
 		halReturnMsduToken(prAdapter, u4Token);
-		GLUE_INC_REF_CNT(prAdapter->rHifStats.u4DataMsduRptCount);
 	}
 
 #if !HIF_TX_PREALLOC_DATA_BUFFER
@@ -1479,7 +1037,6 @@ uint32_t halTxGetPageCount(IN struct ADAPTER *prAdapter,
 
 uint32_t halTxPollingResource(IN struct ADAPTER *prAdapter, IN uint8_t ucTC)
 {
-	nicTxReleaseResource(prAdapter, ucTC, 1, TRUE, FALSE);
 	return WLAN_STATUS_SUCCESS;
 }
 
@@ -1487,19 +1044,14 @@ void halSerHifReset(IN struct ADAPTER *prAdapter)
 {
 }
 
-void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
-	uint8_t fgRxData)
+void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port)
 {
 	struct RX_CTRL *prRxCtrl;
 	struct SW_RFB *prSwRfb = (struct SW_RFB *) NULL;
 	uint8_t *pucBuf = NULL;
-	void *prRxStatus;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	u_int8_t fgStatus;
 	uint32_t u4RxCnt;
-	struct RX_DESC_OPS_T *prRxDescOps;
-	struct RTMP_RX_RING *prRxRing;
-	struct GL_HIF_INFO *prHifInfo;
-	uint32_t u4MsduReportCnt = 0;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
@@ -1509,23 +1061,8 @@ void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 
 	prRxCtrl = &prAdapter->rRxCtrl;
 	ASSERT(prRxCtrl);
-	prRxDescOps = prAdapter->chip_info->prRxDescOps;
-	ASSERT(prRxDescOps->nic_rxd_get_rx_byte_count);
-	ASSERT(prRxDescOps->nic_rxd_get_pkt_type);
-	ASSERT(prRxDescOps->nic_rxd_get_wlan_idx);
-#if DBG
-	ASSERT(prRxDescOps->nic_rxd_get_sec_mode);
-#endif /* DBG */
-
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prRxRing = &prHifInfo->RxRing[u4Port];
 
 	u4RxCnt = halWpdmaGetRxDmaDoneCnt(prAdapter->prGlueInfo, u4Port);
-
-	DBGLOG(RX, TEMP, "halRxReceiveRFBs: u4RxCnt:%d\n", u4RxCnt);
-
-	kalDevRegRead(prAdapter->prGlueInfo, prRxRing->hw_cidx_addr,
-		      &prRxRing->RxCpuIdx);
 
 	while (u4RxCnt--) {
 		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
@@ -1534,8 +1071,7 @@ void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
 
 		if (!prSwRfb) {
-			DBGLOG_LIMITED(RX, WARN, "No More RFB for P[%u]\n",
-					u4Port);
+			DBGLOG(RX, WARN, "No More RFB for P[%u]\n", u4Port);
 			prAdapter->u4NoMoreRfb |= BIT(u4Port);
 			break;
 		}
@@ -1543,7 +1079,7 @@ void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 		/* unset no more rfb port bit */
 		prAdapter->u4NoMoreRfb &= ~BIT(u4Port);
 
-		if (fgRxData) {
+		if (u4Port == RX_RING_DATA_IDX_0) {
 			fgStatus = kalDevReadData(prAdapter->prGlueInfo,
 				u4Port, prSwRfb);
 		} else {
@@ -1559,35 +1095,22 @@ void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 			QUEUE_INSERT_TAIL(&prRxCtrl->rFreeSwRfbList,
 				&prSwRfb->rQueEntry);
 			KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
-			DBGLOG(RX, TEMP, "fgStatus:%d\n", fgStatus);
+
 			continue;
 		}
 
 		prRxStatus = prSwRfb->prRxStatus;
 		ASSERT(prRxStatus);
 
-		NIC_DUMP_RXD_HEADER(prAdapter, "Dump RXD:\n");
-		NIC_DUMP_RXD(prAdapter, (uint8_t *)prRxStatus,
-			     prAdapter->chip_info->rxd_size);
-
-		prSwRfb->ucPacketType =
-			prRxDescOps->nic_rxd_get_pkt_type(prRxStatus);
-#if DBG
+		prSwRfb->ucPacketType = (uint8_t)
+			HAL_RX_STATUS_GET_PKT_TYPE(prRxStatus);
 		DBGLOG_LIMITED(RX, LOUD, "ucPacketType = %u, ucSecMode = %u\n",
 				  prSwRfb->ucPacketType,
-				  prRxDescOps->nic_rxd_get_sec_mode(
+				  (uint8_t)HAL_RX_STATUS_GET_SEC_MODE(
 					prRxStatus));
-#endif /* DBG */
 
 		if (prSwRfb->ucPacketType == RX_PKT_TYPE_MSDU_REPORT) {
 			nicRxProcessMsduReport(prAdapter, prSwRfb);
-			u4MsduReportCnt++;
-			continue;
-		}
-
-		if (prSwRfb->ucPacketType == RX_PKT_TYPE_RX_REPORT) {
-			nicRxProcessRxReport(prAdapter, prSwRfb);
-			nicRxReturnRFB(prAdapter, prSwRfb);
 
 			continue;
 		}
@@ -1597,45 +1120,17 @@ void halRxReceiveRFBs(IN struct ADAPTER *prAdapter, uint32_t u4Port,
 		GLUE_RX_SET_PKT_RX_TIME(prSwRfb->pvPacket, sched_clock());
 
 		prSwRfb->ucStaRecIdx =
-			secGetStaIdxByWlanIdx(
-				prAdapter,
-				prRxDescOps->nic_rxd_get_wlan_idx(prRxStatus));
+			secGetStaIdxByWlanIdx(prAdapter,
+				(uint8_t)HAL_RX_STATUS_GET_WLAN_IDX(
+				prRxStatus));
 
 		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
 		QUEUE_INSERT_TAIL(&prRxCtrl->rReceivedRfbList,
 			&prSwRfb->rQueEntry);
 		RX_INC_CNT(prRxCtrl, RX_MPDU_TOTAL_COUNT);
-		DBGLOG(RX, TEMP, "Recv p=%p total:%lu\n",
-			prSwRfb, RX_GET_CNT(prRxCtrl, RX_MPDU_TOTAL_COUNT));
-		kalTraceEvent("Recv p=%p total:%lu",
-			prSwRfb, RX_GET_CNT(prRxCtrl, RX_MPDU_TOTAL_COUNT));
 		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_QUE);
 	}
 
-	kalDevRegWrite(prAdapter->prGlueInfo, prRxRing->hw_cidx_addr,
-		       prRxRing->RxCpuIdx);
-
-	prRxRing->u4PendingCnt = halWpdmaGetRxDmaDoneCnt(prAdapter->prGlueInfo,
-			u4Port);
-	if (u4MsduReportCnt > 0)
-		DBGLOG(RX, TEMP, "Recv %d msdu reports\n", u4MsduReportCnt);
-}
-
-static void halDefaultProcessRxInterrupt(IN struct ADAPTER *prAdapter)
-{
-	struct GL_HIF_INFO *prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	union WPDMA_INT_STA_STRUCT rIntrStatus;
-
-	rIntrStatus = (union WPDMA_INT_STA_STRUCT)prHifInfo->u4IntStatus;
-	prAdapter->prGlueInfo->u8HifIntTime = sched_clock();
-
-	if (rIntrStatus.field.rx_done_1 ||
-	    (prAdapter->u4NoMoreRfb & BIT(RX_RING_EVT_IDX_1)))
-		halRxReceiveRFBs(prAdapter, RX_RING_EVT_IDX_1, FALSE);
-
-	if (rIntrStatus.field.rx_done_0 ||
-	    (prAdapter->u4NoMoreRfb & BIT(RX_RING_DATA_IDX_0)))
-		halRxReceiveRFBs(prAdapter, RX_RING_DATA_IDX_0, TRUE);
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1650,12 +1145,19 @@ static void halDefaultProcessRxInterrupt(IN struct ADAPTER *prAdapter)
 /*----------------------------------------------------------------------------*/
 void halProcessRxInterrupt(IN struct ADAPTER *prAdapter)
 {
-	struct BUS_INFO *prBusInfo = prAdapter->chip_info->bus_info;
+	struct GL_HIF_INFO *prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
+	union WPDMA_INT_STA_STRUCT rIntrStatus;
 
-	if (prBusInfo->processRxInterrupt)
-		prBusInfo->processRxInterrupt(prAdapter);
-	else
-		halDefaultProcessRxInterrupt(prAdapter);
+	rIntrStatus = (union WPDMA_INT_STA_STRUCT)prHifInfo->u4IntStatus;
+	prAdapter->prGlueInfo->u8HifIntTime = sched_clock();
+
+	if (rIntrStatus.field.rx_done_1 ||
+	    (prAdapter->u4NoMoreRfb & BIT(RX_RING_EVT_IDX_1)))
+		halRxReceiveRFBs(prAdapter, RX_RING_EVT_IDX_1);
+
+	if (rIntrStatus.field.rx_done_0 ||
+	    (prAdapter->u4NoMoreRfb & BIT(RX_RING_DATA_IDX_0)))
+		halRxReceiveRFBs(prAdapter, RX_RING_DATA_IDX_0);
 }
 
 static int32_t halWpdmaFreeRingDesc(struct GLUE_INFO *prGlueInfo,
@@ -1683,7 +1185,6 @@ bool halWpdmaAllocTxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 	struct RTMP_TX_RING *pTxRing;
 	struct RTMP_DMABUF *prTxDesc;
 	struct RTMP_DMACB *prTxCell;
-	struct TXD_STRUCT *pTxD;
 	phys_addr_t RingBasePa;
 	void *RingBaseVa;
 	uint32_t u4Idx;
@@ -1704,7 +1205,7 @@ bool halWpdmaAllocTxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 	}
 
 	DBGLOG(HAL, TRACE, "TxDescRing[%p]: total %lu bytes allocated\n",
-	       prTxDesc->AllocVa, prTxDesc->AllocSize);
+	       prTxDesc->AllocVa, (uint64_t)prTxDesc->AllocSize);
 
 	/* Save PA & VA for further operation */
 	RingBasePa = prTxDesc->AllocPa;
@@ -1728,21 +1229,9 @@ bool halWpdmaAllocTxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 		RingBasePa += u4DescSize;
 		RingBaseVa += u4DescSize;
 
-		if (fgAllocMem && prMemOps->allocTxCmdBuf) {
-			bool ret;
-
-			ret = prMemOps->allocTxCmdBuf(&prTxCell->DmaBuf,
+		if (fgAllocMem && prMemOps->allocTxCmdBuf)
+			prMemOps->allocTxCmdBuf(&prTxCell->DmaBuf,
 						u4Num, u4Idx);
-			if (ret == false) {
-				DBGLOG(HAL, ERROR,
-					"TxRing[%u] TxCmd[%u] alloc failed\n",
-					u4Num, u4Idx);
-				return false;
-			}
-		}
-
-		pTxD = (struct TXD_STRUCT *)prTxCell->AllocVa;
-		pTxD->DMADONE = 1;
 	}
 
 	DBGLOG(HAL, TRACE, "TxRing[%d]: total %d entry allocated\n",
@@ -1777,12 +1266,12 @@ bool halWpdmaAllocRxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 		prMemOps->allocRxDesc(prHifInfo, prRxDesc, u4Num);
 
 	if (prRxDesc->AllocVa == NULL) {
-		DBGLOG(HAL, ERROR, "RxDescRing allocation failed!!\n");
+		DBGLOG(HAL, ERROR, "\n\n\nRxDescRing allocation failed!!\n\n\n");
 		return false;
 	}
 
 	DBGLOG(HAL, TRACE, "RxDescRing[%p]: total %lu bytes allocated\n",
-		prRxDesc->AllocVa, prRxDesc->AllocSize);
+		prRxDesc->AllocVa, (uint64_t)prRxDesc->AllocSize);
 
 	/* Initialize Rx Ring and associated buffer memory */
 	RingBasePa = prRxDesc->AllocPa;
@@ -1822,12 +1311,8 @@ bool halWpdmaAllocRxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 		pRxD = (struct RXD_STRUCT *)prRxCell->AllocVa;
 		pRxD->SDPtr0 = ((uint64_t)pDmaBuf->AllocPa) &
 			DMA_LOWER_32BITS_MASK;
-#ifdef CONFIG_PHYS_ADDR_T_64BIT
 		pRxD->SDPtr1 = (((uint64_t)pDmaBuf->AllocPa >>
 			DMA_BITS_OFFSET) & DMA_HIGHER_4BITS_MASK);
-#else
-		pRxD->SDPtr1 = 0;
-#endif
 		pRxD->SDLen0 = u4BufSize;
 		pRxD->DMADONE = 0;
 	}
@@ -1838,37 +1323,20 @@ bool halWpdmaAllocRxRing(struct GLUE_INFO *prGlueInfo, uint32_t u4Num,
 	return true;
 }
 
-static void halDefaultHifRst(struct GLUE_INFO *prGlueInfo)
-{
-	/* Reset Conn HIF logic */
-	kalDevRegWrite(prGlueInfo, CONN_HIF_RST, 0x00000020);
-	kalDevRegWrite(prGlueInfo, CONN_HIF_RST, 0x00000030);
-}
-
 void halHifRst(struct GLUE_INFO *prGlueInfo)
 {
-	struct ADAPTER *prAdapter;
-	struct BUS_INFO *prBusInfo;
-
-	prAdapter = prGlueInfo->prAdapter;
-	prBusInfo = prAdapter->chip_info->bus_info;
-
 	/* Reset dmashdl and wpdma */
-	if (prBusInfo->hifRst)
-		prBusInfo->hifRst(prGlueInfo);
-	else
-		halDefaultHifRst(prGlueInfo);
+	kalDevRegWrite(prGlueInfo, CONN_HIF_RST, 0x00000000);
+	kalDevRegWrite(prGlueInfo, CONN_HIF_RST, 0x00000030);
 }
 
 bool halWpdmaAllocRing(struct GLUE_INFO *prGlueInfo, bool fgAllocMem)
 {
 	struct GL_HIF_INFO *prHifInfo;
 	int32_t u4Num, u4Index;
-	struct BUS_INFO *prBusInfo = NULL;
 
 	ASSERT(prGlueInfo);
 	prHifInfo = &prGlueInfo->rHifInfo;
-	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 
 	/*
 	 *   Allocate all ring descriptors, include TxD, RxD, MgmtD.
@@ -1876,12 +1344,6 @@ bool halWpdmaAllocRing(struct GLUE_INFO *prGlueInfo, bool fgAllocMem)
 	 *   issue, I intentional set them all to 64 bytes
 	 */
 	for (u4Num = 0; u4Num < NUM_OF_TX_RING; u4Num++) {
-		if (u4Num == TX_RING_DATA1_IDX_1 &&
-				!prBusInfo->tx_ring1_data_idx)
-			continue;
-		else if (u4Num == TX_RING_DATA2_IDX_2 &&
-				!prBusInfo->tx_ring2_data_idx)
-			continue;
 		if (!halWpdmaAllocTxRing(prGlueInfo, u4Num, TX_RING_SIZE,
 					 TXD_SIZE, fgAllocMem)) {
 			DBGLOG(HAL, ERROR, "AllocTxRing[%d] fail\n", u4Num);
@@ -1896,22 +1358,13 @@ bool halWpdmaAllocRing(struct GLUE_INFO *prGlueInfo, bool fgAllocMem)
 		DBGLOG(HAL, ERROR, "AllocRxRing[0] fail\n");
 		return false;
 	}
-
 	/* Event Rx path */
 	if (!halWpdmaAllocRxRing(prGlueInfo, RX_RING_EVT_IDX_1,
-			 RX_RING1_SIZE, RXD_SIZE,
-			 RX_BUFFER_AGGRESIZE, fgAllocMem)) {
+				 RX_RING1_SIZE, RXD_SIZE,
+				 RX_BUFFER_AGGRESIZE, fgAllocMem)) {
 		DBGLOG(HAL, ERROR, "AllocRxRing[1] fail\n");
 		return false;
 	}
-
-#if (CFG_SUPPORT_CONNAC2X == 1)
-	if (prBusInfo->wfdmaAllocRxRing)
-		if (!prBusInfo->wfdmaAllocRxRing(prGlueInfo, fgAllocMem)) {
-			DBGLOG(HAL, ERROR, "wfdmaAllocRxRing fail\n");
-			return false;
-		}
-#endif /* CFG_SUPPORT_CONNAC2X == 1 */
 
 	/* Initialize all transmit related software queues */
 
@@ -1997,7 +1450,7 @@ void halEnableFWDownload(IN struct ADAPTER *prAdapter, IN u_int8_t fgEnable)
 		prChipInfo->asicEnableFWDownload(prAdapter, fgEnable);
 }
 
-u_int8_t halWpdmaWaitIdle(struct GLUE_INFO *prGlueInfo,
+static u_int8_t halWpdmaWaitIdle(struct GLUE_INFO *prGlueInfo,
 	int32_t round, int32_t wait_us)
 {
 	int32_t i = 0;
@@ -2019,7 +1472,7 @@ u_int8_t halWpdmaWaitIdle(struct GLUE_INFO *prGlueInfo,
 	return FALSE;
 }
 
-void halWpdmaInitRing(struct GLUE_INFO *prGlueInfo, bool fgResetHif)
+void halWpdmaInitRing(struct GLUE_INFO *prGlueInfo)
 {
 	struct GL_HIF_INFO *prHifInfo;
 	struct BUS_INFO *prBusInfo;
@@ -2031,96 +1484,66 @@ void halWpdmaInitRing(struct GLUE_INFO *prGlueInfo, bool fgResetHif)
 
 	/* Set DMA global configuration except TX_DMA_EN and RX_DMA_EN bits */
 	if (prBusInfo->pdmaSetup)
-		prBusInfo->pdmaSetup(prGlueInfo, FALSE, fgResetHif);
+		prBusInfo->pdmaSetup(prGlueInfo, FALSE);
 
-	halWpdmaInitTxRing(prGlueInfo, fgResetHif);
+	halWpdmaWaitIdle(prGlueInfo, 100, 1000);
+
+	/* Reset DMA Index */
+	kalDevRegWrite(prGlueInfo, WPDMA_RST_PTR, 0xFFFFFFFF);
+
+	halWpdmaInitTxRing(prGlueInfo);
 
 	/* Init RX Ring0 Base/Size/Index pointer CSR */
 	halWpdmaInitRxRing(prGlueInfo);
 
-	if (prBusInfo->wfdmaManualPrefetch)
-		prBusInfo->wfdmaManualPrefetch(prGlueInfo);
-
 	if (prBusInfo->pdmaSetup)
-		prBusInfo->pdmaSetup(prGlueInfo, TRUE, fgResetHif);
+		prBusInfo->pdmaSetup(prGlueInfo, TRUE);
 
 	/* Write sleep mode magic num to dummy reg */
 	if (prBusInfo->setDummyReg)
 		prBusInfo->setDummyReg(prGlueInfo);
 }
 
-void halWpdmaInitTxRing(IN struct GLUE_INFO *prGlueInfo, bool fgResetHif)
+void halWpdmaInitTxRing(IN struct GLUE_INFO *prGlueInfo)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct BUS_INFO *prBusInfo = NULL;
 	struct RTMP_TX_RING *prTxRing = NULL;
 	struct RTMP_DMACB *prTxCell;
 	uint32_t i = 0, offset = 0, phy_addr = 0;
-	struct mt66xx_chip_info *prChipInfo;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
+	uint32_t phy_addr_ext = 0, ext_offset = 0;
 
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
 
 	/* reset all TX Ring register */
 	for (i = 0; i < NUM_OF_TX_RING; i++) {
 		prTxRing = &prHifInfo->TxRing[i];
 		prTxCell = &prTxRing->Cell[0];
-
-		if (i == TX_RING_CMD_IDX_3) {
-			if (prSwWfdmaInfo->fgIsEnSwWfdma && !fgResetHif)
-				continue;
+		if (i == TX_RING_CMD_IDX_2)
 			offset = prBusInfo->tx_ring_cmd_idx * MT_RINGREG_DIFF;
-		} else if (i == TX_RING_FWDL_IDX_4)
-			offset = prBusInfo->tx_ring_fwdl_idx * MT_RINGREG_DIFF;
-#if (CFG_SUPPORT_CONNAC2X == 1)
-		else if (prChipInfo->is_support_wacpu) {
-			uint32_t idx = 0;
-
-			if (i == TX_RING_DATA0_IDX_0)
-				idx = prBusInfo->tx_ring0_data_idx;
-			else if (i == TX_RING_DATA1_IDX_1)
-				idx = prBusInfo->tx_ring1_data_idx;
-			else if (i == TX_RING_WA_CMD_IDX_5)
-				idx = prBusInfo->tx_ring_wa_cmd_idx;
-			offset = idx * MT_RINGREG_DIFF;
-		}
-#endif /* CFG_SUPPORT_CONNAC2X == 1 */
-		else if (i == TX_RING_DATA1_IDX_1 &&
-				!prBusInfo->tx_ring1_data_idx)
-			continue;
-		else if (i == TX_RING_DATA2_IDX_2 &&
-				!prBusInfo->tx_ring2_data_idx)
-			continue;
 		else
 			offset = i * MT_RINGREG_DIFF;
-
 		phy_addr = ((uint64_t)prTxCell->AllocPa) &
 			DMA_LOWER_32BITS_MASK;
+		phy_addr_ext = (((uint64_t)prTxCell->AllocPa >>
+			DMA_BITS_OFFSET) & DMA_HIGHER_4BITS_MASK);
+		ext_offset = i * MT_RINGREG_EXT_DIFF;
 		prTxRing->TxSwUsedIdx = 0;
 		prTxRing->u4UsedCnt = 0;
 		prTxRing->TxCpuIdx = 0;
-
-		prTxRing->hw_desc_base =
-			prBusInfo->host_tx_ring_base + offset;
-
-		prTxRing->hw_cidx_addr =
-			prBusInfo->host_tx_ring_cidx_addr + offset;
-		prTxRing->hw_didx_addr =
-			prBusInfo->host_tx_ring_didx_addr + offset;
-		prTxRing->hw_cnt_addr =
-			prBusInfo->host_tx_ring_cnt_addr + offset;
-
+		prTxRing->hw_desc_base = MT_TX_RING_BASE + offset;
+		prTxRing->hw_desc_base_ext = MT_TX_RING_BASE_EXT + ext_offset;
+		prTxRing->hw_cidx_addr = MT_TX_RING_CIDX + offset;
+		prTxRing->hw_didx_addr = MT_TX_RING_DIDX + offset;
+		prTxRing->hw_cnt_addr = MT_TX_RING_CNT + offset;
 		kalDevRegWrite(prGlueInfo, prTxRing->hw_desc_base, phy_addr);
+		kalDevRegWrite(prGlueInfo, prTxRing->hw_desc_base_ext,
+			phy_addr_ext);
 		kalDevRegWrite(prGlueInfo, prTxRing->hw_cidx_addr,
 			prTxRing->TxCpuIdx);
 		kalDevRegWrite(prGlueInfo, prTxRing->hw_cnt_addr,
 			TX_RING_SIZE);
-
-		if (prBusInfo->tx_ring_ext_ctrl)
-			prBusInfo->tx_ring_ext_ctrl(prGlueInfo, prTxRing, i);
 
 		DBGLOG(HAL, TRACE, "-->TX_RING_%d[0x%x]: Base=0x%x, Cnt=%d!\n",
 			i, prHifInfo->TxRing[i].hw_desc_base,
@@ -2128,59 +1551,38 @@ void halWpdmaInitTxRing(IN struct GLUE_INFO *prGlueInfo, bool fgResetHif)
 	}
 }
 
-static uint8_t defaultSetRxRingHwAddr(
-	struct RTMP_RX_RING *prRxRing,
-	struct BUS_INFO *prBusInfo,
-	struct mt66xx_chip_info *prChipInfo,
-	uint32_t u4SwRingIdx)
-{
-	uint32_t offset = 0;
-
-	offset = u4SwRingIdx * MT_RINGREG_DIFF;
-	prRxRing->hw_desc_base = prBusInfo->host_rx_ring_base + offset;
-	prRxRing->hw_cidx_addr = prBusInfo->host_rx_ring_cidx_addr + offset;
-	prRxRing->hw_didx_addr = prBusInfo->host_rx_ring_didx_addr + offset;
-	prRxRing->hw_cnt_addr = prBusInfo->host_rx_ring_cnt_addr + offset;
-
-	return TRUE;
-}
-
 void halWpdmaInitRxRing(IN struct GLUE_INFO *prGlueInfo)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct RTMP_RX_RING *prRxRing = NULL;
-	uint32_t i = 0, phy_addr = 0;
-	struct BUS_INFO *prBusInfo = NULL;
-	struct mt66xx_chip_info *prChipInfo;
-	uint8_t rv;
+	uint32_t i = 0, offset = 0, phy_addr = 0;
+	uint32_t phy_addr_ext = 0, ext_offset = 0;
 
 	ASSERT(prGlueInfo);
 	prHifInfo = &prGlueInfo->rHifInfo;
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
 
 	/* reset all RX Ring register */
 	for (i = 0; i < NUM_OF_RX_RING; i++) {
 		prRxRing = &prHifInfo->RxRing[i];
-		if (prBusInfo->setRxRingHwAddr)
-			rv = prBusInfo->setRxRingHwAddr(prRxRing, prBusInfo, i);
-		else
-			rv = defaultSetRxRingHwAddr(
-				prRxRing, prBusInfo, prChipInfo, i);
-
-		if (!rv)
-			break;
+		offset = i * MT_RINGREG_DIFF;
 		phy_addr = ((uint64_t)prRxRing->Cell[0].AllocPa &
 			DMA_LOWER_32BITS_MASK);
+		phy_addr_ext = (((uint64_t)prRxRing->Cell[0].AllocPa >>
+			DMA_BITS_OFFSET) & DMA_HIGHER_4BITS_MASK);
+		ext_offset = i * MT_RINGREG_EXT_DIFF;
 		prRxRing->RxCpuIdx = prRxRing->u4RingSize - 1;
+		prRxRing->hw_desc_base = MT_RX_RING_BASE + offset;
+		prRxRing->hw_desc_base_ext = MT_RX_RING_BASE_EXT + ext_offset;
+		prRxRing->hw_cidx_addr = MT_RX_RING_CIDX + offset;
+		prRxRing->hw_didx_addr = MT_RX_RING_DIDX + offset;
+		prRxRing->hw_cnt_addr = MT_RX_RING_CNT + offset;
 		kalDevRegWrite(prGlueInfo, prRxRing->hw_desc_base, phy_addr);
+		kalDevRegWrite(prGlueInfo, prRxRing->hw_desc_base_ext,
+			phy_addr_ext);
 		kalDevRegWrite(prGlueInfo, prRxRing->hw_cidx_addr,
 			prRxRing->RxCpuIdx);
 		kalDevRegWrite(prGlueInfo, prRxRing->hw_cnt_addr,
 			prRxRing->u4RingSize);
-
-		if (prBusInfo->rx_ring_ext_ctrl)
-			prBusInfo->rx_ring_ext_ctrl(prGlueInfo, prRxRing, i);
 
 		prRxRing->fgIsDumpLog = false;
 
@@ -2193,37 +1595,24 @@ void halWpdmaInitRxRing(IN struct GLUE_INFO *prGlueInfo)
 void halWpdmaProcessCmdDmaDone(IN struct GLUE_INFO *prGlueInfo,
 	IN uint16_t u2Port)
 {
-	struct mt66xx_chip_info *prChipInfo;
-	struct BUS_INFO *prBusInfo;
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct HIF_MEM_OPS *prMemOps;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
 	struct RTMP_TX_RING *prTxRing;
 	struct TXD_STRUCT *pTxD;
 	phys_addr_t PacketPa = 0;
 	void *pBuffer = NULL;
-	uint32_t u4SwIdx, u4DmaIdx = 0;
+	uint32_t u4SwIdx, u4DmaIdx;
 
 	ASSERT(prGlueInfo);
 
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prMemOps = &prHifInfo->rMemOps;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
 	prTxRing = &prHifInfo->TxRing[u2Port];
 
-	if (prSwWfdmaInfo->fgIsEnSwWfdma) {
-		if (prSwWfdmaInfo->rOps.getDidx)
-			prSwWfdmaInfo->rOps.getDidx(prGlueInfo, &u4DmaIdx);
-		else
-			DBGLOG(HAL, ERROR, "SwWfdma ops unsupported!");
-	} else
-		kalDevRegRead(prGlueInfo, prTxRing->hw_didx_addr, &u4DmaIdx);
-
+	kalDevRegRead(prGlueInfo, prTxRing->hw_didx_addr, &u4DmaIdx);
 	u4SwIdx = prTxRing->TxSwUsedIdx;
 
-	while (u4SwIdx != u4DmaIdx) {
+	do {
 		pBuffer = prTxRing->Cell[u4SwIdx].pBuffer;
 		PacketPa = prTxRing->Cell[u4SwIdx].PacketPa;
 		pTxD = (struct TXD_STRUCT *) prTxRing->Cell[u4SwIdx].AllocVa;
@@ -2238,24 +1627,23 @@ void halWpdmaProcessCmdDmaDone(IN struct GLUE_INFO *prGlueInfo,
 		if (prMemOps->unmapTxBuf && PacketPa)
 			prMemOps->unmapTxBuf(prHifInfo, PacketPa, pTxD->SDLen0);
 
+		pTxD->DMADONE = 0;
 		if (prMemOps->freeBuf && pBuffer)
 			prMemOps->freeBuf(pBuffer, 0);
 		prTxRing->Cell[u4SwIdx].pBuffer = NULL;
 		prTxRing->Cell[u4SwIdx].pPacket = NULL;
 		prTxRing->u4UsedCnt--;
 
-		GLUE_INC_REF_CNT(
-			prGlueInfo->prAdapter->rHifStats.u4CmdTxdoneCount);
+		if (u2Port == TX_RING_CMD_IDX_2)
+			nicTxReleaseResource_PSE(prGlueInfo->prAdapter,
+				TC4_INDEX,
+				nicTxGetPageCount(prGlueInfo->prAdapter,
+					pTxD->SDLen0, TRUE), TRUE);
 
 		INC_RING_INDEX(u4SwIdx, TX_RING_SIZE);
-	}
+	} while (u4SwIdx != u4DmaIdx);
 
 	prTxRing->TxSwUsedIdx = u4SwIdx;
-
-#if CFG_SUPPORT_MULTITHREAD
-	if (!QUEUE_IS_EMPTY(&prGlueInfo->prAdapter->rTxCmdQueue))
-		kalSetTxCmdEvent2Hif(prGlueInfo);
-#endif
 
 }
 
@@ -2263,7 +1651,7 @@ void halWpdmaProcessDataDmaDone(IN struct GLUE_INFO *prGlueInfo,
 	IN uint16_t u2Port)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
-	uint32_t u4SwIdx, u4DmaIdx = 0, u4Diff = 0;
+	uint32_t u4SwIdx, u4DmaIdx;
 	struct RTMP_TX_RING *prTxRing;
 
 	ASSERT(prGlueInfo);
@@ -2274,26 +1662,19 @@ void halWpdmaProcessDataDmaDone(IN struct GLUE_INFO *prGlueInfo,
 	kalDevRegRead(prGlueInfo, prTxRing->hw_didx_addr, &u4DmaIdx);
 	u4SwIdx = prTxRing->TxSwUsedIdx;
 
-	if (u4DmaIdx > u4SwIdx) {
-		u4Diff = u4DmaIdx - u4SwIdx;
-		prTxRing->u4UsedCnt -= u4Diff;
-	} else if (u4DmaIdx < u4SwIdx) {
-		u4Diff = (TX_RING_SIZE + u4DmaIdx) - u4SwIdx;
-		prTxRing->u4UsedCnt -= u4Diff;
-	} else {
+	if (u4DmaIdx > u4SwIdx)
+		prTxRing->u4UsedCnt -= u4DmaIdx - u4SwIdx;
+	else if (u4DmaIdx < u4SwIdx)
+		prTxRing->u4UsedCnt -= (TX_RING_SIZE + u4DmaIdx) - u4SwIdx;
+	else {
 		/* DMA index == SW used index */
-		if (prTxRing->u4UsedCnt == TX_RING_SIZE) {
-			u4Diff = TX_RING_SIZE;
+		if (prTxRing->u4UsedCnt == TX_RING_SIZE)
 			prTxRing->u4UsedCnt = 0;
-		}
 	}
 
 	DBGLOG_LIMITED(HAL, TRACE,
 		"DMA done: port[%u] dma[%u] idx[%u] used[%u]\n", u2Port,
 		u4DmaIdx, u4SwIdx, prTxRing->u4UsedCnt);
-
-	GLUE_ADD_REF_CNT(u4Diff,
-			prGlueInfo->prAdapter->rHifStats.u4DataTxdoneCount);
 
 	prTxRing->TxSwUsedIdx = u4DmaIdx;
 }
@@ -2303,7 +1684,7 @@ uint32_t halWpdmaGetRxDmaDoneCnt(IN struct GLUE_INFO *prGlueInfo,
 {
 	struct RTMP_RX_RING *prRxRing;
 	struct GL_HIF_INFO *prHifInfo;
-	uint32_t u4MaxCnt = 0, u4CpuIdx = 0, u4DmaIdx = 0, u4RxPktCnt;
+	uint32_t u4MaxCnt, u4CpuIdx, u4DmaIdx, u4RxPktCnt;
 
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prRxRing = &prHifInfo->RxRing[ucRingNum];
@@ -2325,73 +1706,34 @@ uint32_t halWpdmaGetRxDmaDoneCnt(IN struct GLUE_INFO *prGlueInfo,
 	return u4RxPktCnt;
 }
 
-enum ENUM_CMD_TX_RESULT halWpdmaWriteCmd(IN struct GLUE_INFO *prGlueInfo,
+bool halWpdmaWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 		      IN struct CMD_INFO *prCmdInfo, IN uint8_t ucTC)
 {
-	struct mt66xx_chip_info *prChipInfo;
-	struct BUS_INFO *prBusInfo;
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct HIF_MEM_OPS *prMemOps;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
 	struct RTMP_TX_RING *prTxRing;
 	struct RTMP_DMACB *pTxCell;
 	struct TXD_STRUCT *pTxD;
-	uint16_t u2Port = TX_RING_CMD_IDX_3;
+	uint16_t u2Port = TX_RING_CMD_IDX_2;
 	uint32_t u4TotalLen;
 	void *pucSrc = NULL;
-	struct ADAPTER *prAdapter;
 
 	ASSERT(prGlueInfo);
 
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prMemOps = &prHifInfo->rMemOps;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
-
-#if (CFG_SUPPORT_CONNAC2X == 1)
-	if (prChipInfo->is_support_wacpu)
-		u2Port = TX_RING_WA_CMD_IDX_5;
-#endif /* CFG_SUPPORT_CONNAC2X == 1 */
 	prTxRing = &prHifInfo->TxRing[u2Port];
 
 	u4TotalLen = prCmdInfo->u4TxdLen + prCmdInfo->u4TxpLen;
-#if (CFG_SUPPORT_CONNAC2X == 1)
-	if (u4TotalLen > prChipInfo->cmd_max_pkt_size) {
-		DBGLOG(HAL, ERROR,
-			"type: %u, cid: 0x%x, seq: %u, txd: %u, txp: %u\n",
-				prCmdInfo->eCmdType,
-				prCmdInfo->ucCID,
-				prCmdInfo->ucCmdSeqNum,
-				prCmdInfo->u4TxdLen,
-				prCmdInfo->u4TxpLen);
-		if (prCmdInfo->u4TxdLen)
-			DBGLOG_MEM32(HAL, ERROR, prCmdInfo->pucTxd,
-				prCmdInfo->u4TxdLen);
-		if (prCmdInfo->u4TxpLen)
-			DBGLOG_MEM32(HAL, ERROR, prCmdInfo->pucTxp,
-				prCmdInfo->u4TxpLen);
-		return FALSE;
-	}
-#endif /* CFG_SUPPORT_CONNAC2X == 1 */
 	if (prMemOps->allocRuntimeMem)
 		pucSrc = prMemOps->allocRuntimeMem(u4TotalLen);
 
-	if (prSwWfdmaInfo->fgIsEnSwWfdma) {
-		if (prSwWfdmaInfo->rOps.getCidx)
-			prSwWfdmaInfo->rOps.
-				getCidx(prGlueInfo, &prTxRing->TxCpuIdx);
-		else
-			DBGLOG(HAL, ERROR, "SwWfdma ops unsupported!");
-	} else
-		kalDevRegRead(prGlueInfo, prTxRing->hw_cidx_addr,
-			      &prTxRing->TxCpuIdx);
-
+	kalDevRegRead(prGlueInfo, prTxRing->hw_cidx_addr, &prTxRing->TxCpuIdx);
 	if (prTxRing->TxCpuIdx >= TX_RING_SIZE) {
 		DBGLOG(HAL, ERROR, "Error TxCpuIdx[%u]\n", prTxRing->TxCpuIdx);
 		if (prMemOps->freeBuf)
 			prMemOps->freeBuf(pucSrc, u4TotalLen);
-		return CMD_TX_RESULT_FAILED;
+		return FALSE;
 	}
 
 	pTxCell = &prTxRing->Cell[prTxRing->TxCpuIdx];
@@ -2406,16 +1748,12 @@ enum ENUM_CMD_TX_RESULT halWpdmaWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 		if (prMemOps->freeBuf)
 			prMemOps->freeBuf(pucSrc, u4TotalLen);
 		ASSERT(0);
-		return CMD_TX_RESULT_FAILED;
+		return FALSE;
 	}
 
 	pTxD->SDPtr0 = (uint64_t)pTxCell->PacketPa & DMA_LOWER_32BITS_MASK;
-#ifdef CONFIG_PHYS_ADDR_T_64BIT
 	pTxD->SDPtr0Ext = ((uint64_t)pTxCell->PacketPa >> DMA_BITS_OFFSET) &
 		DMA_HIGHER_4BITS_MASK;
-#else
-	pTxD->SDPtr0Ext = 0;
-#endif
 	pTxD->SDLen0 = u4TotalLen;
 	pTxD->SDPtr1 = 0;
 	pTxD->SDLen1 = 0;
@@ -2424,28 +1762,11 @@ enum ENUM_CMD_TX_RESULT halWpdmaWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 	pTxD->Burst = 0;
 	pTxD->DMADONE = 0;
 
-	NIC_DUMP_TXDMAD_HEADER(prAdapter, "Dump CMD TXDMAD:\n");
-	NIC_DUMP_TXDMAD(prAdapter, (uint8_t *)pTxD, sizeof(struct TXD_STRUCT));
-
-	NIC_DUMP_TXD_HEADER(prAdapter, "Dump CMD TXD:\n");
-	NIC_DUMP_TXD(prAdapter, prCmdInfo->pucTxd, prCmdInfo->u4TxdLen);
-
 	/* Increase TX_CTX_IDX, but write to register later. */
 	INC_RING_INDEX(prTxRing->TxCpuIdx, TX_RING_SIZE);
 
 	prTxRing->u4UsedCnt++;
-
-	if (prSwWfdmaInfo->fgIsEnSwWfdma) {
-		if (prSwWfdmaInfo->rOps.setCidx)
-			prSwWfdmaInfo->rOps.
-				setCidx(prGlueInfo, prTxRing->TxCpuIdx);
-		else
-			DBGLOG(HAL, ERROR, "SwWfdma ops unsupported!");
-	} else
-		kalDevRegWrite(prGlueInfo, prTxRing->hw_cidx_addr,
-			       prTxRing->TxCpuIdx);
-
-	GLUE_INC_REF_CNT(prGlueInfo->prAdapter->rHifStats.u4CmdTxCount);
+	kalDevRegWrite(prGlueInfo, prTxRing->hw_cidx_addr, prTxRing->TxCpuIdx);
 
 	DBGLOG(HAL, TRACE,
 	       "%s: CmdInfo[0x%p], TxD[0x%p/%u] TxP[0x%p/%u] CPU idx[%u] Used[%u]\n",
@@ -2454,19 +1775,7 @@ enum ENUM_CMD_TX_RESULT halWpdmaWriteCmd(IN struct GLUE_INFO *prGlueInfo,
 	       prTxRing->TxCpuIdx, prTxRing->u4UsedCnt);
 	DBGLOG_MEM32(HAL, TRACE, prCmdInfo->pucTxd, prCmdInfo->u4TxdLen);
 
-	if (u2Port == TX_RING_CMD_IDX_3
-#if (CFG_SUPPORT_CONNAC2X == 1)
-			|| u2Port == TX_RING_WA_CMD_IDX_5
-#endif /* CFG_SUPPORT_CONNAC2 == 1 */
-		)
-		nicTxReleaseResource_PSE(prGlueInfo->prAdapter,
-			TC4_INDEX,
-			nicTxGetPageCount(prGlueInfo->prAdapter,
-				pTxD->SDLen0,
-				TRUE),
-			TRUE);
-
-	return CMD_TX_RESULT_SUCCESS;
+	return TRUE;
 }
 
 static bool halWpdmaFillTxRing(struct GLUE_INFO *prGlueInfo,
@@ -2478,16 +1787,11 @@ static bool halWpdmaFillTxRing(struct GLUE_INFO *prGlueInfo,
 	struct RTMP_DMACB *pTxCell;
 	struct TXD_STRUCT *pTxD;
 	uint16_t u2Port = TX_RING_DATA0_IDX_0;
-	struct ADAPTER *prAdapter;
 
 	ASSERT(prGlueInfo);
 
 	prHifInfo = &prGlueInfo->rHifInfo;
-	prAdapter = prGlueInfo->prAdapter;
-	prChipInfo = prAdapter->chip_info;
-
-	u2Port = halTxRingDataSelect(
-		prGlueInfo->prAdapter, prToken->prMsduInfo);
+	prChipInfo = prGlueInfo->prAdapter->chip_info;
 	prTxRing = &prHifInfo->TxRing[u2Port];
 
 	kalDevRegRead(prGlueInfo, prTxRing->hw_cidx_addr, &prTxRing->TxCpuIdx);
@@ -2499,17 +1803,12 @@ static bool halWpdmaFillTxRing(struct GLUE_INFO *prGlueInfo,
 
 	pTxCell = &prTxRing->Cell[prTxRing->TxCpuIdx];
 	prToken->u4CpuIdx = prTxRing->TxCpuIdx;
-	prToken->u2Port = u2Port;
 	pTxCell->prToken = prToken;
 
 	pTxD = (struct TXD_STRUCT *)pTxCell->AllocVa;
 	pTxD->SDPtr0 = (uint64_t)prToken->rDmaAddr & DMA_LOWER_32BITS_MASK;
-#ifdef CONFIG_PHYS_ADDR_T_64BIT
 	pTxD->SDPtr0Ext = ((uint64_t)prToken->rDmaAddr >> DMA_BITS_OFFSET) &
 		DMA_HIGHER_4BITS_MASK;
-#else
-	pTxD->SDPtr0Ext = 0;
-#endif
 	pTxD->SDLen0 = NIC_TX_DESC_AND_PADDING_LENGTH +
 		prChipInfo->txd_append_size;
 	if (prChipInfo->is_support_cr4)
@@ -2521,9 +1820,6 @@ static bool halWpdmaFillTxRing(struct GLUE_INFO *prGlueInfo,
 	pTxD->Burst = 0;
 	pTxD->DMADONE = 0;
 
-	NIC_DUMP_TXDMAD_HEADER(prAdapter, "Dump TXDMAD:\n");
-	NIC_DUMP_TXDMAD(prAdapter, (uint8_t *)pTxD, sizeof(struct TXD_STRUCT));
-
 	/* Increase TX_CTX_IDX, but write to register later. */
 	INC_RING_INDEX(prTxRing->TxCpuIdx, TX_RING_SIZE);
 
@@ -2531,11 +1827,8 @@ static bool halWpdmaFillTxRing(struct GLUE_INFO *prGlueInfo,
 	prTxRing->u4UsedCnt++;
 	kalDevRegWrite(prGlueInfo, prTxRing->hw_cidx_addr, prTxRing->TxCpuIdx);
 
-	DBGLOG_LIMITED(HAL, TRACE,
-		"Tx Data:Ring%d CPU idx[0x%x] Used[%u]\n",
-		u2Port, prTxRing->TxCpuIdx, prTxRing->u4UsedCnt);
-
-	GLUE_INC_REF_CNT(prGlueInfo->prAdapter->rHifStats.u4DataTxCount);
+	DBGLOG_LIMITED(HAL, TRACE, "Tx Data: CPU idx[%u] Used[%u]\n",
+		       prTxRing->TxCpuIdx, prTxRing->u4UsedCnt);
 
 	return TRUE;
 }
@@ -2556,6 +1849,10 @@ static bool halFlushToken(struct GLUE_INFO *prGlueInfo,
 		if (!prToken->rDmaAddr)
 			return false;
 	}
+
+	if (prMemOps->flushCache)
+		prMemOps->flushCache(prHifInfo, prToken->prPacket,
+				     prToken->u4DmaLength);
 
 	return true;
 }
@@ -2598,6 +1895,7 @@ void halWpdamFreeMsdu(struct GLUE_INFO *prGlueInfo,
 		      struct MSDU_INFO *prMsduInfo,
 		      bool fgSetEvent)
 {
+
 	DBGLOG(HAL, LOUD, "Tx Data: Msdu[0x%p], TokFree[%u] TxDone[%u]\n",
 		prMsduInfo, halGetMsduTokenFreeCnt(prGlueInfo->prAdapter),
 		(prMsduInfo->pfTxDoneHandler ? TRUE : FALSE));
@@ -2628,99 +1926,43 @@ bool halWpdmaWriteMsdu(struct GLUE_INFO *prGlueInfo,
 	uint8_t *pucSrc;
 	uint32_t u4TotalLen;
 
-	uint32_t u4TxDescAppendSize;
-
 	ASSERT(prGlueInfo);
 	ASSERT(prMsduInfo);
 
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prMemOps = &prHifInfo->rMemOps;
 	prSkb = (struct sk_buff *)prMsduInfo->prPacket;
-
-	if (prSkb == NULL || prSkb->data == NULL || prSkb->len == 0 ||
-	    prMsduInfo->u2FrameLength == 0) {
-		DBGLOG(HAL, ERROR, "prSkb=0x%p, frameLen=%d\n",
-		       prSkb, prMsduInfo->u2FrameLength);
-
-		if (prCurList) {
-			list_del(prCurList);
-			prHifInfo->u4TxDataQLen--;
-		}
-		halWpdamFreeMsdu(prGlueInfo, prMsduInfo, true);
-
-		return false;
-	}
-
 	pucSrc = prSkb->data;
-
 	u4TotalLen = prSkb->len;
 
-	if (prGlueInfo->prAdapter != NULL &&
-		prGlueInfo->prAdapter->chip_info != NULL) {
-
-		u4TxDescAppendSize =
-			prGlueInfo->prAdapter->chip_info->txd_append_size;
-	} else {
-		DBGLOG(HAL, ERROR, "prGlueInfo->prAdapter is null\n");
-
-		if (prCurList) {
-			list_del(prCurList);
-			prHifInfo->u4TxDataQLen--;
-		}
-		halWpdamFreeMsdu(prGlueInfo, prMsduInfo, true);
-
+	/* Acquire MSDU token */
+	prToken = halAcquireMsduToken(prGlueInfo->prAdapter);
+	if (!prToken) {
+		DBGLOG(HAL, ERROR, "Write MSDU acquire token fail\n");
 		return false;
 	}
 
-	if (u4TotalLen <= (AXI_TX_MAX_SIZE_PER_FRAME + u4TxDescAppendSize)) {
-
-		/* Acquire MSDU token */
-		prToken = halAcquireMsduToken(prGlueInfo->prAdapter,
-					      prMsduInfo->ucBssIndex);
-		if (!prToken) {
-			DBGLOG(HAL, ERROR, "Write MSDU acquire token fail\n");
-			return false;
-		}
-
-		/* Use MsduInfo to select TxRing */
-		prToken->prMsduInfo = prMsduInfo;
-		prToken->ucWlanIndex = prMsduInfo->ucWlanIndex;
+	prToken->prMsduInfo = prMsduInfo;
 
 #if HIF_TX_PREALLOC_DATA_BUFFER
-		if (prMemOps->copyTxData)
-			prMemOps->copyTxData(prToken, pucSrc, u4TotalLen);
+	if (prMemOps->copyTxData)
+		prMemOps->copyTxData(prToken, pucSrc, u4TotalLen);
 #else
-		prToken->prPacket = pucSrc;
-		prToken->u4DmaLength = u4TotalLen;
-		prMsduInfo->prToken = prToken;
+	prToken->prPacket = pucSrc;
+	prToken->u4DmaLength = u4TotalLen;
+	prMsduInfo->prToken = prToken;
 #endif
 
-		if (!halWpdmaWriteData(prGlueInfo, prMsduInfo, prToken,
-			prToken, 0, 1)) {
-			halReturnMsduToken(prGlueInfo->prAdapter,
-				prToken->u4Token);
-			return false;
-		}
-
-	} else {
-		DBGLOG(HAL, ERROR, "u4Len=%u, 0x%p, txd_append_size=%d\n",
-			u4TotalLen, prSkb,
-			prGlueInfo->prAdapter->chip_info->txd_append_size);
-
-		DBGLOG(HAL, ERROR, "%u,%u,%u,%u,%u,%u,%u,%u\n",
-			prMsduInfo->eSrc, prMsduInfo->ucUserPriority,
-			prMsduInfo->ucTC, prMsduInfo->ucPacketType,
-			prMsduInfo->ucStaRecIndex, prMsduInfo->ucBssIndex,
-			prMsduInfo->ucWlanIndex, prMsduInfo->ucPacketFormat);
+	if (!halWpdmaWriteData(prGlueInfo, prMsduInfo, prToken,
+			       prToken, 0, 1)) {
+		halReturnMsduToken(prGlueInfo->prAdapter, prToken->u4Token);
+		return false;
 	}
 
 	if (prCurList) {
 		list_del(prCurList);
 		prHifInfo->u4TxDataQLen--;
 	}
-	if (prMsduInfo->pfHifTxMsduDoneCb)
-		prMsduInfo->pfHifTxMsduDoneCb(prGlueInfo->prAdapter,
-				prMsduInfo);
 	halWpdamFreeMsdu(prGlueInfo, prMsduInfo, true);
 
 	return true;
@@ -2732,6 +1974,7 @@ bool halWpdmaWriteAmsdu(struct GLUE_INFO *prGlueInfo,
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
 	struct HIF_MEM_OPS *prMemOps;
+	struct RTMP_TX_RING *prTxRing;
 	struct list_head *prCur, *prNext;
 	struct TX_DATA_REQ *prTxReq;
 	struct MSDU_TOKEN_ENTRY *prFillToken = NULL, *prToken = NULL;
@@ -2740,25 +1983,20 @@ bool halWpdmaWriteAmsdu(struct GLUE_INFO *prGlueInfo,
 	struct sk_buff *prSkb;
 	uint8_t *pucSrc;
 	uint32_t u4TotalLen, u4Idx, u4FreeToken, u4FreeRing;
-	uint16_t u2Port;
 	bool fgIsLast;
 
 	ASSERT(prGlueInfo);
 
 	prHifInfo = &prGlueInfo->rHifInfo;
 	prMemOps = &prHifInfo->rMemOps;
+	prTxRing = &prHifInfo->TxRing[TX_RING_DATA0_IDX_0];
+
 	u4FreeToken = halGetMsduTokenFreeCnt(prGlueInfo->prAdapter);
-
-	/* Peek head to select TxRing */
-	prTxReq = list_entry(prList, struct TX_DATA_REQ, list);
-	u2Port = halTxRingDataSelect(
-		prGlueInfo->prAdapter, prTxReq->prMsduInfo);
-	u4FreeRing = TX_RING_SIZE - prHifInfo->TxRing[u2Port].u4UsedCnt;
-
+	u4FreeRing = TX_RING_SIZE - prTxRing->u4UsedCnt;
 	if ((u4FreeToken < u4Num) || (u4FreeRing <= 1)) {
 		DBGLOG(HAL, WARN,
-		       "Amsdu low tx res acquire[%u], tok[%u], ring%d[%u]\n",
-		       u4Num, u4FreeToken, u2Port, u4FreeRing);
+		       "Amsdu low tx res acquire[%u], tok[%u], ring[%u]\n",
+		       u4Num, u4FreeToken, u4FreeRing);
 		return false;
 	}
 
@@ -2772,16 +2010,13 @@ bool halWpdmaWriteAmsdu(struct GLUE_INFO *prGlueInfo,
 		fgIsLast = (u4Idx == u4Num - 1);
 
 		/* Acquire MSDU token */
-		prToken = halAcquireMsduToken(prGlueInfo->prAdapter,
-					      prMsduInfo->ucBssIndex);
+		prToken = halAcquireMsduToken(prGlueInfo->prAdapter);
 		if (!prToken) {
 			DBGLOG(HAL, ERROR, "Write AMSDU acquire token fail\n");
 			return false;
 		}
 
-		/* Use MsduInfo to select TxRing */
 		prToken->prMsduInfo = prMsduInfo;
-		prToken->ucWlanIndex = prMsduInfo->ucWlanIndex;
 
 #if HIF_TX_PREALLOC_DATA_BUFFER
 		if (prMemOps->copyTxData)
@@ -2819,9 +2054,7 @@ bool halWpdmaWriteAmsdu(struct GLUE_INFO *prGlueInfo,
 
 		list_del(prCur);
 		prHifInfo->u4TxDataQLen--;
-		if (prMsduInfo->pfHifTxMsduDoneCb)
-			prMsduInfo->pfHifTxMsduDoneCb(prGlueInfo->prAdapter,
-					prMsduInfo);
+
 		halWpdamFreeMsdu(prGlueInfo, prMsduInfo, true);
 		prCur = prNext;
 	}
@@ -2830,24 +2063,23 @@ bool halWpdmaWriteAmsdu(struct GLUE_INFO *prGlueInfo,
 	return true;
 }
 
-static u_int8_t halIsStaticMapBusAddr(struct mt66xx_chip_info *prChipInfo,
-				      uint32_t u4Addr)
+u_int8_t halIsStaticMapBusAddr(IN uint32_t u4Addr)
 {
-	if (u4Addr < prChipInfo->bus_info->max_static_map_addr)
+	if (u4Addr < MAX_PCIE_BUS_STATIC_MAP_ADDR)
 		return TRUE;
 	else
 		return FALSE;
 }
 
-u_int8_t halChipToStaticMapBusAddr(struct mt66xx_chip_info *prChipInfo,
-				   uint32_t u4ChipAddr,
-				   uint32_t *pu4BusAddr)
+u_int8_t halChipToStaticMapBusAddr(IN struct GLUE_INFO *prGlueInfo,
+				   IN uint32_t u4ChipAddr,
+				   OUT uint32_t *pu4BusAddr)
 {
-	struct BUS_INFO *prBusInfo = prChipInfo->bus_info;
+	struct BUS_INFO *prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 	uint32_t u4StartAddr, u4EndAddr, u4BusAddr;
 	uint32_t u4Idx = 0;
 
-	if (halIsStaticMapBusAddr(prChipInfo, u4ChipAddr)) {
+	if (halIsStaticMapBusAddr(u4ChipAddr)) {
 		*pu4BusAddr = u4ChipAddr;
 		return TRUE;
 	}
@@ -2878,12 +2110,9 @@ u_int8_t halGetDynamicMapReg(IN struct GLUE_INFO *prGlueInfo,
 			     IN uint32_t u4ChipAddr, OUT uint32_t *pu4Value)
 {
 	struct GL_HIF_INFO *prHifInfo = &prGlueInfo->rHifInfo;
-	struct mt66xx_chip_info *prChipInfo;
 	uint32_t u4ReMapReg, u4BusAddr;
 
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-
-	if (!halChipToStaticMapBusAddr(prChipInfo, MCU_CFG_PCIE_REMAP2,
+	if (!halChipToStaticMapBusAddr(prGlueInfo, MCU_CFG_PCIE_REMAP2,
 				       &u4ReMapReg))
 		return FALSE;
 
@@ -2899,12 +2128,9 @@ u_int8_t halSetDynamicMapReg(IN struct GLUE_INFO *prGlueInfo,
 			     IN uint32_t u4ChipAddr, IN uint32_t u4Value)
 {
 	struct GL_HIF_INFO *prHifInfo = &prGlueInfo->rHifInfo;
-	struct mt66xx_chip_info *prChipInfo;
 	uint32_t u4ReMapReg, u4BusAddr;
 
-	prChipInfo = prGlueInfo->prAdapter->chip_info;
-
-	if (!halChipToStaticMapBusAddr(prChipInfo, MCU_CFG_PCIE_REMAP2,
+	if (!halChipToStaticMapBusAddr(prGlueInfo, MCU_CFG_PCIE_REMAP2,
 				       &u4ReMapReg))
 		return FALSE;
 
@@ -2947,21 +2173,18 @@ uint32_t halReleaseIOBuffer(IN struct ADAPTER *prAdapter)
 
 void halProcessAbnormalInterrupt(IN struct ADAPTER *prAdapter)
 {
-	prAdapter->u4HifDbgFlag |= DEG_HIF_DEFAULT_DUMP;
-	halPrintHifDbgInfo(prAdapter);
-	halSetDrvSer(prAdapter);
+
 }
 
-static void halDefaultProcessSoftwareInterrupt(
-	IN struct ADAPTER *prAdapter)
+void halProcessSoftwareInterrupt(IN struct ADAPTER *prAdapter)
 {
 	struct GLUE_INFO *prGlueInfo;
 	struct GL_HIF_INFO *prHifInfo;
 	struct ERR_RECOVERY_CTRL_T *prErrRecoveryCtrl;
 	uint32_t u4Status = 0;
 
-	if (prAdapter->prGlueInfo == NULL) {
-		DBGLOG(HAL, ERROR, "prGlueInfo is NULL\n");
+	if (prAdapter == NULL || prAdapter->prGlueInfo == NULL) {
+		DBGLOG(HAL, ERROR, "prAdapter or prGlueInfo is NULL\n");
 		return;
 	}
 
@@ -2970,87 +2193,38 @@ static void halDefaultProcessSoftwareInterrupt(
 	prErrRecoveryCtrl = &prHifInfo->rErrRecoveryCtl;
 
 	kalDevRegRead(prGlueInfo, MCU2HOST_SW_INT_STA, &u4Status);
-	prErrRecoveryCtrl->u4BackupStatus = u4Status;
 	if (u4Status & ERROR_DETECT_MASK) {
 		prErrRecoveryCtrl->u4Status = u4Status;
 		kalDevRegWrite(prGlueInfo, MCU2HOST_SW_INT_STA,
 			ERROR_DETECT_MASK);
 		halHwRecoveryFromError(prAdapter);
-	} else
-		DBGLOG(HAL, TRACE, "undefined SER status[0x%x].\n", u4Status);
-}
-
-void halProcessSoftwareInterrupt(IN struct ADAPTER *prAdapter)
-{
-	struct BUS_INFO *prBusInfo = NULL;
-
-	if (prAdapter == NULL) {
-		DBGLOG(HAL, ERROR, "prAdapter is NULL\n");
-		return;
 	}
-
-	prBusInfo = prAdapter->chip_info->bus_info;
-
-	if (prBusInfo->processSoftwareInterrupt)
-		prBusInfo->processSoftwareInterrupt(prAdapter);
-	else
-		halDefaultProcessSoftwareInterrupt(prAdapter);
 }
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-void halHwRecoveryTimeout(struct timer_list *timer)
-#else
+
 void halHwRecoveryTimeout(unsigned long arg)
-#endif
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(4, 15, 0))
-	struct GL_HIF_INFO *prHif = from_timer(prHif, timer, rSerTimer);
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)prHif->rSerTimerData;
-#else
 	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)arg;
-#endif
 	struct ADAPTER *prAdapter = NULL;
-	struct GL_HIF_INFO *prHifInfo;
-	struct ERR_RECOVERY_CTRL_T *prErrRecoveryCtrl;
 
 	ASSERT(prGlueInfo);
 	prAdapter = prGlueInfo->prAdapter;
 	ASSERT(prAdapter);
 
-	prHifInfo = &prGlueInfo->rHifInfo;
-	prErrRecoveryCtrl = &prHifInfo->rErrRecoveryCtl;
-
-	DBGLOG(HAL, ERROR,
-	       "SER timer Timeout. ErrState[%d] Status[0x%x] Backup[0x%x]\n",
-	       prErrRecoveryCtrl->eErrRecovState,
-	       prErrRecoveryCtrl->u4Status,
-	       prErrRecoveryCtrl->u4BackupStatus);
+	DBGLOG(HAL, ERROR, "SER timer Timeout\n");
 
 #if CFG_CHIP_RESET_SUPPORT
-#if (CFG_SUPPORT_CONNINFRA == 0)
-	glSetRstReason(RST_SER_TIMEOUT);
 	GL_RESET_TRIGGER(prAdapter, RST_FLAG_CHIP_RESET);
-#else
-	kalSetSerTimeoutEvent(prGlueInfo);
-#endif
 #endif
 }
 
 void halSetDrvSer(struct ADAPTER *prAdapter)
 {
-	struct BUS_INFO *prBusInfo = NULL;
-
 	ASSERT(prAdapter);
 	ASSERT(prAdapter->prGlueInfo);
 
-	prBusInfo = prAdapter->chip_info->bus_info;
-
 	DBGLOG(HAL, INFO, "Set Driver Ser\n");
-	if (prBusInfo->softwareInterruptMcu)
-		prBusInfo->softwareInterruptMcu(prAdapter,
-				MCU_INT_DRIVER_SER);
-	else
-		kalDevRegWrite(prAdapter->prGlueInfo, HOST2MCU_SW_INT_SET,
-				MCU_INT_DRIVER_SER);
+	kalDevRegWrite(prAdapter->prGlueInfo, HOST2MCU_SW_INT_SET,
+		       MCU_INT_DRIVER_SER);
 }
 
 static void halStartSerTimer(IN struct ADAPTER *prAdapter)
@@ -3068,66 +2242,41 @@ static void halStartSerTimer(IN struct ADAPTER *prAdapter)
 void halHwRecoveryFromError(IN struct ADAPTER *prAdapter)
 {
 	struct GLUE_INFO *prGlueInfo;
-	struct mt66xx_chip_info *prChipInfo;
 	struct GL_HIF_INFO *prHifInfo;
 	struct BUS_INFO *prBusInfo = NULL;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
 	struct ERR_RECOVERY_CTRL_T *prErrRecoveryCtrl;
 	uint32_t u4Status = 0;
 
 	prGlueInfo = prAdapter->prGlueInfo;
 	prHifInfo = &prGlueInfo->rHifInfo;
-	prChipInfo = prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
+	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 	prErrRecoveryCtrl = &prHifInfo->rErrRecoveryCtl;
 
 	u4Status = prErrRecoveryCtrl->u4Status;
 	prErrRecoveryCtrl->u4Status = 0;
 
-	if (prAdapter->rWifiVar.fgEnableSer == FALSE)
-		return;
-
 	switch (prErrRecoveryCtrl->eErrRecovState) {
 	case ERR_RECOV_STOP_IDLE:
+	case ERR_RECOV_EVENT_REENTRY:
 		if (u4Status & ERROR_DETECT_STOP_PDMA) {
-			if (prChipInfo->asicDumpSerDummyCR)
-				prChipInfo->asicDumpSerDummyCR(prAdapter);
-			halStartSerTimer(prAdapter);
+			if (!prHifInfo->fgIsErrRecovery) {
+				prHifInfo->fgIsErrRecovery = TRUE;
+				halStartSerTimer(prAdapter);
+			}
+
 			DBGLOG(HAL, INFO,
-				"SER(E) Host stop PDMA tx/rx ring operation & receive\n");
+				"SER(E) Host stop PDMA tx/rx ring operation\n");
 			nicSerStopTxRx(prAdapter);
-#if (CFG_SUPPORT_CONNAC2X == 1)
-			/*get WFDMA HW data before Layer 1 SER*/
-			/*event*/
-			if (prChipInfo->is_support_wfdma1)
-				halRxReceiveRFBs(
-					prAdapter, RX_RING_EVT_IDX_1, FALSE);
-#endif
-#if CFG_SUPPORT_MULTITHREAD
-			kalSetRxProcessEvent(prAdapter->prGlueInfo);
-			DBGLOG(HAL, INFO,
-				"SER(F) kalSetRxProcessEvent\n");
-#else
-			DBGLOG(HAL, INFO,
-				"SER(F) nicRxProcessRFBs\n");
-			nicRxProcessRFBs(prAdapter);
-#endif
 
 			DBGLOG(HAL, INFO,
 				"SER(F) Host ACK PDMA tx/rx ring stop operation\n");
-
-			if (prBusInfo->softwareInterruptMcu) {
-				prBusInfo->softwareInterruptMcu(prAdapter,
-					MCU_INT_PDMA0_STOP_DONE);
-			} else {
-				kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
-					MCU_INT_PDMA0_STOP_DONE);
-			}
+			kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
+				MCU_INT_PDMA0_STOP_DONE);
 
 			/* re-call for change status to stop dma0 */
 			prErrRecoveryCtrl->eErrRecovState =
-				ERR_RECOV_STOP_PDMA0;
+				ERR_RECOV_STOP_IDLE_DONE;
+			halHwRecoveryFromError(prAdapter);
 		} else {
 			DBGLOG(HAL, ERROR, "SER CurStat=%u Event=%x\n",
 			       prErrRecoveryCtrl->eErrRecovState, u4Status);
@@ -3137,40 +2286,20 @@ void halHwRecoveryFromError(IN struct ADAPTER *prAdapter)
 	case ERR_RECOV_STOP_PDMA0:
 		if (u4Status & ERROR_DETECT_RESET_DONE) {
 			DBGLOG(HAL, INFO, "SER(L) Host re-initialize PDMA\n");
-
-			if (prSwWfdmaInfo->rOps.backup)
-				prSwWfdmaInfo->rOps.backup(prGlueInfo);
-
-			if (prSwWfdmaInfo->rOps.reset)
-				prSwWfdmaInfo->rOps.reset(prSwWfdmaInfo);
-
 			/* only reset TXD & RXD */
 			halWpdmaAllocRing(prAdapter->prGlueInfo, false);
-			nicFreePendingTxMsduInfo(prAdapter, 0xFF,
-					MSDU_REMOVE_BY_ALL);
-			wlanClearPendingCommandQueue(prAdapter);
 			halResetMsduToken(prAdapter);
-			prAdapter->u4NoMoreRfb = 0;
 
 			DBGLOG(HAL, INFO, "SER(M) Host enable PDMA\n");
-			halWpdmaInitRing(prGlueInfo, false);
-
-			/* reset SW value after InitRing */
-			prChipInfo = prAdapter->chip_info;
-			if (prChipInfo->asicWfdmaReInit)
-				prChipInfo->asicWfdmaReInit(prAdapter);
+			halWpdmaInitRing(prGlueInfo);
+			kalDevRegWrite(prGlueInfo, WPDMA_PAUSE_TX_Q, 0);
 
 			DBGLOG(HAL, INFO,
-				"SER(N) Host interrupt MCU PDMA ring init done\n");
+				"SER(N) Host interrupt N9 PDMA ring init done\n");
 			prErrRecoveryCtrl->eErrRecovState =
 				ERR_RECOV_RESET_PDMA0;
-			if (prBusInfo->softwareInterruptMcu) {
-				prBusInfo->softwareInterruptMcu(prAdapter,
-					MCU_INT_PDMA0_INIT_DONE);
-			} else {
-				kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
-					MCU_INT_PDMA0_INIT_DONE);
-			}
+			kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
+				MCU_INT_PDMA0_INIT_DONE);
 		} else {
 			DBGLOG(HAL, ERROR, "SER CurStat=%u Event=%x\n",
 			       prErrRecoveryCtrl->eErrRecovState, u4Status);
@@ -3180,24 +2309,23 @@ void halHwRecoveryFromError(IN struct ADAPTER *prAdapter)
 	case ERR_RECOV_RESET_PDMA0:
 		if (u4Status & ERROR_DETECT_RECOVERY_DONE) {
 			DBGLOG(HAL, INFO,
-				"SER(Q) Host interrupt MCU SER handle done\n");
+				"SER(Q) Host interrupt N9 SER handle done\n");
 			prErrRecoveryCtrl->eErrRecovState =
-				ERR_RECOV_WAIT_MCU_NORMAL;
-			if (prBusInfo->softwareInterruptMcu) {
-				prBusInfo->softwareInterruptMcu(prAdapter,
-					MCU_INT_PDMA0_RECOVERY_DONE);
-			} else {
-				kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
-					MCU_INT_PDMA0_RECOVERY_DONE);
-			}
+				ERR_RECOV_WAIT_N9_NORMAL;
+			kalDevRegWrite(prGlueInfo, HOST2MCU_SW_INT_SET,
+				MCU_INT_PDMA0_RECOVERY_DONE);
 		} else {
 			DBGLOG(HAL, ERROR, "SER CurStat=%u Event=%x\n",
 			       prErrRecoveryCtrl->eErrRecovState, u4Status);
 		}
 		break;
 
-	case ERR_RECOV_WAIT_MCU_NORMAL:
-		if (u4Status & ERROR_DETECT_MCU_NORMAL_STATE) {
+	case ERR_RECOV_STOP_IDLE_DONE:
+		prErrRecoveryCtrl->eErrRecovState = ERR_RECOV_STOP_PDMA0;
+		break;
+
+	case ERR_RECOV_WAIT_N9_NORMAL:
+		if (u4Status & ERROR_DETECT_N9_NORMAL_STATE) {
 			del_timer_sync(&prHifInfo->rSerTimer);
 
 			/* update Beacon frame if operating in AP mode. */
@@ -3206,16 +2334,17 @@ void halHwRecoveryFromError(IN struct ADAPTER *prAdapter)
 
 			kalDevKickCmd(prAdapter->prGlueInfo);
 			kalDevKickData(prAdapter->prGlueInfo);
-			halRxReceiveRFBs(prAdapter, RX_RING_EVT_IDX_1, FALSE);
-			halRxReceiveRFBs(prAdapter, RX_RING_DATA_IDX_0, TRUE);
+			halRxReceiveRFBs(prAdapter, RX_RING_EVT_IDX_1);
+			halRxReceiveRFBs(prAdapter, RX_RING_DATA_IDX_0);
+			prHifInfo->fgIsErrRecovery = FALSE;
 			nicSerStartTxRx(prAdapter);
-#if CFG_SUPPORT_MULTITHREAD
-			kalSetTxEvent2Hif(prAdapter->prGlueInfo);
-#endif
 			prErrRecoveryCtrl->eErrRecovState = ERR_RECOV_STOP_IDLE;
-
-			if (prSwWfdmaInfo->rOps.restore)
-				prSwWfdmaInfo->rOps.restore(prGlueInfo);
+		} else if (u4Status & ERROR_DETECT_STOP_PDMA) {
+			DBGLOG(HAL, ERROR, "SER re-entry CurStat=%u Event=%x\n",
+			       prErrRecoveryCtrl->eErrRecovState, u4Status);
+			prErrRecoveryCtrl->eErrRecovState =
+				ERR_RECOV_EVENT_REENTRY;
+			halHwRecoveryFromError(prAdapter);
 		} else {
 			DBGLOG(HAL, ERROR, "SER CurStat=%u Event=%x\n",
 			       prErrRecoveryCtrl->eErrRecovState, u4Status);
@@ -3248,53 +2377,17 @@ void halTxCompleteTasklet(unsigned long data)
 uint32_t halHifPowerOffWifi(IN struct ADAPTER *prAdapter)
 {
 	struct GL_HIF_INFO *prHifInfo = NULL;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS, u4Retry = 0;
-	struct BUS_INFO *prBusInfo = NULL;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo;
+	uint32_t rStatus = WLAN_STATUS_SUCCESS;
 
 	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prBusInfo = prAdapter->chip_info->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
 
 	DBGLOG(INIT, INFO, "Power off Wi-Fi!\n");
 
+	nicDisableInterrupt(prAdapter);
 	ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
 
-#if defined(_HIF_AXI)
-	if (nicProcessISTWithSpecifiedCount(prAdapter, 5) !=
-		WLAN_STATUS_NOT_INDICATING)
-		DBGLOG(INIT, INFO,
-		       "Handle pending interrupt\n");
-
-	while (prHifInfo->rErrRecoveryCtl.eErrRecovState !=
-	       ERR_RECOV_STOP_IDLE) {
-		if (u4Retry >= HIF_SER_POWER_OFF_RETRY_COUNT)
-			break;
-		kalMsleep(HIF_SER_POWER_OFF_RETRY_TIME);
-		u4Retry++;
-		nicProcessISTWithSpecifiedCount(prAdapter, 1);
-		DBGLOG(INIT, INFO, "process SER...\n");
-	}
-#endif
 	/* Power off Wi-Fi */
 	wlanSendNicPowerCtrlCmd(prAdapter, TRUE);
-
-	if (prSwWfdmaInfo->fgIsEnSwWfdma &&
-	    prSwWfdmaInfo->rOps.processDmaDone) {
-		u4Retry = 0;
-		while (prSwWfdmaInfo->rOps.processDmaDone(
-			       prAdapter->prGlueInfo)) {
-			if (u4Retry >= SW_WFDMA_MAX_RETRY_COUNT) {
-				if (prSwWfdmaInfo->rOps.dumpDebugLog)
-					prSwWfdmaInfo->rOps.dumpDebugLog(
-						prAdapter->prGlueInfo);
-				break;
-			}
-			DBGLOG(INIT, INFO, "Try to sent cmd to fw\n");
-			kalMsleep(SW_WFDMA_RETRY_TIME);
-			u4Retry++;
-		}
-	}
 
 	prHifInfo->fgIsPowerOff = true;
 
@@ -3302,13 +2395,6 @@ uint32_t halHifPowerOffWifi(IN struct ADAPTER *prAdapter)
 	RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
 
 	rStatus = wlanCheckWifiFunc(prAdapter, FALSE);
-
-	if (prBusInfo->setPdmaIntMask)
-		prBusInfo->setPdmaIntMask(prAdapter->prGlueInfo, FALSE);
-
-	nicDisableInterrupt(prAdapter);
-	if (prBusInfo->disableSwInterrupt)
-		prBusInfo->disableSwInterrupt(prAdapter);
 
 	return rStatus;
 }
@@ -3325,198 +2411,4 @@ void halTxResourceResetHwTQCounter(IN struct ADAPTER *prAdapter)
 uint32_t halGetHifTxPageSize(IN struct ADAPTER *prAdapter)
 {
 	return HIF_TX_PAGE_SIZE;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
-* @brief Check if HIF state is READY for upper layer cfg80211
-*
-* @param prAdapter      Pointer to the Adapter structure.
-*
-* @return (TRUE: ready, FALSE: not ready)
-*/
-/*----------------------------------------------------------------------------*/
-bool halIsHifStateReady(IN struct ADAPTER *prAdapter, uint8_t *pucState)
-{
-	/* PCIE owner should implement this function */
-
-	return TRUE;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
-* @brief Check if HIF state is during supend process
-*
-* @param prAdapter      Pointer to the Adapter structure.
-*
-* @return (TRUE: suspend, reject the caller action. FALSE: not suspend)
-*/
-/*----------------------------------------------------------------------------*/
-bool halIsHifStateSuspend(IN struct ADAPTER *prAdapter)
-{
-	/* PCIE owner should implement this function */
-
-	return FALSE;
-}
-
-void halUpdateTxMaxQuota(IN struct ADAPTER *prAdapter)
-{
-	struct BUS_INFO *prBusInfo;
-	uint32_t u4Ret;
-	uint32_t u4Quota;
-	uint16_t u2PortIdx;
-	bool fgRun;
-	uint8_t ucWmmIndex;
-
-	KAL_SPIN_LOCK_DECLARATION();
-
-	prBusInfo = prAdapter->chip_info->bus_info;
-
-	for (ucWmmIndex = 0; ucWmmIndex < prAdapter->ucWmmSetNum;
-		ucWmmIndex++) {
-
-		u4Ret = WLAN_STATUS_SUCCESS;
-		u2PortIdx = halRingDataSelectByWmmIndex(prAdapter, ucWmmIndex);
-
-		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_UPDATE_WMM_QUOTA);
-		u4Quota = prAdapter->rWmmQuotaReqCS[ucWmmIndex].u4Quota;
-		fgRun = prAdapter->rWmmQuotaReqCS[ucWmmIndex].fgRun;
-		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_UPDATE_WMM_QUOTA);
-
-		if (fgRun) {
-			if (prBusInfo->updateTxRingMaxQuota) {
-				u4Ret = prBusInfo->updateTxRingMaxQuota(
-						prAdapter, u2PortIdx, u4Quota);
-			} else {
-				DBGLOG(HAL, INFO,
-				"updateTxRingMaxQuota not implemented\n");
-				u4Ret = WLAN_STATUS_NOT_ACCEPTED;
-			}
-		}
-
-		DBGLOG(HAL, INFO,
-			"WmmQuota,Run,%u,Wmm,%u,Port,%u,Quota,0x%x,ret=0x%x\n",
-			fgRun, ucWmmIndex, u2PortIdx, u4Quota, u4Ret);
-
-		if (u4Ret != WLAN_STATUS_PENDING) {
-			KAL_ACQUIRE_SPIN_LOCK(prAdapter,
-				SPIN_LOCK_UPDATE_WMM_QUOTA);
-			prAdapter->rWmmQuotaReqCS[ucWmmIndex].fgRun
-				= false;
-			KAL_RELEASE_SPIN_LOCK(prAdapter,
-				SPIN_LOCK_UPDATE_WMM_QUOTA);
-		}
-	}
-}
-
-void halEnableSlpProt(struct GLUE_INFO *prGlueInfo)
-{
-	uint32_t u4Val = 0;
-	uint32_t u4WaitDelay = 20000;
-
-	kalDevRegRead(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, &u4Val);
-	u4Val |= CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_ENABLE_MASK;
-	kalDevRegWrite(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, u4Val);
-	while (TRUE) {
-		u4WaitDelay--;
-		kalDevRegRead(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR,
-			&u4Val);
-		if (CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_RDY_MASK &
-				u4Val)
-			break;
-		if (u4WaitDelay == 0) {
-			DBGLOG(HAL, ERROR, "wait for sleep protect timeout.\n");
-			glSetRstReason(RST_SLP_PROT_TIMEOUT);
-			GL_RESET_TRIGGER(prGlueInfo->prAdapter,
-				RST_FLAG_CHIP_RESET);
-			break;
-		}
-		kalUdelay(1);
-	}
-}
-
-void halDisableSlpProt(struct GLUE_INFO *prGlueInfo)
-{
-	uint32_t u4Val = 0;
-
-	kalDevRegRead(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, &u4Val);
-	u4Val &= ~CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_PDMA_AXI_SLPPROT_ENABLE_MASK;
-	kalDevRegWrite(prGlueInfo, CONN_HIF_PDMA_CSR_PDMA_SLP_PROT_ADDR, u4Val);
-}
-
-void halNotifyMdCrash(IN struct ADAPTER *prAdapter)
-{
-	struct mt66xx_chip_info *prChipInfo;
-	struct BUS_INFO *prBusInfo;
-
-	if (!prAdapter) {
-		DBGLOG(HAL, ERROR, "Null prAdapter.\n");
-		return;
-	}
-
-	prChipInfo = prAdapter->chip_info;
-	prBusInfo = prChipInfo->bus_info;
-
-	DBGLOG(HAL, INFO, "halNotifyMdCrash.\n");
-
-	if (prBusInfo->softwareInterruptMcu) {
-		prBusInfo->softwareInterruptMcu(
-			prAdapter, MCU_INT_NOTIFY_MD_CRASH);
-	} else {
-		kalDevRegWrite(prAdapter->prGlueInfo, HOST2MCU_SW_INT_SET,
-			       MCU_INT_NOTIFY_MD_CRASH);
-	}
-}
-
-bool halIsTxBssCntFull(struct ADAPTER *prAdapter, uint8_t ucBssIndex)
-{
-	struct GL_HIF_INFO *prHifInfo = NULL;
-	struct MSDU_TOKEN_INFO *prTokenInfo;
-	uint8_t aucStrBuf[MAX_BSSID_NUM * 20];
-	uint32_t u4Idx, u4Offset = 0;
-	uint32_t u4DebugLevel = 0;
-
-	ASSERT(prAdapter);
-	ASSERT(prAdapter->prGlueInfo);
-
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prTokenInfo = &prHifInfo->rTokenInfo;
-
-	if (ucBssIndex >= MAX_BSSID_NUM ||
-	    prTokenInfo->u4TxBssCnt[ucBssIndex] < prTokenInfo->u4MaxBssFreeCnt)
-		return false;
-
-	wlanGetDriverDbgLevel(DBG_TX_IDX, &u4DebugLevel);
-
-	if (u4DebugLevel & DBG_CLASS_TRACE) {
-		kalMemZero(aucStrBuf, MAX_BSSID_NUM * 20);
-		for (u4Idx = 0; u4Idx < MAX_BSSID_NUM; u4Idx++) {
-			u4Offset += kalSprintf(
-				aucStrBuf + u4Offset,
-				u4Idx == 0 ? "%u" : ":%u",
-				prTokenInfo->u4TxBssCnt[u4Idx]);
-		}
-
-		DBGLOG(HAL, TRACE, "Bss[%d] tx full, Cnt[%s]\n",
-			ucBssIndex, aucStrBuf);
-	}
-
-	return true;
-}
-
-void halSetTxRingBssTokenCnt(struct ADAPTER *prAdapter, uint32_t u4Cnt)
-{
-	struct GL_HIF_INFO *prHifInfo = NULL;
-	struct MSDU_TOKEN_INFO *prTokenInfo;
-
-	ASSERT(prAdapter);
-	ASSERT(prAdapter->prGlueInfo);
-
-	prHifInfo = &prAdapter->prGlueInfo->rHifInfo;
-	prTokenInfo = &prHifInfo->rTokenInfo;
-
-	prTokenInfo->u4MaxBssFreeCnt = u4Cnt ? u4Cnt : HIF_TX_MSDU_TOKEN_NUM;
-
-	DBGLOG(HAL, INFO, "SetTxRingBssTokenCnt=[%u].\n",
-	       prTokenInfo->u4MaxBssFreeCnt);
 }

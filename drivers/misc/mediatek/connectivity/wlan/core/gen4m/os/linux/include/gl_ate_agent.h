@@ -129,15 +129,6 @@ struct ATE_OPS_T {
 				 uint32_t u4WFNum);
 	void (*getRbistDataDumpEvent)(struct ADAPTER *prAdapter,
 				      uint8_t *pucEventBuf);
-	void (*icapRiseVcoreClockRate)(void);
-	void (*icapDownVcoreClockRate)(void);
-	uint32_t u4EnBitWidth;/* 0:32bit, 1:96bit, 2:128bit, 3:64bit*/
-	uint32_t u4Architech;/* 0:on-chip, 1:on-the-fly */
-	uint32_t u4PhyIdx;
-	uint32_t u4EmiStartAddress;
-	uint32_t u4EmiEndAddress;
-	uint32_t u4EmiMsbAddress;
-	uint32_t u4CapSource;
 };
 
 
@@ -169,16 +160,6 @@ int SetATETxMcs(struct net_device *prNetDev,
 		uint8_t *prInBuf);
 int SetATEIpg(struct net_device *prNetDev,
 	      uint8_t *prInBuf);
-int SetATETxVhtNss(struct net_device *prNetDev,
-	      uint8_t *prInBuf);
-int SetATETxPath(struct net_device *prNetDev,
-	      uint8_t *prInBuf);
-int SetATERxPath(struct net_device *prNetDev,
-	      uint8_t *prInBuf);
-#if CFG_SUPPORT_ANT_SWAP
-int SetATEAntSwp(struct net_device *prNetDev,
-	      uint8_t *prInBuf);
-#endif
 
 #if CFG_SUPPORT_TX_BF
 int Set_TxBfProfileTag_Help(struct net_device *prNetDev,

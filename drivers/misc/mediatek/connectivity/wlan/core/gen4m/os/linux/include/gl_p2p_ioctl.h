@@ -314,6 +314,24 @@ struct iw_p2p_version {
 	uint32_t u4Version;
 };
 
+/*----------------------------------------------------------------------------*/
+/* NL80211 TEST MODE                                                          */
+/*----------------------------------------------------------------------------*/
+#if CFG_AUTO_CHANNEL_SEL_SUPPORT
+enum ENUM_TESTMODE_AVAILABLE_CHAN_ATTR {
+	__NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_INVALID,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_2G_BASE_1,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_5G_BASE_36,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_5G_BASE_52,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_5G_BASE_100,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_5G_BASE_149,
+	__NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_AFTER_LAST,
+	NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_MAX
+		= __NL80211_TESTMODE_AVAILABLE_CHAN_ATTR_AFTER_LAST - 1
+};
+#endif
+
+
 /******************************************************************************
  *                            P U B L I C   D A T A
  ******************************************************************************
@@ -321,7 +339,7 @@ struct iw_p2p_version {
 extern struct ieee80211_supported_band mtk_band_2ghz;
 extern struct ieee80211_supported_band mtk_band_5ghz;
 
-extern const uint32_t mtk_cipher_suites[9];
+extern const uint32_t mtk_cipher_suites[6];
 
 
 /******************************************************************************
@@ -538,17 +556,6 @@ int mtk_p2p_cfg80211_mgmt_tx(struct wiphy *wiphy,
 		u64 *cookie);
 #endif
 
-int mtk_p2p_cfg80211_add_station(
-	struct wiphy *wiphy,
-	struct net_device *ndev,
-	const u8 *mac);
-
-int mtk_p2p_cfg80211_change_station(
-	struct wiphy *wiphy,
-	struct net_device *ndev,
-	const u8 *mac,
-	struct station_parameters *params);
-
 #if KERNEL_VERSION(3, 19, 0) <= CFG80211_VERSION_CODE
 int mtk_p2p_cfg80211_del_station(struct wiphy *wiphy,
 		struct net_device *dev,
@@ -613,12 +620,15 @@ int mtk_p2p_cfg80211_testmode_hotspot_block_list_cmd(IN struct wiphy *wiphy,
 		IN void *data,
 		IN int len);
 
+#if CFG_AUTO_CHANNEL_SEL_SUPPORT
+int mtk_p2p_cfg80211_testmode_get_best_channel(IN struct wiphy *wiphy,
+		IN void *data,
+		IN int len);
+#endif
+
 int mtk_p2p_cfg80211_testmode_hotspot_config_cmd(IN struct wiphy *wiphy,
 		IN void *data,
 		IN int len);
-
-int mtk_p2p_cfg80211_testmode_update_sta_pmkid_cmd(IN struct wiphy *wiphy,
-		IN struct net_device *nDev, IN void *data, IN int len);
 
 #else
 /* IGNORE KERNEL DEPENCY ERRORS*/

@@ -1,4 +1,4 @@
-/*******************************************************************************
+/******************************************************************************
  *
  * This file is provided under a dual license.  When you use or
  * distribute this software, you may choose to be licensed under
@@ -69,7 +69,6 @@
  */
 #include "precomp.h"
 #include "mgmt/ais_fsm.h"
-#include "mddp.h"
 
 /*******************************************************************************
  *                              C O N S T A N T S
@@ -99,17 +98,6 @@ struct CODE_MAPPING {
 	int32_t u4TxpowerOffset;
 };
 
-struct NVRAM_TAG_FRAGMENT_GROUP {
-	uint8_t u1StartTagID;
-	uint8_t u1EndTagID;
-};
-
-struct NVRAM_FRAGMENT_RANGE {
-	uint32_t startOfs;
-	uint32_t endOfs;
-};
-
-
 /*******************************************************************************
  *                            P U B L I C   D A T A
  *******************************************************************************
@@ -120,388 +108,6 @@ u_int8_t fgIsBusAccessFailed = FALSE;
  *                           P R I V A T E   D A T A
  *******************************************************************************
  */
-/* data rate mapping table for CCK */
-struct cckDataRateMappingTable_t {
-	uint32_t rate[4];
-} g_rCckDataRateMappingTable = {
-	{10, 20, 55, 110}
-};
-/* data rate mapping table for OFDM */
-struct ofdmDataRateMappingTable_t {
-	uint32_t rate[8];
-} g_rOfdmDataRateMappingTable = {
-	{60, 90, 120, 180, 240, 360, 480, 540}
-};
-/* data rate mapping table for 802.11n and 802.11ac */
-struct dataRateMappingTable_t {
-	struct nsts_t {
-		struct bw_t {
-			struct sgi_t {
-				uint32_t rate[12];
-			} sgi[2];
-		} bw[4];
-	} nsts[3];
-} g_rDataRateMappingTable = {
-{ { { { { /* 20MHz */
-	{ /* no SGI */
-	{65, 130, 195, 260, 390, 520, 585, 650, 780, 867, 975, 1083}
-	},
-	{ /* SGI */
-	{72, 144, 217, 289, 433, 578, 650, 722, 867, 963, 1083, 1204}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* no SGI */
-	{135, 270, 405, 540, 810, 1080, 1215, 1350, 1620, 1800, 2025, 2250}
-	},
-	{ /* SGI */
-	{150, 300, 450, 600, 900, 1200, 1350, 1500, 1800, 2000, 2250, 2500}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* no SGI */
-	{293, 585, 878, 1170, 1755, 2340, 2633, 2925, 3510, 3900, 4388, 4875}
-	},
-	{ /* SGI */
-	{325, 650, 975, 1300, 1950, 2600, 2925, 3250, 3900, 4333, 4875, 5417}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* no SGI */
-	{585, 1170, 1755, 2340, 3510, 4680, 5265, 5850, 7020, 7800, 8775, 9750}
-	},
-	{ /* SGI */
-	{650, 1300, 1950, 2600, 3900, 5200, 5850, 6500, 7800, 8667, 9750, 10833}
-	}
-} } } },
-{ { {
-	{ /* 20MHz */
-	{ /* no SGI */
-	{130, 260, 390, 520, 780, 1040, 1170, 1300, 1560, 1733, 1950, 2167}
-	},
-	{ /* SGI */
-	{144, 289, 433, 578, 867, 1156, 1300, 1444, 1733, 1927, 2167, 2407}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* no SGI */
-	{270, 540, 810, 1080, 1620, 2160, 2430, 2700, 3240, 3600, 4050, 4500}
-	},
-	{ /* SGI */
-	{300, 600, 900, 1200, 1800, 2400, 2700, 3000, 3600, 4000, 4500, 5000}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* no SGI */
-	{585, 1170, 1755, 2340, 3510, 4680, 5265, 5850, 7020, 7800, 8775, 9750}
-	},
-	{ /* SGI */
-	{650, 1300, 1950, 2600, 3900, 5200, 5850, 6500, 7800, 8667, 9750, 10833}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* no SGI */
-	{1170, 2340, 3510, 4680, 7020, 9360, 10530, 11700, 14040, 15600,
-	 17550, 19500}
-	},
-	{ /* SGI */
-	{1300, 2600, 3900, 5200, 7800, 10400, 11700, 13000, 15600, 17333,
-	 19500, 21667}
-	}
-} } } },
-{ { {
-	{ /* 20MHz */
-	{ /* no SGI */
-	{195, 390, 585, 780, 1170, 1560, 1755, 1950, 2340, 2600, 2925, 3250}
-	},
-	{ /* SGI */
-	{217, 433, 650, 867, 1300, 1733, 1950, 2167, 2600, 2889, 3250, 3611}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* no SGI */
-	{405, 810, 1215, 1620, 2430, 3240, 3645, 4050, 4860, 5400, 6075, 6750}
-	},
-	{ /* SGI */
-	{450, 900, 1350, 1800, 2700, 3600, 4050, 4500, 5400, 6000, 6750, 7500}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* no SGI */
-	{878, 1755, 2633, 3510, 5265, 7020, 0, 8775, 10530, 11700, 13163, 14625}
-	},
-	{ /* SGI */
-	{975, 1950, 2925, 3900, 5850, 7800, 0, 9750, 11700, 13000, 14625, 16250}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* no SGI */
-	{1755, 3510, 5265, 7020, 10530, 14040, 15795, 17550, 21060, 23400,
-	 26325, 29250}
-	},
-	{ /* SGI */
-	{1950, 3900, 5850, 7800, 11700, 15600, 17550, 19500, 23400, 26000,
-	 29250, 32500}
-	}
-} } } } }
-};
-
-/* data rate mapping table for ax */
-struct axDataRateMappingTable_t {
-	struct axNsts_t {
-		struct axBw_t {
-			struct axGi_t {
-				uint32_t rate[12];
-			} gi[3];
-		} bw[4];
-	} nsts[4];
-} g_rAxDataRateMappingTable = {
-{ { { { { /* 20MHz */
-	{ /* HE GI 0.8 */
-	{86, 172, 258, 344, 516, 688, 774, 860, 1032, 1147, 1290, 1434}
-	},
-	{ /* HE GI 1.6 */
-	{81, 163, 244, 325, 488, 650, 731, 813, 975, 1083, 1219, 1354}
-	},
-	{ /* HE GI 3.2 */
-	{73, 146, 219, 293, 439, 585, 658, 731, 878, 975, 1097, 1219}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* HE GI 0.8 */
-	{172, 344, 516, 688, 1032, 1376, 1549, 1721, 2065, 2294, 2581, 2868}
-	},
-	{ /* HE GI 1.6 */
-	{163, 325, 488, 650, 975, 1300, 1463, 1625, 1950, 2167, 2438, 2708}
-	},
-	{ /* HE GI 3.2 */
-	{146, 293, 439, 585, 878, 1170, 1316, 1463, 1755, 1950, 2194, 2438}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* HE GI 0.8 */
-	{360, 721, 1081, 1441, 2162, 2882, 3243, 3603, 4324, 4804, 5404, 6005}
-	},
-	{ /* HE GI 1.6 */
-	{340, 681, 1021, 1361, 2042, 2722, 3063, 3403, 4083, 4537, 5104, 5671}
-	},
-	{ /* HE GI 3.2 */
-	{306, 613, 919, 1225, 1838, 2450, 2756, 3063, 3675, 4083, 4594, 5104}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* HE GI 0.8 */
-	{721, 1441, 2162, 2882, 4324, 5765, 6485, 7206, 8647, 9608, 10809,
-		12010}
-	},
-	{ /* HE GI 1.6 */
-	{681, 1361, 2042, 2722, 4083, 5444, 6125, 6806, 8167, 9074, 10208,
-		11343}
-	},
-	{ /* HE GI 3.2 */
-	{613, 1225, 1838, 2450, 3675, 4900, 5513, 6125, 7350, 8167, 9188, 10208}
-	}
-} } } },
-{ { {
-	{ /* 20MHz */
-	{ /* HE GI 0.8 */
-	{172, 344, 516, 688, 1032, 1376, 1549, 1721, 2065, 2294, 2581, 2868}
-	},
-	{ /* HE GI 1.6 */
-	{163, 352, 488, 650, 975, 1300, 1463, 1625, 1950, 2167, 2438, 2708}
-	},
-	{ /* HE GI 3.2 */
-	{146, 293, 439, 585, 878, 1170, 1316, 1463, 1755, 1950, 2194, 2438}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* HE GI 0.8 */
-	{344, 688, 1032, 1376, 2065, 2753, 3097, 3441, 4129, 4588, 5162, 5735}
-	},
-	{ /* HE GI 1.6 */
-	{325, 650, 975, 1300, 1950, 2600, 2925, 3250, 3900, 4333, 4875, 5417}
-	},
-	{ /* HE GI 3.2 */
-	{293, 585, 878, 1170, 1755, 2340, 2633, 2925, 3510, 3900, 4388, 4875}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* HE GI 0.8 */
-	{721, 1441, 2162, 2882, 4324, 5765, 6485, 7206, 8647, 9608, 10809,
-		12010}
-	},
-	{ /* HE GI 1.6 */
-	{681, 1361, 2042, 2722, 4083, 5444, 6125, 6806, 8167, 9074, 10208,
-		11343}
-	},
-	{ /* HE GI 3.2 */
-	{613, 1225, 1838, 2450, 3675, 4900, 5513, 6125, 7350, 8167, 9188, 10208}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* HE GI 0.8 */
-	{1441, 2882, 4324, 5765, 8647, 11529, 12971, 14412, 17294, 19216, 21618,
-		24020}
-	},
-	{ /* HE GI 1.6 */
-	{1361, 2722, 4083, 5444, 8167, 10889, 12250, 13611, 16333, 18148, 20417,
-		22685}
-	},
-	{ /* HE GI 3.2 */
-	{1225, 2450, 3675, 4900, 7350, 9800, 11025, 12250, 14700, 16333, 18375,
-		20417}
-	}
-} } } },
-{ { {
-	{ /* 20MHz */
-	{ /* HE GI 0.8 */
-	{258, 516, 774, 1032, 1549, 2065, 2323, 2581, 3097, 3441, 3871, 4301}
-	},
-	{ /* HE GI 1.6 */
-	{244, 488, 721, 975, 1463, 1950, 2194, 2438, 2925, 3250, 3656, 4063}
-	},
-	{ /* HE GI 3.2 */
-	{219, 439, 658, 878, 1316, 1755, 1974, 2194, 2633, 2925, 3291, 3656}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* HE GI 0.8 */
-	{516, 1032, 1549, 2065, 3097, 4129, 4646, 5162, 6194, 6882, 7743, 8603}
-	},
-	{ /* HE GI 1.6 */
-	{488, 975, 1463, 1950, 2925, 3900, 4388, 4875, 5850, 6500, 7313, 8125}
-	},
-	{ /* HE GI 3.2 */
-	{439, 878, 1316, 1755, 2633, 3510, 3949, 4388, 5265, 5850, 6581, 7313}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* HE GI 0.8 */
-	{1081, 2162, 3243, 4324, 6485, 8647, 9728, 10809, 12971, 14412, 16213,
-		18015}
-	},
-	{ /* HE GI 1.6 */
-	{1021, 2042, 3063, 4083, 6125, 8167, 9188, 10208, 12250, 13611, 15313,
-		17014}
-	},
-	{ /* HE GI 3.2 */
-	{919, 1838, 2756, 3675, 5513, 7350, 8269, 9188, 11025, 12250, 13781,
-		15313}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* HE GI 0.8 */
-	{2162, 4324, 6485, 8647, 12971, 17294, 19456, 21618, 25941, 28824,
-		32426, 36029}
-	},
-	{ /* HE GI 1.6 */
-	{1042, 4083, 6125, 8167, 12250, 16333, 18375, 20417, 24500, 27222,
-		30625, 34028}
-	},
-	{ /* HE GI 3.2 */
-	{1838, 3675, 5513, 7350, 11025, 14700, 16538, 18375, 22050, 24500,
-		27563, 30625}
-	}
-} } } },
-{ { {
-	{ /* 20MHz */
-	{ /* HE GI 0.8 */
-	{344, 688, 1032, 1376, 2065, 2753, 3097, 3441, 4129, 4588, 5162, 5735}
-	},
-	{ /* HE GI 1.6 */
-	{325, 650, 975, 1300, 1950, 2600, 2925, 3250, 3900, 4333, 4875, 5417}
-	},
-	{ /* HE GI 3.2 */
-	{293, 585, 878, 1170, 1755, 2340, 2633, 2925, 3510, 3900, 4388, 4875}
-	}
-} },
-{
-	{ /* 40MHz */
-	{ /* HE GI 0.8 */
-	{688, 1376, 2065, 2753, 4129, 5506, 6194, 6882, 8259, 9176, 10324,
-		11471}
-	},
-	{ /* HE GI 1.6 */
-	{650, 1300, 1950, 2600, 3900, 5200, 5850, 6500, 7800, 8667, 9750, 10833}
-	},
-	{ /* HE GI 3.2 */
-	{585, 1170, 1755, 2340, 3510, 4680, 5265, 5850, 7020, 7800, 8775, 9750}
-	}
-} },
-{
-	{ /* 80MHz */
-	{ /* HE GI 0.8 */
-	{1441, 2882, 4324, 5765, 8647, 11529, 12971, 14412, 17294, 19216, 21618,
-		24020}
-	},
-	{ /* HE GI 1.6 */
-	{1361, 2722, 4083, 5444, 8167, 10889, 12250, 13611, 16333, 18148, 20417,
-		22685}
-	},
-	{ /* HE GI 3.2 */
-	{1225, 2450, 3675, 4900, 7350, 9800, 11025, 12250, 14700, 16333, 18375,
-		20417}
-	}
-} },
-{
-	{ /* 160MHz */
-	{ /* HE GI 0.8 */
-	{2882, 5765, 8647, 11529, 17294, 23059, 25941, 28824, 34588, 38431,
-		43235, 48039}
-	},
-	{ /* HE GI 1.6 */
-	{2722, 5444, 8167, 10889, 16333, 21778, 24500, 27222, 32667, 36296,
-		40833, 45370}
-	},
-	{ /* HE GI 3.2 */
-	{2450, 4900, 7350, 9800, 14700, 19600, 22050, 24500, 29400, 32667,
-		36750, 40833}
-	}
-} } } } }
-};
-
-struct PARAM_CUSTOM_KEY_CFG_STRUCT g_rEmCfgBk[WLAN_CFG_REC_ENTRY_NUM_MAX];
-
-
-struct PARAM_CUSTOM_KEY_CFG_STRUCT g_rDefaulteSetting[] = {
-	/*format :
-	*: {
-	*	"firmware config parameter",
-	*	"firmware config value",
-	*	"Operation:default 0"
-	*   }
-	*/
-	{"AdapScan", "0", WLAN_CFG_DEFAULT},
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-	/*Fill Iot AP blacklist here*/
-#endif
-#if CFG_TC3_FEATURE
-	{"ScreenOnBeaconTimeoutCount", "20"},
-	{"ScreenOffBeaconTimeoutCount", "10"},
-	{"AgingPeriod", "0x19"},
-	{"DropPacketsIPV4Low", "0x1"},
-	{"DropPacketsIPV6Low", "0x1"},
-	{"Sta2gBw", "1"},
-#endif
-};
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -528,6 +134,7 @@ PFN_OID_HANDLER_FUNC apfnOidQueryHandlerWOHwAccess[] = {
 	wlanoidQueryInfrastructureMode,
 	wlanoidQueryAuthMode,
 	wlanoidQueryEncryptionStatus,
+	wlanoidQueryPmkid,
 	wlanoidQueryNetworkTypeInUse,
 	wlanoidQueryBssidList,
 	wlanoidQueryAcpiDevicePowerState,
@@ -562,8 +169,6 @@ PFN_OID_HANDLER_FUNC apfnOidWOTimeoutCheck[] = {
 	wlanoidRftestSetAbortTestMode,
 	wlanoidSetAcpiDevicePowerState,
 };
-
-#define NVRAM_TAG_HDR_SIZE  3 /*ID+Len MSB+Len LSB*/
 
 /*******************************************************************************
  *                                 M A C R O S
@@ -643,21 +248,6 @@ void wlanCardEjected(IN struct ADAPTER *prAdapter)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief This routine is called to check driver ready state
- *
- * \param[in] prGlueInfo Pointer to the GlueInfo structure.
- *
- * \retval TRUE Driver is ready for kernel access
- * \retval FALSE Driver is not ready
- */
-/*----------------------------------------------------------------------------*/
-u_int8_t wlanIsDriverReady(IN struct GLUE_INFO *prGlueInfo)
-{
-	return prGlueInfo && prGlueInfo->u4ReadyFlag && !kalIsResetting();
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief Create adapter object
  *
  * \param prAdapter This routine is call to allocate the driver software
@@ -707,75 +297,65 @@ void wlanAdapterDestroy(IN struct ADAPTER *prAdapter)
 	if (!prAdapter)
 		return;
 
-	scanLogCacheFlushAll(prAdapter,
-		&(prAdapter->rWifiVar.rScanInfo.rScanLogCache),
-		LOG_SCAN_D2D);
+	scanLogCacheFlushAll(&(prAdapter->rWifiVar.rScanInfo.rScanLogCache),
+		LOG_SCAN_D2D, SCAN_LOG_MSG_MAX_LEN);
 
 	kalMemFree(prAdapter, VIR_MEM_TYPE, sizeof(struct ADAPTER));
 }
 
-void wlanOnPreAllocAdapterMem(IN struct ADAPTER *prAdapter,
-			  IN const u_int8_t bAtResetFlow)
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Initialize the adapter. The sequence is
+ *        1. Disable interrupt
+ *        2. Read adapter configuration from EEPROM and registry, verify chip
+ *	     ID.
+ *        3. Create NIC Tx/Rx resource.
+ *        4. Initialize the chip
+ *        5. Initialize the protocol
+ *        6. Enable Interrupt
+ *
+ * \param prAdapter      Pointer of Adapter Data Structure
+ *
+ * \retval WLAN_STATUS_SUCCESS: Success
+ * \retval WLAN_STATUS_FAILURE: Failed
+ */
+/*----------------------------------------------------------------------------*/
+uint32_t wlanAdapterStart(IN struct ADAPTER *prAdapter,
+			  IN struct REG_INFO *prRegInfo)
 {
-	uint32_t i = 0, j = 0;
+	uint32_t u4Status = WLAN_STATUS_SUCCESS;
+	uint32_t i;
+	enum ENUM_ADAPTER_START_FAIL_REASON {
+		ALLOC_ADAPTER_MEM_FAIL,
+		DRIVER_OWN_FAIL,
+		INIT_ADAPTER_FAIL,
+		INIT_HIFINFO_FAIL,
+		RAM_CODE_DOWNLOAD_FAIL,
+		WAIT_FIRMWARE_READY_FAIL,
+		FAIL_REASON_MAX
+	} eFailReason;
 
-	DBGLOG(INIT, TRACE, "start.\n");
+	ASSERT(prAdapter);
 
-	if (!bAtResetFlow) {
-		/* 4 <0> Reset variables in ADAPTER_T */
-		/* prAdapter->fgIsFwOwn = TRUE; */
-		prAdapter->fgIsEnterD3ReqIssued = FALSE;
-		prAdapter->ucHwBssIdNum = BSS_DEFAULT_NUM;
-		prAdapter->ucWmmSetNum = BSS_DEFAULT_NUM;
-		prAdapter->ucP2PDevBssIdx = BSS_DEFAULT_NUM;
-		prAdapter->ucWtblEntryNum = WTBL_SIZE;
-		prAdapter->ucTxDefaultWlanIndex = prAdapter->ucWtblEntryNum - 1;
+	DEBUGFUNC("wlanAdapterStart");
 
-		prAdapter->u4HifDbgFlag = 0;
-		prAdapter->u4HifChkFlag = 0;
-		prAdapter->u4NoMoreRfb = 0;
-		prAdapter->u4WaitRecIdx = 0;
-		prAdapter->u4CompRecIdx = 0;
-		prAdapter->fgSetLogOnOff = true;
-		prAdapter->fgSetLogLevel = true;
-#if (CFG_SUPPORT_CONNINFRA == 1)
-		prAdapter->u4FWLastUpdateTime = 0;
-#endif
-
-		/* Initialize rWlanInfo */
-		kalMemSet(&(prAdapter->rWlanInfo), 0,
-			sizeof(struct WLAN_INFO));
-
-		/* Initialize aprBssInfo[].
-		 * Important: index shall be same
-		 *            when mapping between aprBssInfo[]
-		 *            and arBssInfoPool[].rP2pDevInfo
-		 *            is indexed to final one.
-		 */
-		for (i = 0; i < MAX_BSSID_NUM; i++)
-			prAdapter->aprBssInfo[i] =
-				&prAdapter->rWifiVar.arBssInfoPool[i];
-		prAdapter->aprBssInfo[prAdapter->ucP2PDevBssIdx] =
-			&prAdapter->rWifiVar.rP2pDevInfo;
-
-#if (CFG_SUPPORT_POWER_THROTTLING == 1)
-		LINK_INITIALIZE(&prAdapter->rPwrLevelHandlerList);
-#endif
-	} else {
-		/* need to reset these values after the reset flow */
-		prAdapter->u4NoMoreRfb = 0;
-	}
+	eFailReason = FAIL_REASON_MAX;
+	/* 4 <0> Reset variables in ADAPTER_T */
+	/* prAdapter->fgIsFwOwn = TRUE; */
+	prAdapter->fgIsEnterD3ReqIssued = FALSE;
 
 	prAdapter->u4OwnFailedCount = 0;
 	prAdapter->u4OwnFailedLogCount = 0;
-	prAdapter->ucCmdSeqNum = 0;
-	prAdapter->u4PwrCtrlBlockCnt = 0;
-	prAdapter->fgIsPostponeTxEAPOLM3 = FALSE;
+	prAdapter->ucHwBssIdNum = BSS_DEFAULT_NUM;
+	prAdapter->ucP2PDevBssIdx = BSS_DEFAULT_NUM;
+	prAdapter->ucWtblEntryNum = WTBL_SIZE;
+	prAdapter->ucTxDefaultWlanIndex = prAdapter->ucWtblEntryNum - 1;
 
-	if (bAtResetFlow) {
-		for (i = 0; i < (prAdapter->ucHwBssIdNum + 1); i++)
-			UNSET_NET_ACTIVE(prAdapter, i);
-	}
+	prAdapter->fgEnHifDbgInfo = true;
+	prAdapter->u4HifDbgFlag = 0;
+	prAdapter->u4HifChkFlag = 0;
+	prAdapter->u4TxHangFlag = 0;
+	prAdapter->u4NoMoreRfb = 0;
 
 	QUEUE_INITIALIZE(&(prAdapter->rPendingCmdQueue));
 #if CFG_SUPPORT_MULTITHREAD
@@ -785,38 +365,91 @@ void wlanOnPreAllocAdapterMem(IN struct ADAPTER *prAdapter,
 	QUEUE_INITIALIZE(&prAdapter->rTxP0Queue);
 	QUEUE_INITIALIZE(&prAdapter->rTxP1Queue);
 #else
-	for (i = 0; i < BSS_DEFAULT_NUM; i++)
-		for (j = 0; j < TX_PORT_NUM; j++)
-			QUEUE_INITIALIZE(&prAdapter->rTxPQueue[i][j]);
+	for (i = 0; i < TX_PORT_NUM; i++)
+		QUEUE_INITIALIZE(&prAdapter->rTxPQueue[i]);
 #endif
 	QUEUE_INITIALIZE(&prAdapter->rRxQueue);
 	QUEUE_INITIALIZE(&prAdapter->rTxDataDoneQueue);
 #endif
 
+	/* Initialize rWlanInfo */
+	kalMemSet(&(prAdapter->rWlanInfo), 0,
+		  sizeof(struct WLAN_INFO));
+
+	/* Initialize aprBssInfo[].
+	 * Important: index shall be same when mapping between aprBssInfo[]
+	 *            and arBssInfoPool[]. rP2pDevInfo is indexed to final one.
+	 */
+	for (i = 0; i < MAX_BSSID_NUM; i++)
+		prAdapter->aprBssInfo[i] =
+			&prAdapter->rWifiVar.arBssInfoPool[i];
+	prAdapter->aprBssInfo[prAdapter->ucP2PDevBssIdx] =
+		&prAdapter->rWifiVar.rP2pDevInfo;
+
 	/* 4 <0.1> reset fgIsBusAccessFailed */
 	fgIsBusAccessFailed = FALSE;
-}
 
-void wlanOnPostNicInitAdapter(IN struct ADAPTER *prAdapter,
-	IN struct REG_INFO *prRegInfo,
-	IN const u_int8_t bAtResetFlow)
-{
-	DBGLOG(INIT, TRACE, "start.\n");
+	do {
+		u4Status = nicAllocateAdapterMemory(prAdapter);
+		if (u4Status != WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, ERROR,
+			       "nicAllocateAdapterMemory Error!\n");
+			u4Status = WLAN_STATUS_FAILURE;
+			eFailReason = ALLOC_ADAPTER_MEM_FAIL;
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+			GL_RESET_TRIGGER_KEYWORD(prAdapter,
+				RST_FLAG_DO_CORE_DUMP |
+				RST_FLAG_PREVENT_POWER_OFF,
+				"[Wi-Fi On] nicAllocateAdapterMemory Error!");
+#endif
+			break;
+		}
 
-	/* 4 <2.1> Initialize System Service (MGMT Memory pool and
-	 *	   STA_REC)
-	 */
-	nicInitSystemService(prAdapter, bAtResetFlow);
+		prAdapter->u4OsPacketFilter = PARAM_PACKET_FILTER_SUPPORTED;
 
-	if (!bAtResetFlow) {
+		DBGLOG(INIT, INFO,
+		       "wlanAdapterStart(): Acquiring LP-OWN\n");
+		ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
+		DBGLOG(INIT, INFO,
+		       "wlanAdapterStart(): Acquiring LP-OWN-end\n");
+
+#if (CFG_ENABLE_FULL_PM == 0)
+		nicpmSetDriverOwn(prAdapter);
+#endif
+
+		if (prAdapter->fgIsFwOwn == TRUE) {
+			DBGLOG(INIT, ERROR, "nicpmSetDriverOwn() failed!\n");
+			u4Status = WLAN_STATUS_FAILURE;
+			eFailReason = DRIVER_OWN_FAIL;
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+			GL_RESET_TRIGGER_KEYWORD(prAdapter,
+				RST_FLAG_DO_CORE_DUMP |
+				RST_FLAG_PREVENT_POWER_OFF,
+				"[Wi-Fi On] nicpmSetDriverOwn() failed!");
+#endif
+			break;
+		}
+		/* 4 <1> Initialize the Adapter */
+		u4Status = nicInitializeAdapter(prAdapter);
+		if (u4Status != WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, ERROR, "nicInitializeAdapter failed!\n");
+			u4Status = WLAN_STATUS_FAILURE;
+			eFailReason = INIT_ADAPTER_FAIL;
+			break;
+		}
+
+		/* 4 <2.1> Initialize System Service (MGMT Memory pool and
+		 *	   STA_REC)
+		 */
+		nicInitSystemService(prAdapter);
 
 		/* 4 <2.2> Initialize Feature Options */
 		wlanInitFeatureOption(prAdapter);
 #if CFG_SUPPORT_MTK_SYNERGY
-#if 0 /* u2FeatureReserved is 0 on 6765 */
+#if 0 /* u2FeatureReserved is 0 */
 		if (kalIsConfigurationExist(prAdapter->prGlueInfo) == TRUE) {
 			if (prRegInfo->prNvramSettings->u2FeatureReserved &
-					BIT(MTK_FEATURE_2G_256QAM_DISABLED))
+			    BIT(MTK_FEATURE_2G_256QAM_DISABLED))
 				prAdapter->rWifiVar.aucMtkFeature[0] &=
 					~(MTK_SYNERGY_CAP_SUPPORT_24G_MCS89);
 		}
@@ -828,218 +461,255 @@ void wlanOnPostNicInitAdapter(IN struct ADAPTER *prAdapter,
 
 		/* 4 <3> Initialize Tx */
 		nicTxInitialize(prAdapter);
-	} /* end of bAtResetFlow == FALSE */
+		wlanDefTxPowerCfg(prAdapter);
 
-	/* 4 <4> Initialize Rx */
-	nicRxInitialize(prAdapter);
-}
+		/* 4 <4> Initialize Rx */
+		nicRxInitialize(prAdapter);
 
-#if CFG_SUPPORT_NCHO
+		/* 4 <5> HIF SW info initialize */
+		if (!halHifSwInfoInit(prAdapter)) {
+			DBGLOG(INIT, ERROR, "halHifSwInfoInit failed!\n");
+			u4Status = WLAN_STATUS_FAILURE;
+			eFailReason = INIT_HIFINFO_FAIL;
+			break;
+		}
 
-uint32_t wlanNchoSetFWEnable(IN struct ADAPTER *prAdapter, IN uint8_t fgEnable)
-{
-	char cmd[NCHO_CMD_MAX_LENGTH] = { 0 };
-	uint32_t status = WLAN_STATUS_FAILURE;
+		/* 4 <6> Enable HIF cut-through to N9 mode, not visiting CR4 */
+		HAL_ENABLE_FWDL(prAdapter, TRUE);
 
-	kalSnprintf(cmd, sizeof(cmd), "%s %d",
-		FW_CFG_KEY_NCHO_ENABLE, fgEnable);
-	status = wlanFwCfgParse(prAdapter, cmd);
-	if (status != WLAN_STATUS_SUCCESS)
-		DBGLOG(INIT, WARN, "set disable fail %d\n", status);
-	return status;
-}
+		/* 4 <7> Get ECO Version */
+		wlanSetChipEcoInfo(prAdapter);
 
-uint32_t wlanNchoSetFWScanPeriod(IN struct ADAPTER *prAdapter,
-	IN uint32_t u4RoamScanPeriod)
-{
-	char cmd[NCHO_CMD_MAX_LENGTH] = { 0 };
-	uint32_t status = WLAN_STATUS_FAILURE;
+#if CFG_ENABLE_FW_DOWNLOAD
+		/* 4 <8> FW/patch download */
 
-	kalSnprintf(cmd, sizeof(cmd), "%s %d",
-		FW_CFG_KEY_NCHO_SCAN_PERIOD, u4RoamScanPeriod);
-	status = wlanFwCfgParse(prAdapter, cmd);
-	if (status != WLAN_STATUS_SUCCESS)
-		DBGLOG(INIT, WARN, "set scan period fail %d\n", status);
-	return status;
-}
+		/* 1. disable interrupt, download is done by polling mode only
+		 */
+		nicDisableInterrupt(prAdapter);
 
-void wlanNchoInit(IN struct ADAPTER *prAdapter, IN uint8_t fgFwSync)
-{
-	uint8_t sync = fgFwSync && prAdapter->rNchoInfo.fgNCHOEnabled;
+		/* 2. Initialize Tx Resource to fw download state */
+		nicTxInitResetResource(prAdapter);
 
-	/* NCHO Initialization */
-	prAdapter->rNchoInfo.fgNCHOEnabled = 0;
-	prAdapter->rNchoInfo.ucBand = NCHO_BAND_LIST_2G4 | NCHO_BAND_LIST_5G;
-	prAdapter->rNchoInfo.fgChGranted = FALSE;
-	prAdapter->rNchoInfo.fgIsSendingAF = FALSE;
-	prAdapter->rNchoInfo.u4RoamScanControl = 0;
-	prAdapter->rNchoInfo.rRoamScnChnl.ucChannelListNum = 0;
-	prAdapter->rNchoInfo.rAddRoamScnChnl.ucChannelListNum = 0;
-	prAdapter->rNchoInfo.eDFSScnMode = NCHO_DFS_SCN_ENABLE1;
-	prAdapter->rNchoInfo.i4RoamTrigger = -75;
-	prAdapter->rNchoInfo.i4RoamDelta = 10;
-	prAdapter->rNchoInfo.u4RoamScanPeriod =	ROAMING_DISCOVER_TIMEOUT_SEC;
-	prAdapter->rNchoInfo.u4ScanChannelTime = 50;
-	prAdapter->rNchoInfo.u4ScanHomeTime = 120;
-	prAdapter->rNchoInfo.u4ScanHomeawayTime = 120;
-	prAdapter->rNchoInfo.u4ScanNProbes = 2;
-	prAdapter->rNchoInfo.u4WesMode = 0;
-	prAdapter->rAddRoamScnChnl.ucChannelListNum = 0;
-	prAdapter->rNchoInfo.eRoamBand = 0;
-	prAdapter->rNchoInfo.ucRoamBand =
-		(NCHO_BAND_LIST_2G4 | NCHO_BAND_LIST_5G
-#if (CFG_SUPPORT_WIFI_6G == 1)
-		| NCHO_BAND_LIST_6G
+		u4Status = wlanDownloadFW(prAdapter);
+
+		if (u4Status != WLAN_STATUS_SUCCESS) {
+			eFailReason = RAM_CODE_DOWNLOAD_FAIL;
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+			GL_RESET_TRIGGER_KEYWORD(prAdapter,
+				RST_FLAG_DO_CORE_DUMP |
+				RST_FLAG_PREVENT_POWER_OFF,
+				"[Wi-Fi On] [Ram code download fail!]");
 #endif
-		);
-
-	/* sync with FW to let FW reset params */
-	if (sync)
-		wlanNchoSetFWEnable(prAdapter, 0);
-}
-
+			break;
+		}
 #endif
 
-uint32_t wlanSetFWRssiTrigger(IN struct ADAPTER *prAdapter,
-	IN const char *key, IN int32_t i4RoamTriggerRssi)
-{
-	char cmd[NCHO_CMD_MAX_LENGTH] = { 0 };
-	uint32_t status = WLAN_STATUS_FAILURE;
+		DBGLOG(INIT, INFO, "Waiting for Ready bit..\n");
 
-	kalSnprintf(cmd, sizeof(cmd), "%s %d",
-		key, dBm_TO_RCPI(i4RoamTriggerRssi));
-	status =  wlanFwCfgParse(prAdapter, cmd);
-	if (status != WLAN_STATUS_SUCCESS)
-		DBGLOG(INIT, WARN, "set roam rcpi fail %d\n", status);
-	return status;
-}
+		/* 4 <9> check Wi-Fi FW asserts ready bit */
+		u4Status = wlanCheckWifiFunc(prAdapter, TRUE);
 
-void wlanOnPostFirmwareReady(IN struct ADAPTER *prAdapter,
-		IN struct REG_INFO *prRegInfo)
-{
-	DBGLOG(INIT, TRACE, "start.\n");
-	/* OID timeout timer initialize */
-	cnmTimerInitTimer(prAdapter,
-			  &prAdapter->rOidTimeoutTimer,
-			  (PFN_MGMT_TIMEOUT_FUNC) wlanReleasePendingOid,
-			  (unsigned long) NULL);
+		if (u4Status == WLAN_STATUS_SUCCESS) {
+#if defined(_HIF_SDIO)
+			uint32_t u4WHISR = 0;
+			uint16_t au2TxCount[16];
 
-	prAdapter->ucOidTimeoutCount = 0;
+			/* 1. reset interrupt status */
+			HAL_READ_INTR_STATUS(prAdapter, 4, (uint8_t *)&u4WHISR);
+			if (HAL_IS_TX_DONE_INTR(u4WHISR))
+				HAL_READ_TX_RELEASED_COUNT(prAdapter,
+							   au2TxCount);
+#endif
+			/* Set FW download success flag */
+			prAdapter->fgIsFwDownloaded = TRUE;
 
-	prAdapter->fgIsChipNoAck = FALSE;
+			/* 2. query & reset TX Resource for normal operation */
+			wlanQueryNicResourceInformation(prAdapter);
 
-	/* Return Indicated Rfb list timer */
-	cnmTimerInitTimer(prAdapter,
-			  &prAdapter->rPacketDelaySetupTimer,
-			  (PFN_MGMT_TIMEOUT_FUNC)
-				wlanReturnPacketDelaySetupTimeout,
-			  (unsigned long) NULL);
+#if (CFG_SUPPORT_NIC_CAPABILITY == 1)
 
-	/* Power state initialization */
-	prAdapter->fgWiFiInSleepyState = FALSE;
-	prAdapter->rAcpiState = ACPI_STATE_D0;
+			/* 2.9 Workaround for Capability CMD packet lost issue
+			 */
+			wlanSendDummyCmd(prAdapter, TRUE);
+
+			/* 3. query for NIC capability */
+			if (prAdapter->chip_info->isNicCapV1)
+				wlanQueryNicCapability(prAdapter);
+
+			/* 4. query for NIC capability V2 */
+			wlanQueryNicCapabilityV2(prAdapter);
+
+			/* 5. reset TX Resource for normal operation
+			 *    based on the information reported from
+			 *    CMD_NicCapabilityV2
+			 */
+			wlanUpdateNicResourceInformation(prAdapter);
+
+			wlanPrintVersion(prAdapter);
+#endif
+
+			/* 6. update basic configuration */
+			wlanUpdateBasicConfig(prAdapter);
+
+			/* 7. Override network address */
+			wlanUpdateNetworkAddress(prAdapter);
+
+			/* 8. Apply Network Address */
+			nicApplyNetworkAddress(prAdapter);
+
+			/* 9. indicate disconnection as default status */
+			kalIndicateStatusAndComplete(prAdapter->prGlueInfo,
+					WLAN_STATUS_MEDIA_DISCONNECT, NULL, 0);
+			/*10. send regulatory information to firmware */
+			rlmDomainSendInfoToFirmware(prAdapter);
+		}
+
+		RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
+
+		if (u4Status != WLAN_STATUS_SUCCESS) {
+			eFailReason = WAIT_FIRMWARE_READY_FAIL;
+			break;
+		}
+
+		/* OID timeout timer initialize */
+		cnmTimerInitTimer(prAdapter,
+				  &prAdapter->rOidTimeoutTimer,
+				  (PFN_MGMT_TIMEOUT_FUNC) wlanReleasePendingOid,
+				  (unsigned long) NULL);
+
+		prAdapter->ucOidTimeoutCount = 0;
+
+		prAdapter->fgIsChipNoAck = FALSE;
+
+		/* Return Indicated Rfb list timer */
+		cnmTimerInitTimer(prAdapter,
+				  &prAdapter->rPacketDelaySetupTimer,
+				  (PFN_MGMT_TIMEOUT_FUNC)
+					wlanReturnPacketDelaySetupTimeout,
+				  (unsigned long) NULL);
+
+		/* Power state initialization */
+		prAdapter->fgWiFiInSleepyState = FALSE;
+		prAdapter->rAcpiState = ACPI_STATE_D0;
 
 #if 0
-	/* Online scan option */
-	if (prRegInfo->fgDisOnlineScan == 0)
-		prAdapter->fgEnOnlineScan = TRUE;
-	else
-		prAdapter->fgEnOnlineScan = FALSE;
+		/* Online scan option */
+		if (prRegInfo->fgDisOnlineScan == 0)
+			prAdapter->fgEnOnlineScan = TRUE;
+		else
+			prAdapter->fgEnOnlineScan = FALSE;
 
-	/* Beacon lost detection option */
-	if (prRegInfo->fgDisBcnLostDetection != 0)
-		prAdapter->fgDisBcnLostDetection = TRUE;
+		/* Beacon lost detection option */
+		if (prRegInfo->fgDisBcnLostDetection != 0)
+			prAdapter->fgDisBcnLostDetection = TRUE;
 #else
-	if (prAdapter->rWifiVar.fgDisOnlineScan == 0)
-		prAdapter->fgEnOnlineScan = TRUE;
-	else
-		prAdapter->fgEnOnlineScan = FALSE;
+		if (prAdapter->rWifiVar.fgDisOnlineScan == 0)
+			prAdapter->fgEnOnlineScan = TRUE;
+		else
+			prAdapter->fgEnOnlineScan = FALSE;
 
-	/* Beacon lost detection option */
-	if (prAdapter->rWifiVar.fgDisBcnLostDetection != 0)
-		prAdapter->fgDisBcnLostDetection = TRUE;
+		/* Beacon lost detection option */
+		if (prAdapter->rWifiVar.fgDisBcnLostDetection != 0)
+			prAdapter->fgDisBcnLostDetection = TRUE;
 #endif
 
-	/* Load compile time constant */
-	prAdapter->rWlanInfo.u2BeaconPeriod =
-		CFG_INIT_ADHOC_BEACON_INTERVAL;
-	prAdapter->rWlanInfo.u2AtimWindow =
-		CFG_INIT_ADHOC_ATIM_WINDOW;
+		/* Load compile time constant */
+		prAdapter->rWlanInfo.u2BeaconPeriod =
+			CFG_INIT_ADHOC_BEACON_INTERVAL;
+		prAdapter->rWlanInfo.u2AtimWindow =
+			CFG_INIT_ADHOC_ATIM_WINDOW;
 
 #if 1				/* set PM parameters */
-	prAdapter->u4PsCurrentMeasureEn =
-		prRegInfo->u4PsCurrentMeasureEn;
+		prAdapter->u4PsCurrentMeasureEn =
+			prRegInfo->u4PsCurrentMeasureEn;
 #if 0
-	prAdapter->fgEnArpFilter = prRegInfo->fgEnArpFilter;
-	prAdapter->u4UapsdAcBmp = prRegInfo->u4UapsdAcBmp;
-	prAdapter->u4MaxSpLen = prRegInfo->u4MaxSpLen;
+		prAdapter->fgEnArpFilter = prRegInfo->fgEnArpFilter;
+		prAdapter->u4UapsdAcBmp = prRegInfo->u4UapsdAcBmp;
+		prAdapter->u4MaxSpLen = prRegInfo->u4MaxSpLen;
 #else
-	prAdapter->fgEnArpFilter =
-		prAdapter->rWifiVar.fgEnArpFilter;
-	prAdapter->u4UapsdAcBmp = prAdapter->rWifiVar.u4UapsdAcBmp;
-	prAdapter->u4MaxSpLen = prAdapter->rWifiVar.u4MaxSpLen;
+		prAdapter->fgEnArpFilter =
+			prAdapter->rWifiVar.fgEnArpFilter;
+		prAdapter->u4UapsdAcBmp = prAdapter->rWifiVar.u4UapsdAcBmp;
+		prAdapter->u4MaxSpLen = prAdapter->rWifiVar.u4MaxSpLen;
 #endif
-	DBGLOG(INIT, TRACE,
-	       "[1] fgEnArpFilter:0x%x, u4UapsdAcBmp:0x%x, u4MaxSpLen:0x%x",
-	       prAdapter->fgEnArpFilter, prAdapter->u4UapsdAcBmp,
-	       prAdapter->u4MaxSpLen);
+		DBGLOG(INIT, TRACE,
+		       "[1] fgEnArpFilter:0x%x, u4UapsdAcBmp:0x%x, u4MaxSpLen:0x%x",
+		       prAdapter->fgEnArpFilter, prAdapter->u4UapsdAcBmp,
+		       prAdapter->u4MaxSpLen);
 
-	prAdapter->fgEnCtiaPowerMode = FALSE;
+		prAdapter->fgEnCtiaPowerMode = FALSE;
 
 #endif
-	/* QA_TOOL and ICAP info struct */
-	prAdapter->rIcapInfo.eIcapState = ICAP_STATE_INIT;
-	prAdapter->rIcapInfo.u2DumpIndex = 0;
-	prAdapter->rIcapInfo.u4CapNode = 0;
+		/* QA_TOOL and ICAP info struct */
+		prAdapter->rIcapInfo.fgCaptureDone = FALSE;
+		prAdapter->rIcapInfo.fgIcapEnable = FALSE;
+		prAdapter->rIcapInfo.u2DumpIndex = 0;
+		prAdapter->rIcapInfo.u4CapNode = 0;
 
-	/* MGMT Initialization */
-	nicInitMGMT(prAdapter, prRegInfo);
-
+		/* MGMT Initialization */
+		nicInitMGMT(prAdapter, prRegInfo);
+		/* NCHO Initialization */
 #if CFG_SUPPORT_NCHO
-	wlanNchoInit(prAdapter, FALSE);
+		prAdapter->rNchoInfo.fgECHOEnabled = FALSE;
+		prAdapter->rNchoInfo.eBand = NCHO_BAND_AUTO;
+		prAdapter->rNchoInfo.fgChGranted = FALSE;
+		prAdapter->rNchoInfo.fgIsSendingAF = FALSE;
+		prAdapter->rNchoInfo.u4RoamScanControl = FALSE;
+		prAdapter->rNchoInfo.rRoamScnChnl.ucChannelListNum = 0;
+		prAdapter->rNchoInfo.rRoamScnChnl.arChnlInfoList[0].eBand =
+			BAND_2G4;
+		prAdapter->rNchoInfo.rRoamScnChnl.arChnlInfoList[0].ucChannelNum
+			= 1;
+		prAdapter->rNchoInfo.eDFSScnMode = NCHO_DFS_SCN_ENABLE1;
+		prAdapter->rNchoInfo.i4RoamTrigger = -70;
+		prAdapter->rNchoInfo.i4RoamDelta = 5;
+		prAdapter->rNchoInfo.u4RoamScanPeriod =
+			ROAMING_DISCOVERY_TIMEOUT_SEC;
+		prAdapter->rNchoInfo.u4ScanChannelTime = 50;
+		prAdapter->rNchoInfo.u4ScanHomeTime = 120;
+		prAdapter->rNchoInfo.u4ScanHomeawayTime = 120;
+		prAdapter->rNchoInfo.u4ScanNProbes = 2;
+		prAdapter->rNchoInfo.u4WesMode = 0;
 #endif
 
-	/* Enable WZC Disassociation */
-	prAdapter->rWifiVar.fgSupportWZCDisassociation = TRUE;
+		/* Enable WZC Disassociation */
+		prAdapter->rWifiVar.fgSupportWZCDisassociation = TRUE;
 
-	/* Apply Rate Setting */
-	if ((enum ENUM_REGISTRY_FIXED_RATE) (prRegInfo->u4FixedRate)
-	    < FIXED_RATE_NUM)
-		prAdapter->rWifiVar.eRateSetting =
-				(enum ENUM_REGISTRY_FIXED_RATE)
-				(prRegInfo->u4FixedRate);
-	else
-		prAdapter->rWifiVar.eRateSetting = FIXED_RATE_NONE;
+		/* Apply Rate Setting */
+		if ((enum ENUM_REGISTRY_FIXED_RATE) (prRegInfo->u4FixedRate)
+		    < FIXED_RATE_NUM)
+			prAdapter->rWifiVar.eRateSetting =
+					(enum ENUM_REGISTRY_FIXED_RATE)
+					(prRegInfo->u4FixedRate);
+		else
+			prAdapter->rWifiVar.eRateSetting = FIXED_RATE_NONE;
 
-	if (prAdapter->rWifiVar.eRateSetting == FIXED_RATE_NONE) {
-		/* Enable Auto (Long/Short) Preamble */
-		prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_AUTO;
-	} else if ((prAdapter->rWifiVar.eRateSetting >=
-		    FIXED_RATE_MCS0_20M_400NS &&
-		    prAdapter->rWifiVar.eRateSetting <=
-		    FIXED_RATE_MCS7_20M_400NS)
-		   || (prAdapter->rWifiVar.eRateSetting >=
-		       FIXED_RATE_MCS0_40M_400NS &&
-		       prAdapter->rWifiVar.eRateSetting <=
-		       FIXED_RATE_MCS32_400NS)) {
-		/* Force Short Preamble */
-		prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_SHORT;
-	} else {
-		/* Force Long Preamble */
-		prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_LONG;
-	}
+		if (prAdapter->rWifiVar.eRateSetting == FIXED_RATE_NONE) {
+			/* Enable Auto (Long/Short) Preamble */
+			prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_AUTO;
+		} else if ((prAdapter->rWifiVar.eRateSetting >=
+			    FIXED_RATE_MCS0_20M_400NS &&
+			    prAdapter->rWifiVar.eRateSetting <=
+			    FIXED_RATE_MCS7_20M_400NS)
+			   || (prAdapter->rWifiVar.eRateSetting >=
+			       FIXED_RATE_MCS0_40M_400NS &&
+			       prAdapter->rWifiVar.eRateSetting <=
+			       FIXED_RATE_MCS32_400NS)) {
+			/* Force Short Preamble */
+			prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_SHORT;
+		} else {
+			/* Force Long Preamble */
+			prAdapter->rWifiVar.ePreambleType = PREAMBLE_TYPE_LONG;
+		}
 
-	/* Disable Hidden SSID Join */
-	prAdapter->rWifiVar.fgEnableJoinToHiddenSSID = FALSE;
+		/* Disable Hidden SSID Join */
+		prAdapter->rWifiVar.fgEnableJoinToHiddenSSID = FALSE;
 
-	/* Enable Short Slot Time */
-	prAdapter->rWifiVar.fgIsShortSlotTimeOptionEnable = TRUE;
+		/* Enable Short Slot Time */
+		prAdapter->rWifiVar.fgIsShortSlotTimeOptionEnable = TRUE;
 
-	/* Disable skip dfs during scan*/
-	prAdapter->rWifiVar.rScanInfo.fgSkipDFS = 0;
-
-	/* configure available PHY type set */
-	nicSetAvailablePhyTypeSet(prAdapter);
+		/* configure available PHY type set */
+		nicSetAvailablePhyTypeSet(prAdapter);
 
 #if 0				/* Marked for MT6630 */
 #if 1				/* set PM parameters */
@@ -1066,25 +736,19 @@ void wlanOnPostFirmwareReady(IN struct ADAPTER *prAdapter,
 #endif
 #endif
 
-#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT
-	/* dynamic tx power control initialization */
-	/* note: call this API before loading NVRAM */
-	txPwrCtrlInit(prAdapter);
-#endif
+		/* Tx Power Control Initialization */
+		/* note: call this API before loading NVRAM */
+		txPwrCtrlInit(prAdapter);
 
-	/* Check hardware 5g band support */
-	if (prAdapter->fgIsHw5GBandDisabled)
-		prAdapter->fgEnable5GBand = FALSE;
-	else
+		/* Enable 5G band by default */
 		prAdapter->fgEnable5GBand = TRUE;
 
 #if CFG_SUPPORT_NVRAM
-	/* load manufacture data */
-	if (kalIsConfigurationExist(prAdapter->prGlueInfo) == TRUE)
-		wlanLoadManufactureData(prAdapter, prRegInfo);
-	else
-		DBGLOG(INIT, WARN, "%s: load manufacture data fail\n",
-			       __func__);
+		/* load manufacture data */
+		if (kalIsConfigurationExist(prAdapter->prGlueInfo) == TRUE)
+			wlanLoadManufactureData(prAdapter, prRegInfo);
+		else
+			DBGLOG(INIT, WARN, "load manufacture data fail\n");
 #endif
 
 #if 0
@@ -1094,297 +758,23 @@ void wlanOnPostFirmwareReady(IN struct ADAPTER *prAdapter,
 				    prRegInfo->u4ArSysParam2,
 				    prRegInfo->u4ArSysParam3);
 #endif
+#if CFG_SUPPORT_DBDC
+		/* Update DBDC default setting */
+		cnmInitDbdcSetting(prAdapter);
+#endif /*CFG_SUPPORT_DBDC*/
 
-	/* Default QM RX BA timeout */
-	prAdapter->u4QmRxBaMissTimeout =
-		QM_RX_BA_ENTRY_MISS_TIMEOUT_MS;
+		/* Default QM RX BA timeout */
+		prAdapter->u4QmRxBaMissTimeout =
+			QM_RX_BA_ENTRY_MISS_TIMEOUT_MS;
 
 #if CFG_SUPPORT_LOWLATENCY_MODE
-	wlanAdapterStartForLowLatency(prAdapter);
+		wlanAdapterStartForLowLatency(prAdapter);
 #endif /* CFG_SUPPORT_LOWLATENCY_MODE */
-#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT
-	/* dynamic tx power control load configuration */
-	/* note: call this API after loading NVRAM */
-	txPwrCtrlLoadConfig(prAdapter);
-#endif
-	LINK_INITIALIZE(&prAdapter->rBufferedList);
-}
 
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Initialize the adapter. The sequence is
- *        1. Disable interrupt
- *        2. Read adapter configuration from EEPROM and registry, verify chip
- *	     ID.
- *        3. Create NIC Tx/Rx resource.
- *        4. Initialize the chip
- *        5. Initialize the protocol
- *        6. Enable Interrupt
- *
- * \param prAdapter      Pointer of Adapter Data Structure
- *
- * \retval WLAN_STATUS_SUCCESS: Success
- * \retval WLAN_STATUS_FAILURE: Failed
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanAdapterStart(IN struct ADAPTER *prAdapter,
-					IN struct REG_INFO *prRegInfo,
-					IN const u_int8_t bAtResetFlow)
-{
-	struct BUS_INFO *prBusInfo = NULL;
-	struct SW_WFDMA_INFO *prSwWfdmaInfo = NULL;
-	uint32_t u4Status = WLAN_STATUS_SUCCESS;
-	enum ENUM_ADAPTER_START_FAIL_REASON {
-		ALLOC_ADAPTER_MEM_FAIL,
-		DRIVER_OWN_FAIL,
-		INIT_ADAPTER_FAIL,
-		INIT_HIFINFO_FAIL,
-		SET_CHIP_ECO_INFO_FAIL,
-		RAM_CODE_DOWNLOAD_FAIL,
-		WAIT_FIRMWARE_READY_FAIL,
-		FAIL_REASON_MAX
-	} eFailReason;
+		/* Tx Power Control load configuration */
+		/* note: call this API after loading NVRAM */
+		txPwrCtrlLoadConfig(prAdapter);
 
-	ASSERT(prAdapter);
-
-	DEBUGFUNC("wlanAdapterStart");
-
-	prBusInfo = prAdapter->chip_info->bus_info;
-	prSwWfdmaInfo = &prBusInfo->rSwWfdmaInfo;
-
-	eFailReason = FAIL_REASON_MAX;
-
-	wlanOnPreAllocAdapterMem(prAdapter, bAtResetFlow);
-
-	do {
-		if (!bAtResetFlow) {
-			u4Status = nicAllocateAdapterMemory(prAdapter);
-			if (u4Status != WLAN_STATUS_SUCCESS) {
-				DBGLOG(INIT, ERROR,
-						"nicAllocateAdapterMemory Error!\n");
-				u4Status = WLAN_STATUS_FAILURE;
-				eFailReason = ALLOC_ADAPTER_MEM_FAIL;
-				break;
-			}
-
-			prAdapter->u4OsPacketFilter
-				= PARAM_PACKET_FILTER_SUPPORTED;
-		}
-		/* set FALSE after wifi init flow or reset (not reinit WFDMA) */
-		prAdapter->fgIsFwDownloaded = FALSE;
-
-		DBGLOG(INIT, INFO,
-		       "wlanAdapterStart(): Acquiring LP-OWN\n");
-		ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
-		DBGLOG(INIT, INFO,
-		       "wlanAdapterStart(): Acquiring LP-OWN-end\n");
-
-#if (CFG_ENABLE_FULL_PM == 0)
-		nicpmSetDriverOwn(prAdapter);
-#endif
-
-		if (prAdapter->fgIsFwOwn == TRUE) {
-			DBGLOG(INIT, ERROR, "nicpmSetDriverOwn() failed!\n");
-			u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = DRIVER_OWN_FAIL;
-			glSetRstReason(RST_WIFI_ON_DRV_OWN_FAIL);
-#if (CFG_SUPPORT_CONNINFRA == 0)
-			GL_RESET_TRIGGER(prAdapter, RST_FLAG_CHIP_RESET);
-#else
-			GL_RESET_TRIGGER(prAdapter, RST_FLAG_WF_RESET);
-#endif
-			break;
-		}
-
-#if CFG_MTK_MDDP_SUPPORT
-		setMddpSupportRegister(prAdapter);
-#endif
-
-		if (!bAtResetFlow) {
-			/* 4 <1> Initialize the Adapter */
-			u4Status = nicInitializeAdapter(prAdapter);
-			if (u4Status != WLAN_STATUS_SUCCESS) {
-				DBGLOG(INIT, ERROR,
-					"nicInitializeAdapter failed!\n");
-				u4Status = WLAN_STATUS_FAILURE;
-				eFailReason = INIT_ADAPTER_FAIL;
-				break;
-			}
-		}
-
-		wlanOnPostNicInitAdapter(prAdapter, prRegInfo, bAtResetFlow);
-
-		if (prSwWfdmaInfo->fgIsEnAfterFwdl) {
-			if (prSwWfdmaInfo->rOps.enable)
-				prSwWfdmaInfo->rOps.enable(
-					prAdapter->prGlueInfo, false);
-		}
-
-		/* 4 <5> HIF SW info initialize */
-		if (!halHifSwInfoInit(prAdapter)) {
-			DBGLOG(INIT, ERROR, "halHifSwInfoInit failed!\n");
-			u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = INIT_HIFINFO_FAIL;
-			break;
-		}
-
-		/* 4 <6> Enable HIF cut-through to N9 mode, not visiting CR4 */
-		HAL_ENABLE_FWDL(prAdapter, TRUE);
-
-		/* 4 <7> Get ECO Version */
-		if (wlanSetChipEcoInfo(prAdapter) != WLAN_STATUS_SUCCESS) {
-			DBGLOG(INIT, ERROR, "wlanSetChipEcoInfo failed!\n");
-			u4Status = WLAN_STATUS_FAILURE;
-			eFailReason = SET_CHIP_ECO_INFO_FAIL;
-			break;
-		}
-
-		/* recheck Asic capability depends on ECO version */
-		wlanCheckAsicCap(prAdapter);
-
-#if CFG_ENABLE_FW_DOWNLOAD
-		/* 4 <8> FW/patch download */
-
-		/* 1. disable interrupt, download is done by polling mode only
-		 */
-		nicDisableInterrupt(prAdapter);
-
-		/* 2. Initialize Tx Resource to fw download state */
-		nicTxInitResetResource(prAdapter);
-
-		u4Status = wlanDownloadFW(prAdapter);
-		if (u4Status != WLAN_STATUS_SUCCESS) {
-			eFailReason = RAM_CODE_DOWNLOAD_FAIL;
-			glSetRstReason(RST_FW_DL_FAIL);
-#if (CFG_SUPPORT_CONNINFRA == 0)
-			GL_RESET_TRIGGER(prAdapter, RST_FLAG_CHIP_RESET);
-#else
-			GL_RESET_TRIGGER(prAdapter, RST_FLAG_WF_RESET);
-#endif
-			break;
-		}
-#endif
-
-		if (prSwWfdmaInfo->fgIsEnAfterFwdl) {
-			if (prSwWfdmaInfo->rOps.enable)
-				prSwWfdmaInfo->rOps.enable(
-					prAdapter->prGlueInfo, true);
-		}
-
-		DBGLOG(INIT, INFO, "Waiting for Ready bit..\n");
-
-		/* 4 <9> check Wi-Fi FW asserts ready bit */
-		u4Status = wlanCheckWifiFunc(prAdapter, TRUE);
-
-		if (u4Status == WLAN_STATUS_SUCCESS) {
-#if defined(_HIF_SDIO)
-			uint32_t *pu4WHISR = NULL;
-			uint16_t au2TxCount[16];
-
-			pu4WHISR = (uint32_t *)kalMemAlloc(sizeof(uint32_t),
-							   PHY_MEM_TYPE);
-			if (!pu4WHISR) {
-				DBGLOG(INIT, ERROR,
-				       "Allocate pu4WHISR fail\n");
-				u4Status = WLAN_STATUS_FAILURE;
-				break;
-			}
-			/* 1. reset interrupt status */
-			HAL_READ_INTR_STATUS(prAdapter, sizeof(uint32_t),
-					     (uint8_t *)pu4WHISR);
-			if (HAL_IS_TX_DONE_INTR(*pu4WHISR))
-				HAL_READ_TX_RELEASED_COUNT(prAdapter,
-							   au2TxCount);
-
-			if (pu4WHISR)
-				kalMemFree(pu4WHISR, PHY_MEM_TYPE,
-					   sizeof(uint32_t));
-#endif
-			/* Set FW download success flag */
-			prAdapter->fgIsFwDownloaded = TRUE;
-
-			/* 2. query & reset TX Resource for normal operation */
-			wlanQueryNicResourceInformation(prAdapter);
-
-#if (CFG_SUPPORT_NIC_CAPABILITY == 1)
-			if (!bAtResetFlow) {
-				/* 2.9 Workaround for Capability
-				*CMD packet lost issue
-				*wlanSendDummyCmd(prAdapter, TRUE);
-				*/
-
-				/* Connsys Fw log setting */
-				wlanSetConnsysFwLog(prAdapter);
-
-				/* 3. query for NIC capability */
-				if (prAdapter->chip_info->isNicCapV1)
-					wlanQueryNicCapability(prAdapter);
-
-				/* 4. query for NIC capability V2 */
-				u4Status = wlanQueryNicCapabilityV2(prAdapter);
-				if (u4Status !=  WLAN_STATUS_SUCCESS) {
-					DBGLOG(INIT, WARN,
-						"wlanQueryNicCapabilityV2 failed.\n");
-					RECLAIM_POWER_CONTROL_TO_PM(
-						prAdapter, FALSE);
-					eFailReason = WAIT_FIRMWARE_READY_FAIL;
-					break;
-				}
-
-				/* 5. reset TX Resource for normal operation
-				 *    based on the information reported from
-				 *    CMD_NicCapabilityV2
-				 */
-				wlanUpdateNicResourceInformation(prAdapter);
-
-				wlanPrintVersion(prAdapter);
-			}
-#endif
-
-			/* 6. update basic configuration */
-			wlanUpdateBasicConfig(prAdapter);
-
-			if (!bAtResetFlow) {
-				uint32_t u4Idx = 0;
-
-				/* 7. Override network address */
-				wlanUpdateNetworkAddress(prAdapter);
-
-				/* 8. Apply Network Address */
-				nicApplyNetworkAddress(prAdapter);
-
-				/* 9. indicate disconnection
-				 *    as default status
-				 */
-				for (u4Idx = 0; u4Idx < KAL_AIS_NUM; u4Idx++)
-					kalIndicateStatusAndComplete(
-						prAdapter->prGlueInfo,
-						WLAN_STATUS_MEDIA_DISCONNECT,
-						NULL, 0,
-						u4Idx);
-			}
-		}
-
-		RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
-
-		if (u4Status != WLAN_STATUS_SUCCESS) {
-			eFailReason = WAIT_FIRMWARE_READY_FAIL;
-			break;
-		}
-
-		if (!bAtResetFlow)
-			wlanOnPostFirmwareReady(prAdapter, prRegInfo);
-		else {
-#if CFG_SUPPORT_NVRAM
-			/* load manufacture data */
-			if (kalIsConfigurationExist(prAdapter->prGlueInfo)
-				== TRUE)
-				wlanLoadManufactureData(prAdapter, prRegInfo);
-			else
-				DBGLOG(INIT, WARN,
-				"%s: load manufacture data fail\n", __func__);
-#endif
-		}
 	} while (FALSE);
 
 	if (u4Status == WLAN_STATUS_SUCCESS) {
@@ -1395,61 +785,54 @@ uint32_t wlanAdapterStart(IN struct ADAPTER *prAdapter,
 
 		/* Enable interrupt */
 		nicEnableInterrupt(prAdapter);
-		/* init SER module */
-		nicSerInit(prAdapter);
-#if (CFG_SUPPORT_POWER_THROTTLING == 1)
-		/* init thermal protection */
-		if (!bAtResetFlow) {
-			thrmInit(prAdapter);
-		}
-#endif
+
 	} else {
 		prAdapter->u4HifDbgFlag |= DEG_HIF_DEFAULT_DUMP;
 		halPrintHifDbgInfo(prAdapter);
 		DBGLOG(INIT, WARN, "Fail reason: %d\n", eFailReason);
 
-		/* Don't do error handling in chip reset flow, leave it to
-		 * coming wlanRemove for full clean
-		 */
-		if (!bAtResetFlow) {
-			/* release allocated memory */
-			switch (eFailReason) {
-			case WAIT_FIRMWARE_READY_FAIL:
-			case RAM_CODE_DOWNLOAD_FAIL:
-			case SET_CHIP_ECO_INFO_FAIL:
-			case INIT_HIFINFO_FAIL:
-				nicRxUninitialize(prAdapter);
-				nicTxRelease(prAdapter, FALSE);
-				/* System Service Uninitialization */
-				nicUninitSystemService(prAdapter);
-			/* fallthrough */
-			case INIT_ADAPTER_FAIL:
-			/* fallthrough */
-			case DRIVER_OWN_FAIL:
-				nicReleaseAdapterMemory(prAdapter);
-				break;
-			case ALLOC_ADAPTER_MEM_FAIL:
-			default:
-				break;
-			}
+		/* release allocated memory */
+		switch (eFailReason) {
+		case WAIT_FIRMWARE_READY_FAIL:
+		case RAM_CODE_DOWNLOAD_FAIL:
+		case INIT_HIFINFO_FAIL:
+			nicRxUninitialize(prAdapter);
+			nicTxRelease(prAdapter, FALSE);
+			/* System Service Uninitialization */
+			nicUninitSystemService(prAdapter);
+		/* fallthrough */
+		case INIT_ADAPTER_FAIL:
+		/* fallthrough */
+		case DRIVER_OWN_FAIL:
+			nicReleaseAdapterMemory(prAdapter);
+			break;
+		case ALLOC_ADAPTER_MEM_FAIL:
+		default:
+			break;
 		}
 	}
-
-	if (prAdapter->chip_info->checkbushang)
-		prAdapter->chip_info->checkbushang((void *) prAdapter, TRUE);
 
 	return u4Status;
 }				/* wlanAdapterStart */
 
-void wlanOffClearAllQueues(IN struct ADAPTER *prAdapter)
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief Uninitialize the adapter
+ *
+ * \param prAdapter      Pointer of Adapter Data Structure
+ *
+ * \retval WLAN_STATUS_SUCCESS: Success
+ * \retval WLAN_STATUS_FAILURE: Failed
+ */
+/*----------------------------------------------------------------------------*/
+uint32_t wlanAdapterStop(IN struct ADAPTER *prAdapter)
 {
-	DBGLOG(INIT, INFO, "wlanOffClearAllQueues(): start.\n");
+	uint32_t u4Status = WLAN_STATUS_SUCCESS;
+
+	ASSERT(prAdapter);
 
 	/* Release all CMD/MGMT/SEC frame in command queue */
 	kalClearCommandQueue(prAdapter->prGlueInfo);
-
-	/* Release all CMD in pending command queue */
-	wlanClearPendingCommandQueue(prAdapter);
 
 #if CFG_SUPPORT_MULTITHREAD
 
@@ -1463,64 +846,31 @@ void wlanOffClearAllQueues(IN struct ADAPTER *prAdapter)
 	wlanClearRxToOsQueue(prAdapter);
 
 #endif
-}
-
-void wlanOffUninitNicModule(IN struct ADAPTER *prAdapter,
-	IN const u_int8_t bAtResetFlow)
-{
-	DBGLOG(INIT, INFO, "wlanOffUninitNicModule(): start.\n");
-	nicRxUninitialize(prAdapter);
-
-	nicTxRelease(prAdapter, FALSE);
-
-	if (!bAtResetFlow) {
-		/* MGMT - unitialization */
-		nicUninitMGMT(prAdapter);
-
-		/* System Service Uninitialization */
-		nicUninitSystemService(prAdapter);
-#if CFG_SUPPORT_DYNAMIC_PWR_LIMIT
-		/* dynamic tx power control uninitialization */
-		txPwrCtrlUninit(prAdapter);
-#endif
-		nicReleaseAdapterMemory(prAdapter);
-
-#if defined(_HIF_SPI)
-		/* Note: restore the SPI Mode Select from 32 bit to default */
-		nicRestoreSpiDefMode(prAdapter);
-#endif
-		kalClearBufferLog(prAdapter);
-	}
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief Uninitialize the adapter
- *
- * \param prAdapter      Pointer of Adapter Data Structure
- *
- * \retval WLAN_STATUS_SUCCESS: Success
- * \retval WLAN_STATUS_FAILURE: Failed
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanAdapterStop(IN struct ADAPTER *prAdapter,
-		IN const u_int8_t bAtResetFlow)
-{
-	uint32_t u4Status = WLAN_STATUS_SUCCESS;
-
-	ASSERT(prAdapter);
-
-	wlanOffClearAllQueues(prAdapter);
-
 	/* Hif power off wifi */
 	if (prAdapter->rAcpiState == ACPI_STATE_D0 &&
 		!wlanIsChipNoAck(prAdapter)
 		&& !kalIsCardRemoved(prAdapter->prGlueInfo)) {
 		wlanPowerOffWifi(prAdapter);
-	 }
+	}
+	nicRxUninitialize(prAdapter);
 
-	halHifSwInfoUnInit(prAdapter->prGlueInfo);
-	wlanOffUninitNicModule(prAdapter, bAtResetFlow);
+	nicTxRelease(prAdapter, FALSE);
+
+	/* MGMT - unitialization */
+	nicUninitMGMT(prAdapter);
+
+	/* System Service Uninitialization */
+	nicUninitSystemService(prAdapter);
+
+	/* tx power control uninitialization */
+	txPwrCtrlUninit(prAdapter);
+
+	nicReleaseAdapterMemory(prAdapter);
+
+#if defined(_HIF_SPI)
+	/* Note: restore the SPI Mode Select from 32 bit to default */
+	nicRestoreSpiDefMode(prAdapter);
+#endif
 
 	return u4Status;
 }				/* wlanAdapterStop */
@@ -1535,8 +885,7 @@ uint32_t wlanAdapterStop(IN struct ADAPTER *prAdapter,
  * \retval FALSE: Not NIC's interrupt
  */
 /*----------------------------------------------------------------------------*/
-u_int8_t wlanISR(IN struct ADAPTER *prAdapter,
-		 IN u_int8_t fgGlobalIntrCtrl)
+u_int8_t wlanISR(IN struct ADAPTER *prAdapter, IN u_int8_t fgGlobalIntrCtrl)
 {
 	ASSERT(prAdapter);
 
@@ -1558,7 +907,7 @@ u_int8_t wlanISR(IN struct ADAPTER *prAdapter,
  * \return (none)
  */
 /*----------------------------------------------------------------------------*/
-void wlanIST(IN struct ADAPTER *prAdapter, bool fgEnInt)
+void wlanIST(IN struct ADAPTER *prAdapter)
 {
 	uint32_t u4Status = WLAN_STATUS_SUCCESS;
 
@@ -1566,22 +915,18 @@ void wlanIST(IN struct ADAPTER *prAdapter, bool fgEnInt)
 
 	ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
 
-	if (prAdapter->fgIsFwOwn == FALSE) {
-		u4Status = nicProcessIST(prAdapter);
-		if (u4Status != WLAN_STATUS_SUCCESS) {
-			DBGLOG(REQ, INFO, "Fail: nicProcessIST! status [%x]\n",
-			       u4Status);
-		}
-#if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
-		if (KAL_WAKE_LOCK_ACTIVE(prAdapter,
-					 prAdapter->prGlueInfo->rIntrWakeLock))
-			KAL_WAKE_UNLOCK(prAdapter,
-					prAdapter->prGlueInfo->rIntrWakeLock);
-#endif
-	}
+	u4Status = nicProcessIST(prAdapter);
+	if (u4Status != WLAN_STATUS_SUCCESS)
+		DBGLOG(REQ, WARN, "Fail in nicProcessIST! status [%d]\n",
+		       u4Status);
 
-	if (fgEnInt)
-		nicEnableInterrupt(prAdapter);
+#if defined(CONFIG_ANDROID) && (CFG_ENABLE_WAKE_LOCK)
+	if (KAL_WAKE_LOCK_ACTIVE(prAdapter,
+				 &prAdapter->prGlueInfo->rIntrWakeLock))
+		KAL_WAKE_UNLOCK(prAdapter,
+				&prAdapter->prGlueInfo->rIntrWakeLock);
+#endif
+	nicEnableInterrupt(prAdapter);
 
 	RECLAIM_POWER_CONTROL_TO_PM(prAdapter, FALSE);
 
@@ -1599,38 +944,22 @@ void wlanClearPendingInterrupt(IN struct ADAPTER *prAdapter)
 	};
 }
 
-void wlanCheckAsicCap(IN struct ADAPTER *prAdapter)
-{
-	struct mt66xx_chip_info *prChipInfo;
-
-	ASSERT(prAdapter);
-
-	prChipInfo = prAdapter->chip_info;
-
-	if (prChipInfo->wlanCheckAsicCap)
-		prChipInfo->wlanCheckAsicCap(prAdapter);
-}
-
-uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
-			   IN u_int8_t fgRdyChk)
+uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter, IN u_int8_t fgRdyChk)
 {
 	u_int8_t fgResult, fgTimeout;
-	uint32_t u4Result = 0, u4Status, u4StartTime, u4CurTime;
-	const uint32_t ready_bits =
-		prAdapter->chip_info->sw_ready_bits;
+	uint32_t u4Result, u4Status, u4StartTime, u4CurTime;
+	const uint32_t ready_bits = prAdapter->chip_info->sw_ready_bits;
 
 	u4StartTime = kalGetTimeTick();
 	fgTimeout = FALSE;
 
 #if defined(_HIF_USB)
-	if (prAdapter->prGlueInfo->rHifInfo.state ==
-	    USB_STATE_LINK_DOWN)
+	if (prAdapter->prGlueInfo->rHifInfo.state != USB_STATE_LINK_UP)
 		return WLAN_STATUS_FAILURE;
 #endif
 
 	while (TRUE) {
-		DBGLOG(INIT, TRACE,
-			"Check ready_bits(=0x%x)\n", ready_bits);
+		DBGLOG(INIT, INFO, "Check ready_bits(=0x%x)\n", ready_bits);
 		if (fgRdyChk)
 			HAL_WIFI_FUNC_READY_CHECK(prAdapter,
 					ready_bits /* WIFI_FUNC_READY_BITS */,
@@ -1642,7 +971,12 @@ uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
 #if defined(_HIF_USB) || defined(_HIF_SDIO)
 			if (nicProcessIST(prAdapter) !=
 				WLAN_STATUS_NOT_INDICATING)
-				DBGLOG_LIMITED(INIT, INFO,
+				DBGLOG(INIT, INFO,
+				       "Handle pending interrupt\n");
+#elif defined(_HIF_AXI)
+			if (nicProcessISTWithSpecifiedCount(prAdapter, 5) !=
+				WLAN_STATUS_NOT_INDICATING)
+				DBGLOG(INIT, INFO,
 				       "Handle pending interrupt\n");
 #endif /* _HIF_USB or _HIF_SDIO */
 		}
@@ -1657,11 +991,9 @@ uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
 
 		if (fgResult) {
 			if (fgRdyChk)
-				DBGLOG(INIT, INFO,
-					"Ready bit asserted\n");
+				DBGLOG(INIT, INFO, "Ready bit asserted\n");
 			else
-				DBGLOG(INIT, INFO,
-					"Wi-Fi power off done!\n");
+				DBGLOG(INIT, INFO, "Wi-Fi power off done!\n");
 
 			u4Status = WLAN_STATUS_SUCCESS;
 
@@ -1676,9 +1008,15 @@ uint32_t wlanCheckWifiFunc(IN struct ADAPTER *prAdapter,
 			DBGLOG(INIT, ERROR,
 			       "Waiting for %s: Timeout, Status=0x%08x\n",
 			       fgRdyChk ? "ready bit" : "power off", u4Result);
-			glSetRstReason(RST_CHECK_READY_BIT_TIMEOUT);
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+			GL_RESET_TRIGGER_KEYWORD(prAdapter,
+				RST_FLAG_DO_CORE_DUMP |
+				RST_FLAG_PREVENT_POWER_OFF,
+				"[Wi-Fi] [Read WCIR_WLAN_READY fail!]");
+#else
 			GL_RESET_TRIGGER(prAdapter, RST_FLAG_DO_CORE_DUMP |
 					RST_FLAG_PREVENT_POWER_OFF);
+#endif
 			u4Status = WLAN_STATUS_FAILURE;
 			break;
 		}
@@ -1740,10 +1078,10 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_QUE);
 
 	/* 4 <2> Dequeue from head and check it is able to be sent */
-	QUEUE_REMOVE_HEAD(prTempCmdQue, prQueueEntry,
-			  struct QUE_ENTRY *);
+	QUEUE_REMOVE_HEAD(prTempCmdQue, prQueueEntry, struct QUE_ENTRY *);
 	while (prQueueEntry) {
 		prCmdInfo = (struct CMD_INFO *) prQueueEntry;
+
 		switch (prCmdInfo->eCmdType) {
 		case COMMAND_TYPE_GENERAL_IOCTL:
 		case COMMAND_TYPE_NETWORK_IOCTL:
@@ -1752,7 +1090,6 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 			break;
 
 		case COMMAND_TYPE_SECURITY_FRAME:
-		case COMMAND_TYPE_DATA_FRAME:
 			/* inquire with QM */
 			prMsduInfo = prCmdInfo->prMsduInfo;
 
@@ -1778,9 +1115,7 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 			ASSERT(0);
 			break;
 		}
-#if (CFG_SUPPORT_STATISTICS == 1)
-		wlanWakeLogCmd(prCmdInfo->ucCID);
-#endif
+
 		/* 4 <3> handling upon dequeue result */
 		if (eFrameAction == FRAME_ACTION_DROP_PKT) {
 			DBGLOG(INIT, INFO,
@@ -1807,9 +1142,9 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 				 * transmission
 				 */
 				DBGLOG(INIT, WARN,
-				       "NO Res CMD TYPE[%u] ID[0x%02X] SEQ[%u]\n",
-				       prCmdInfo->eCmdType, prCmdInfo->ucCID,
-				       prCmdInfo->ucCmdSeqNum);
+				     "NO Res CMD TYPE[%u] ID[0x%02X] SEQ[%u]\n",
+				     prCmdInfo->eCmdType, prCmdInfo->ucCID,
+				     prCmdInfo->ucCmdSeqNum);
 
 				prAdapter->u4HifDbgFlag |= DEG_HIF_ALL;
 				kalSetHifDbgEvent(prAdapter->prGlueInfo);
@@ -1824,21 +1159,21 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 				if ((prCmdInfo->eCmdType !=
 				     COMMAND_TYPE_SECURITY_FRAME) &&
 				    (prCmdInfo->eCmdType !=
-				     COMMAND_TYPE_MANAGEMENT_FRAME) &&
-				    (prCmdInfo->eCmdType !=
-					COMMAND_TYPE_DATA_FRAME))
+				     COMMAND_TYPE_MANAGEMENT_FRAME))
 					break;
 			} else if (rStatus == WLAN_STATUS_PENDING) {
 				/* Do nothing */
-			} else if (rStatus == WLAN_STATUS_SUCCESS) {
 				/* Do nothing */
+			} else if (rStatus == WLAN_STATUS_SUCCESS) {
+				/* Enable hif debug log */
+				prAdapter->fgEnHifDbgInfo = true;
 			} else {
 				struct CMD_INFO *prCmdInfo = (struct CMD_INFO *)
 							     prQueueEntry;
 
 				if (prCmdInfo->fgIsOid) {
 					kalOidComplete(prAdapter->prGlueInfo,
-						       prCmdInfo,
+						       prCmdInfo->fgSetQuery,
 						       prCmdInfo->u4SetInfoLen,
 						       rStatus);
 				}
@@ -1854,9 +1189,9 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 				 */
 
 				DBGLOG(INIT, WARN,
-				       "NO Resource for CMD TYPE[%u] ID[0x%02X] SEQ[%u]\n",
-				       prCmdInfo->eCmdType, prCmdInfo->ucCID,
-				       prCmdInfo->ucCmdSeqNum);
+				"NO Resource CMD TYPE[%u] ID[0x%02X] SEQ[%u]\n",
+				prCmdInfo->eCmdType, prCmdInfo->ucCID,
+				prCmdInfo->ucCmdSeqNum);
 
 				QUEUE_INSERT_TAIL(prMergeCmdQue, prQueueEntry);
 				break;
@@ -1885,7 +1220,7 @@ uint32_t wlanProcessCommandQueue(IN struct ADAPTER
 					if (prCmdInfo->fgIsOid) {
 						kalOidComplete(
 						    prAdapter->prGlueInfo,
-						    prCmdInfo,
+						    prCmdInfo->fgSetQuery,
 						    prCmdInfo->u4SetInfoLen,
 						    rStatus);
 					}
@@ -1975,7 +1310,6 @@ uint32_t wlanSendCommand(IN struct ADAPTER *prAdapter,
 			DBGLOG(INIT, INFO, "NO Resource:%d\n", ucTC);
 			break;
 		}
-		GLUE_INC_REF_CNT(prAdapter->rHifStats.u4CmdInCount);
 		/* <1.3> Forward CMD_INFO_T to NIC Layer */
 		rStatus = nicTxCmd(prAdapter, prCmdInfo, ucTC);
 
@@ -2022,24 +1356,11 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 	struct QUE rTempCmdQue;
 	struct QUE *prTempCmdQue;
 
-#if CFG_DBG_MGT_BUF
-	struct MEM_TRACK *prMemTrack = NULL;
-#endif
-
 	KAL_SPIN_LOCK_DECLARATION();
 
 	ASSERT(prAdapter);
 	ASSERT(prCmdInfo);
 	prTxCtrl = &prAdapter->rTxCtrl;
-
-#if CFG_DBG_MGT_BUF
-	if (prCmdInfo->pucInfoBuffer &&
-			!IS_FROM_BUF(prAdapter, prCmdInfo->pucInfoBuffer))
-		prMemTrack =
-			(struct MEM_TRACK *)
-				((uint8_t *)prCmdInfo->pucInfoBuffer -
-					sizeof(struct MEM_TRACK));
-#endif
 
 	prTempCmdQue = &rTempCmdQue;
 	QUEUE_INITIALIZE(prTempCmdQue);
@@ -2083,14 +1404,6 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 			 *			  SPIN_LOCK_CMD_PENDING);
 			 */
 		}
-
-#if CFG_DBG_MGT_BUF
-		if (prMemTrack) {
-			prMemTrack->u2CmdIdAndWhere &= 0x00FF;
-			prMemTrack->u2CmdIdAndWhere |= 0x0100;
-		}
-#endif
-
 		QUEUE_INSERT_TAIL(prTempCmdQue,
 				  (struct QUE_ENTRY *) prCmdInfo);
 
@@ -2100,16 +1413,11 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 			if ((!prCmdInfo->fgSetQuery) ||
 			    (prCmdInfo->fgNeedResp) ||
 			    (prCmdInfo->eCmdType ==
-			    COMMAND_TYPE_SECURITY_FRAME ||
-			     prCmdInfo->eCmdType ==
-				COMMAND_TYPE_DATA_FRAME)) {
+			    COMMAND_TYPE_SECURITY_FRAME)) {
 				rStatus = WLAN_STATUS_PENDING;
 			}
 		}
 	} while (FALSE);
-
-	GLUE_ADD_REF_CNT(prTempCmdQue->u4NumElem,
-			prAdapter->rHifStats.u4CmdInCount);
 
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_QUE);
 	QUEUE_CONCATENATE_QUEUES(&(prAdapter->rTxCmdQueue),
@@ -2122,18 +1430,27 @@ uint32_t wlanSendCommandMthread(IN struct ADAPTER
 void wlanTxCmdDoneCb(IN struct ADAPTER *prAdapter,
 		     IN struct CMD_INFO *prCmdInfo)
 {
+
 	KAL_SPIN_LOCK_DECLARATION();
 
 	if ((!prCmdInfo->fgSetQuery) || (prCmdInfo->fgNeedResp)) {
-		DBGLOG(TX, INFO, "Add command: %p, %ps, cmd=0x%02X, seq=%u",
-			prCmdInfo, prCmdInfo->pfCmdDoneHandler,
-			prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum);
-
+#if 0
 		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
 		QUEUE_INSERT_TAIL(&prAdapter->rPendingCmdQueue,
 				  (struct QUE_ENTRY *) prCmdInfo);
 		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
+#endif
+	} else {
+		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_DONE_QUE);
+		QUEUE_INSERT_TAIL(&prAdapter->rTxCmdDoneQueue,
+				  (struct QUE_ENTRY *) prCmdInfo);
+		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_DONE_QUE);
 	}
+
+	/* call tx thread to work */
+	set_bit(GLUE_FLAG_TX_CMD_DONE_BIT,
+		&prAdapter->prGlueInfo->ulFlag);
+	wake_up_interruptible(&prAdapter->prGlueInfo->waitq);
 }
 
 uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
@@ -2148,19 +1465,11 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 	 * P_CMD_ACCESS_REG prEventAccessReg;
 	 * UINT_32 u4Address;
 	 */
-	uint32_t u4TxDoneQueueSize, u4Ret;
-#if CFG_DBG_MGT_BUF
-	struct MEM_TRACK *prMemTrack = NULL;
-#endif
+	uint32_t u4TxDoneQueueSize;
 
 	KAL_SPIN_LOCK_DECLARATION();
 
 	ASSERT(prAdapter);
-
-	if (halIsHifStateSuspend(prAdapter)) {
-		DBGLOG(TX, WARN, "Suspend TxCmdMthread\n");
-		return WLAN_STATUS_SUCCESS;
-	}
 
 	prTempCmdQue = &rTempCmdQue;
 	QUEUE_INITIALIZE(prTempCmdQue);
@@ -2182,37 +1491,17 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 	while (prQueueEntry) {
 		prCmdInfo = (struct CMD_INFO *) prQueueEntry;
 		prCmdInfo->pfHifTxCmdDoneCb = wlanTxCmdDoneCb;
-#if CFG_DBG_MGT_BUF
-		if (prCmdInfo->pucInfoBuffer &&
-				!IS_FROM_BUF(prAdapter,
-					prCmdInfo->pucInfoBuffer))
-			prMemTrack =
-				(struct MEM_TRACK *)
-					((uint8_t *)prCmdInfo->pucInfoBuffer -
-						sizeof(struct MEM_TRACK));
-		if (prMemTrack) {
-			if (!prCmdInfo->fgSetQuery || prCmdInfo->fgNeedResp) {
-				prMemTrack->u2CmdIdAndWhere &= 0x00FF;
-				prMemTrack->u2CmdIdAndWhere |= 0x0200;
-			} else {
-				prMemTrack->u2CmdIdAndWhere &= 0x00FF;
-				prMemTrack->u2CmdIdAndWhere |= 0x0300;
-			}
-		}
-#endif
 
-		u4Ret = nicTxCmd(prAdapter, prCmdInfo, TC4_INDEX);
-		if (u4Ret != WLAN_STATUS_SUCCESS)
-			DBGLOG(INIT, WARN, "nicTxCmd returns error[0x%08x]\n",
-			       u4Ret);
-
-		if (u4Ret == WLAN_STATUS_RESOURCES) {
-			QUEUE_INSERT_HEAD(prTempCmdQue, prQueueEntry);
-			break;
-		}
-
-		if (prCmdInfo->fgSetQuery && !prCmdInfo->fgNeedResp)
+		if ((!prCmdInfo->fgSetQuery) || (prCmdInfo->fgNeedResp)) {
+			KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
+			QUEUE_INSERT_TAIL(&(prAdapter->rPendingCmdQueue),
+					  (struct QUE_ENTRY *) prCmdInfo);
+			KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
+		} else {
 			QUEUE_INSERT_TAIL(prTempCmdDoneQue, prQueueEntry);
+		}
+
+		nicTxCmd(prAdapter, prCmdInfo, TC4_INDEX);
 
 		/* DBGLOG(INIT, INFO, "==> TX CMD QID: %d (Q:%d)\n",
 		 *        prCmdInfo->ucCID, prTempCmdQue->u4NumElem));
@@ -2223,13 +1512,6 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 				  struct QUE_ENTRY *);
 	}
 
-	if (!QUEUE_IS_EMPTY(prTempCmdQue)) {
-		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_QUE);
-		QUEUE_CONCATENATE_QUEUES(prTempCmdQue, &prAdapter->rTxCmdQueue);
-		QUEUE_CONCATENATE_QUEUES(&prAdapter->rTxCmdQueue, prTempCmdQue);
-		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_QUE);
-	}
-
 	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_CMD_DONE_QUE);
 	QUEUE_CONCATENATE_QUEUES(&prAdapter->rTxCmdDoneQueue,
 				 prTempCmdDoneQue);
@@ -2238,9 +1520,12 @@ uint32_t wlanTxCmdMthread(IN struct ADAPTER *prAdapter)
 
 	KAL_RELEASE_MUTEX(prAdapter, MUTEX_TX_CMD_CLEAR);
 
-	/* call tx thread to work */
-	if (u4TxDoneQueueSize > 0)
-		kalSetTxCmdDoneEvent(prAdapter->prGlueInfo);
+	if (u4TxDoneQueueSize > 0) {
+		/* call tx thread to work */
+		set_bit(GLUE_FLAG_TX_CMD_DONE_BIT,
+			&prAdapter->prGlueInfo->ulFlag);
+		wake_up_interruptible(&prAdapter->prGlueInfo->waitq);
+	}
 
 	return WLAN_STATUS_SUCCESS;
 }
@@ -2255,11 +1540,6 @@ uint32_t wlanTxCmdDoneMthread(IN struct ADAPTER *prAdapter)
 	KAL_SPIN_LOCK_DECLARATION();
 
 	ASSERT(prAdapter);
-
-	if (halIsHifStateSuspend(prAdapter)) {
-		DBGLOG(TX, WARN, "Suspend TxCmdDoneMthread\n");
-		return WLAN_STATUS_SUCCESS;
-	}
 
 	prTempCmdQue = &rTempCmdQue;
 	QUEUE_INITIALIZE(prTempCmdQue);
@@ -2364,9 +1644,7 @@ void wlanClearTxOidCommand(IN struct ADAPTER *prAdapter)
 		prCmdInfo = (struct CMD_INFO *) prQueueEntry;
 
 		if (prCmdInfo->fgIsOid) {
-			DBGLOG(OID, INFO,
-				"Clear pending OID CMD ID[0x%02X] SEQ[%u]\n",
-				prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum);
+
 			if (prCmdInfo->pfCmdTimeoutHandler)
 				prCmdInfo->pfCmdTimeoutHandler(prAdapter,
 							       prCmdInfo);
@@ -2487,52 +1765,37 @@ void wlanClearDataQueue(IN struct ADAPTER *prAdapter)
 		while (QUEUE_IS_NOT_EMPTY(&prAdapter->rTxDataDoneQueue)) {
 			QUEUE_REMOVE_HEAD(&prAdapter->rTxDataDoneQueue,
 					  prMsduInfo, struct MSDU_INFO *);
-			if (prMsduInfo == NULL) {
-				DBGLOG(TX, WARN, "prMsduInfo is NULL\n");
-				break;
-			}
+
 			nicTxFreePacket(prAdapter, prMsduInfo, FALSE);
 			nicTxReturnMsduInfo(prAdapter, prMsduInfo);
 		}
 		KAL_RELEASE_MUTEX(prAdapter, MUTEX_TX_DATA_DONE_QUE);
 #else
 
-		struct QUE qDataPort[BSS_DEFAULT_NUM][TX_PORT_NUM];
-		struct QUE *prDataPort[BSS_DEFAULT_NUM][TX_PORT_NUM];
+		struct QUE qDataPort[TX_PORT_NUM];
+		struct QUE *prDataPort[TX_PORT_NUM];
 		struct MSDU_INFO *prMsduInfo;
-		int32_t i, j;
+		int32_t i;
 
 		KAL_SPIN_LOCK_DECLARATION();
 
-		for (i = 0; i < BSS_DEFAULT_NUM; i++) {
-			for (j = 0; j < TX_PORT_NUM; j++) {
-				prDataPort[i][j] = &qDataPort[i][j];
-				QUEUE_INITIALIZE(prDataPort[i][j]);
-			}
+		for (i = 0; i < TX_PORT_NUM; i++) {
+			prDataPort[i] = &qDataPort[i];
+			QUEUE_INITIALIZE(prDataPort[i]);
 		}
 
 		/* <1> Move whole list of CMD_INFO to temp queue */
 		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_PORT_QUE);
-		for (i = 0; i < BSS_DEFAULT_NUM; i++) {
-			for (j = 0; j < TX_PORT_NUM; j++) {
-				QUEUE_MOVE_ALL(prDataPort[i][j],
-					&prAdapter->rTxPQueue[i][j]);
-				kalTraceEvent("Move TxPQueue%d_%d %d", i, j,
-					prDataPort[i][j]->u4NumElem);
-			}
-		}
+		for (i = 0; i < TX_PORT_NUM; i++)
+			QUEUE_MOVE_ALL(prDataPort[i], &prAdapter->rTxPQueue[i]);
 		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_TX_PORT_QUE);
 
 		/* <2> Return sk buffer */
-		for (i = 0; i < BSS_DEFAULT_NUM; i++) {
-			for (j = 0; j < TX_PORT_NUM; j++) {
-				nicTxReleaseMsduResource(prAdapter,
-					(struct MSDU_INFO *)
-					QUEUE_GET_HEAD(prDataPort[i][j]));
-				nicTxReturnMsduInfo(prAdapter,
-					(struct MSDU_INFO *)
-					QUEUE_GET_HEAD(prDataPort[i][j]));
-			}
+		for (i = 0; i < TX_PORT_NUM; i++) {
+			nicTxReleaseMsduResource(prAdapter, (struct MSDU_INFO *)
+						QUEUE_GET_HEAD(prDataPort[i]));
+			nicTxReturnMsduInfo(prAdapter, (struct MSDU_INFO *)
+						QUEUE_GET_HEAD(prDataPort[i]));
 		}
 
 		/* <3> Clear pending MSDU info in data done queue */
@@ -2586,50 +1849,6 @@ void wlanClearRxToOsQueue(IN struct ADAPTER *prAdapter)
 
 /*----------------------------------------------------------------------------*/
 /*!
- * \brief This routine is used to clear all commands in pending command queue
- * \param prAdapter  Pointer of Adapter Data Structure
- *
- * \retval none
- */
-/*----------------------------------------------------------------------------*/
-void wlanClearPendingCommandQueue(IN struct ADAPTER *prAdapter)
-{
-	struct QUE rTempCmdQue;
-	struct QUE *prTempCmdQue = &rTempCmdQue;
-	struct QUE_ENTRY *prQueueEntry = (struct QUE_ENTRY *) NULL;
-	struct CMD_INFO *prCmdInfo = (struct CMD_INFO *) NULL;
-
-	KAL_SPIN_LOCK_DECLARATION();
-	QUEUE_INITIALIZE(prTempCmdQue);
-
-	ASSERT(prAdapter);
-
-	KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
-	QUEUE_MOVE_ALL(prTempCmdQue, &prAdapter->rPendingCmdQueue);
-	KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_CMD_PENDING);
-
-	QUEUE_REMOVE_HEAD(prTempCmdQue, prQueueEntry,
-			  struct QUE_ENTRY *);
-	while (prQueueEntry) {
-		prCmdInfo = (struct CMD_INFO *) prQueueEntry;
-
-		if (prCmdInfo->pfCmdTimeoutHandler)
-			prCmdInfo->pfCmdTimeoutHandler(prAdapter, prCmdInfo);
-		else
-			wlanReleaseCommand(prAdapter, prCmdInfo,
-					   TX_RESULT_QUEUE_CLEARANCE);
-
-		nicTxCancelSendingCmd(prAdapter, prCmdInfo);
-
-		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-
-		QUEUE_REMOVE_HEAD(prTempCmdQue, prQueueEntry,
-				  struct QUE_ENTRY *);
-	}
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * \brief This function will release thd CMD_INFO upon its attribution
  *
  * \param prAdapter  Pointer of Adapter Data Structure
@@ -2661,7 +1880,7 @@ void wlanReleaseCommand(IN struct ADAPTER *prAdapter,
 
 		if (prCmdInfo->fgIsOid) {
 			kalOidComplete(prAdapter->prGlueInfo,
-				       prCmdInfo,
+				       prCmdInfo->fgSetQuery,
 				       prCmdInfo->u4SetInfoLen,
 				       WLAN_STATUS_FAILURE);
 		}
@@ -2669,11 +1888,9 @@ void wlanReleaseCommand(IN struct ADAPTER *prAdapter,
 
 	case COMMAND_TYPE_SECURITY_FRAME:
 	case COMMAND_TYPE_MANAGEMENT_FRAME:
-	case COMMAND_TYPE_DATA_FRAME:
 		prMsduInfo = prCmdInfo->prMsduInfo;
 
-		if (prCmdInfo->eCmdType == COMMAND_TYPE_SECURITY_FRAME ||
-			prCmdInfo->eCmdType == COMMAND_TYPE_DATA_FRAME) {
+		if (prCmdInfo->eCmdType == COMMAND_TYPE_SECURITY_FRAME) {
 			kalSecurityFrameSendComplete(prAdapter->prGlueInfo,
 						     prCmdInfo->prPacket,
 						     WLAN_STATUS_FAILURE);
@@ -2682,16 +1899,16 @@ void wlanReleaseCommand(IN struct ADAPTER *prAdapter,
 		}
 
 		DBGLOG(INIT, INFO,
-			"Free %s Frame: B[%u]W:P[%u:%u]TS[%u]STA[%u]RSP[%u]CS[%u]\n",
-			prCmdInfo->eCmdType ==
-			COMMAND_TYPE_MANAGEMENT_FRAME ?	"MGMT" : "DATA/SEC",
-		    prMsduInfo->ucBssIndex,
-		    prMsduInfo->ucWlanIndex,
-		    prMsduInfo->ucPID,
-		    prMsduInfo->ucTxSeqNum,
-		    prMsduInfo->ucStaRecIndex,
-		    prMsduInfo->pfTxDoneHandler ? TRUE : FALSE,
-		    prCmdInfo->ucCmdSeqNum);
+		       "Free %s Frame: BSS[%u] WIDX:PID[%u:%u] SEQ[%u] STA[%u] RSP[%u] CMDSeq[%u]\n",
+		       prCmdInfo->eCmdType == COMMAND_TYPE_SECURITY_FRAME ?
+								"SEC" : "MGMT",
+		       prMsduInfo->ucBssIndex,
+		       prMsduInfo->ucWlanIndex,
+		       prMsduInfo->ucPID,
+		       prMsduInfo->ucTxSeqNum,
+		       prMsduInfo->ucStaRecIndex,
+		       prMsduInfo->pfTxDoneHandler ? TRUE : FALSE,
+		       prCmdInfo->ucCmdSeqNum);
 
 		/* invoke callbacks */
 		if (prMsduInfo->pfTxDoneHandler != NULL)
@@ -2744,10 +1961,10 @@ void wlanReleasePendingOid(IN struct ADAPTER *prAdapter,
 		    WLAN_OID_NO_ACK_THRESHOLD) {
 			if (!prAdapter->fgIsChipNoAck) {
 				DBGLOG(INIT, WARN,
-				       "No response from chip for %u times, set NoAck flag!\n",
+			"No response from chip for %u times, set NoAck flag!\n",
 				       prAdapter->ucOidTimeoutCount);
 #if 0
-				glSetRstReason(RST_OID_TIMEOUT);
+				glGetRstReason(RST_OID_TIMEOUT);
 				GL_RESET_TRIGGER(prAdapter,
 						 RST_FLAG_CHIP_RESET);
 #endif
@@ -2757,13 +1974,12 @@ void wlanReleasePendingOid(IN struct ADAPTER *prAdapter,
 			    WLAN_OID_NO_ACK_THRESHOLD) {
 				if (!prAdapter->fgIsChipNoAck) {
 					DBGLOG(INIT, WARN,
-					       "No response from chip for %u times, set NoAck flag!\n",
-					       prAdapter->ucOidTimeoutCount);
+			"No response from chip for %u times, set NoAck flag!\n",
+				       prAdapter->ucOidTimeoutCount);
 				}
 
 				prAdapter->fgIsChipNoAck = TRUE;
 			}
-
 			prAdapter->u4HifDbgFlag |= DEG_HIF_ALL;
 			kalSetHifDbgEvent(prAdapter->prGlueInfo);
 		}
@@ -2795,16 +2011,16 @@ void wlanReleasePendingOid(IN struct ADAPTER *prAdapter,
 
 			if (prCmdInfo->fgIsOid) {
 				DBGLOG(OID, INFO,
-				       "Clear pending OID CMD ID[0x%02X] SEQ[%u] buf[0x%p]\n",
-				       prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum,
-				       prCmdInfo->pucInfoBuffer);
+			"Clear pending OID CMD ID[0x%02X] SEQ[%u] buf[0x%p]\n",
+			       prCmdInfo->ucCID, prCmdInfo->ucCmdSeqNum,
+			       prCmdInfo->pucInfoBuffer);
 
 				if (prCmdInfo->pfCmdTimeoutHandler) {
 					prCmdInfo->pfCmdTimeoutHandler(
 							prAdapter, prCmdInfo);
 				} else {
 					kalOidComplete(prAdapter->prGlueInfo,
-						       prCmdInfo,
+						       prCmdInfo->fgSetQuery,
 						       0, WLAN_STATUS_FAILURE);
 				}
 
@@ -2882,7 +2098,7 @@ void wlanReleasePendingCMDbyBssIdx(IN struct ADAPTER
 							prAdapter, prCmdInfo);
 				} else if (prCmdInfo->fgIsOid) {
 					kalOidComplete(prAdapter->prGlueInfo,
-						       prCmdInfo,
+						       prCmdInfo->fgSetQuery,
 						       0, WLAN_STATUS_FAILURE);
 				}
 
@@ -2901,7 +2117,7 @@ void wlanReleasePendingCMDbyBssIdx(IN struct ADAPTER
 #endif
 
 
-}				/* wlanReleasePendingCMDbyBssIdx */
+} /* wlanReleasePendingCMDbyBssIdx */
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -2930,8 +2146,7 @@ void wlanReturnPacketDelaySetupTimeout(IN struct ADAPTER
 	ASSERT(prRxCtrl);
 
 	prQueList = &prRxCtrl->rIndicatedRfbList;
-	DBGLOG(RX, WARN, "%s: IndicatedRfbList num = %u\n",
-	       __func__, prQueList->u4NumElem);
+	DBGLOG(RX, WARN, "IndicatedRfbList num = %u\n", prQueList->u4NumElem);
 
 	while (QUEUE_IS_NOT_EMPTY(&prRxCtrl->rIndicatedRfbList)) {
 		KAL_ACQUIRE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
@@ -2939,13 +2154,8 @@ void wlanReturnPacketDelaySetupTimeout(IN struct ADAPTER
 				  struct SW_RFB *);
 		KAL_RELEASE_SPIN_LOCK(prAdapter, SPIN_LOCK_RX_FREE_QUE);
 
-		if (prSwRfb) {
-			status = nicRxSetupRFB(prAdapter, prSwRfb);
-			nicRxReturnRFB(prAdapter, prSwRfb);
-		} else {
-			log_dbg(RX, WARN, "prSwRfb == NULL\n");
-			break;
-		}
+		status = nicRxSetupRFB(prAdapter, prSwRfb);
+		nicRxReturnRFB(prAdapter, prSwRfb);
 
 		if (status != WLAN_STATUS_SUCCESS)
 			break;
@@ -3055,11 +2265,9 @@ wlanQueryInformation(IN struct ADAPTER *prAdapter,
 	/* ignore any OID request after connected, under PS current measurement
 	 * mode
 	 */
-	DBGLOG(NIC, TRACE, "u4PsCurrentMeasureEn=%u, aisGetConnectedBssInfo=%p",
-		prAdapter->u4PsCurrentMeasureEn,
-		aisGetConnectedBssInfo(prAdapter));
 	if (prAdapter->u4PsCurrentMeasureEn &&
-	    aisGetConnectedBssInfo(prAdapter)) {
+	    (prAdapter->prGlueInfo->eParamMediaStateIndicated ==
+	     PARAM_MEDIA_STATE_CONNECTED)) {
 		/* note: return WLAN_STATUS_FAILURE or
 		 * WLAN_STATUS_SUCCESS for blocking OIDs during current
 		 * measurement ??
@@ -3070,7 +2278,6 @@ wlanQueryInformation(IN struct ADAPTER *prAdapter,
 	/* most OID handler will just queue a command packet */
 	status = pfnOidQryHandler(prAdapter, pvInfoBuf,
 				  u4InfoBufLen, pu4QryInfoLen);
-	DBGLOG(NIC, TRACE, "%ps returns %u", pfnOidQryHandler, status);
 #else
 	if (wlanIsHandlerNeedHwAccess(pfnOidQryHandler, FALSE)) {
 		ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
@@ -3125,11 +2332,9 @@ wlanSetInformation(IN struct ADAPTER *prAdapter,
 	/* ignore any OID request after connected, under PS current measurement
 	 * mode
 	 */
-	DBGLOG(NIC, TRACE, "u4PsCurrentMeasureEn=%u, aisGetConnectedBssInfo=%p",
-		prAdapter->u4PsCurrentMeasureEn,
-		aisGetConnectedBssInfo(prAdapter));
 	if (prAdapter->u4PsCurrentMeasureEn &&
-	    aisGetConnectedBssInfo(prAdapter)) {
+	    (prAdapter->prGlueInfo->eParamMediaStateIndicated ==
+	     PARAM_MEDIA_STATE_CONNECTED)) {
 		/* note: return WLAN_STATUS_FAILURE or WLAN_STATUS_SUCCESS
 		 * for blocking OIDs during current measurement ??
 		 */
@@ -3142,7 +2347,6 @@ wlanSetInformation(IN struct ADAPTER *prAdapter,
 	 */
 	status = pfnOidSetHandler(prAdapter, pvInfoBuf,
 				  u4InfoBufLen, pu4SetInfoLen);
-	DBGLOG(NIC, TRACE, "%ps returns %u", pfnOidSetHandler, status);
 #else
 	if (wlanIsHandlerNeedHwAccess(pfnOidSetHandler, TRUE)) {
 		ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
@@ -3163,6 +2367,25 @@ wlanSetInformation(IN struct ADAPTER *prAdapter,
 
 	return status;
 }
+
+#if CFG_SUPPORT_WAPI
+/*----------------------------------------------------------------------------*/
+/*!
+ * \brief This function is a used to query driver's config wapi mode or not
+ *
+ * \param[IN] prAdapter     Pointer to the Glue info structure.
+ *
+ * \retval TRUE for use wapi mode
+ *
+ */
+/*----------------------------------------------------------------------------*/
+u_int8_t wlanQueryWapiMode(IN struct ADAPTER *prAdapter)
+{
+	ASSERT(prAdapter);
+
+	return prAdapter->rWifiVar.rConnSettings.fgWapiMode;
+}
+#endif
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -3214,22 +2437,20 @@ uint32_t wlanSendDummyCmd(IN struct ADAPTER *prAdapter,
 	uint32_t status = WLAN_STATUS_SUCCESS;
 	struct GLUE_INFO *prGlueInfo;
 	struct CMD_INFO *prCmdInfo;
-	struct mt66xx_chip_info *prChipInfo;
+	struct WIFI_CMD *prWifiCmd;
 
 	ASSERT(prAdapter);
 
 	prGlueInfo = prAdapter->prGlueInfo;
-	prChipInfo = prAdapter->chip_info;
 
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
-		prChipInfo->u2CmdTxHdrSize);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, CMD_HDR_SIZE);
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
 		return WLAN_STATUS_FAILURE;
 	}
 
 	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = (uint16_t) prChipInfo->u2CmdTxHdrSize;
+	prCmdInfo->u2InfoBufLen = (uint16_t) CMD_HDR_SIZE;
 	prCmdInfo->pfCmdDoneHandler = NULL;
 	prCmdInfo->pfCmdTimeoutHandler = NULL;
 	prCmdInfo->fgIsOid = TRUE;
@@ -3239,13 +2460,13 @@ uint32_t wlanSendDummyCmd(IN struct ADAPTER *prAdapter,
 	prCmdInfo->ucCmdSeqNum = 0;
 	prCmdInfo->u4SetInfoLen = 0;
 
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen,
-		prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery, NULL, FALSE, 0, S2D_INDEX_CMD_H2N);
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
 
 	if (fgIsReqTxRsrc) {
 		if (wlanSendCommand(prAdapter,
@@ -3284,57 +2505,63 @@ uint32_t wlanSendNicPowerCtrlCmd(IN struct ADAPTER
 	uint32_t status = WLAN_STATUS_SUCCESS;
 	struct GLUE_INFO *prGlueInfo;
 	struct CMD_INFO *prCmdInfo;
-	uint8_t ucTC;
-	struct CMD_NIC_POWER_CTRL *pNicPwrCtrl;
-	struct mt66xx_chip_info *prChipInfo;
-	uint16_t cmd_size;
+	struct WIFI_CMD *prWifiCmd;
+	uint8_t ucTC, ucCmdSeqNum;
+	uint32_t u4StartTime;
 
 	ASSERT(prAdapter);
 
 	prGlueInfo = prAdapter->prGlueInfo;
-	prChipInfo = prAdapter->chip_info;
 
 	/* 1. Prepare CMD */
-	cmd_size =
-		prChipInfo->u2CmdTxHdrSize + sizeof(struct CMD_NIC_POWER_CTRL);
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, (CMD_HDR_SIZE +
+					sizeof(struct CMD_NIC_POWER_CTRL)));
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
-		glSetRstReason(RST_ALLOC_CMD_FAIL);
-#if (CFG_SUPPORT_CONNINFRA == 0)
-		GL_RESET_TRIGGER(prAdapter, RST_FLAG_CHIP_RESET);
-#else
-		GL_RESET_TRIGGER(prAdapter, RST_FLAG_WF_RESET);
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+		GL_RESET_TRIGGER_KEYWORD(prAdapter,
+			RST_FLAG_DO_CORE_DUMP |
+			RST_FLAG_PREVENT_POWER_OFF,
+			"[Wi-Fi Off] Allocate CMD_INFO_T ==> FAILED.");
 #endif
 		return WLAN_STATUS_FAILURE;
 	}
 
+	/* 2.1 increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
+	DBGLOG(REQ, TRACE, "ucCmdSeqNum =%d\n", ucCmdSeqNum);
+
 	/* 2.2 Setup common CMD Info Packet */
 	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
+	prCmdInfo->u2InfoBufLen = (uint16_t) (CMD_HDR_SIZE + sizeof(
+			struct CMD_NIC_POWER_CTRL));
 	prCmdInfo->pfCmdDoneHandler = NULL;
 	prCmdInfo->pfCmdTimeoutHandler = NULL;
 	prCmdInfo->fgIsOid = TRUE;
 	prCmdInfo->ucCID = CMD_ID_NIC_POWER_CTRL;
 	prCmdInfo->fgSetQuery = TRUE;
 	prCmdInfo->fgNeedResp = FALSE;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = sizeof(struct CMD_NIC_POWER_CTRL);
 
 	/* 2.3 Setup WIFI_CMD_T */
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen, prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery,
-		&pNicPwrCtrl, FALSE, 0, S2D_INDEX_CMD_H2N);
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
 
-	kalMemZero(pNicPwrCtrl, sizeof(struct CMD_NIC_POWER_CTRL));
-	pNicPwrCtrl->ucPowerMode = ucPowerMode;
+	kalMemZero(prWifiCmd->aucBuffer,
+		   sizeof(struct CMD_NIC_POWER_CTRL));
+	((struct CMD_NIC_POWER_CTRL *) (
+		 prWifiCmd->aucBuffer))->ucPowerMode = ucPowerMode;
 
 	/* 3. Issue CMD for entering specific power mode */
 	ucTC = TC4_INDEX;
 
+	u4StartTime = kalGetTimeTick();
 	while (1) {
 		/* 3.0 Removal check */
 		if (kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE
@@ -3344,19 +2571,28 @@ uint32_t wlanSendNicPowerCtrlCmd(IN struct ADAPTER
 		}
 		/* 3.1 Acquire TX Resource */
 		if (nicTxAcquireResource(prAdapter, ucTC,
-		    nicTxGetCmdPageCount(prAdapter, prCmdInfo), TRUE)
-		    == WLAN_STATUS_RESOURCES) {
-			if (nicTxPollingResource(prAdapter, ucTC) !=
-			    WLAN_STATUS_SUCCESS) {
-				DBGLOG(INIT, ERROR,
-				       "Fail to get TX resource return within timeout\n");
-				status = WLAN_STATUS_FAILURE;
-				prAdapter->fgIsChipNoAck = TRUE;
-				break;
-			}
-			continue;
+			nicTxGetCmdPageCount(prAdapter, prCmdInfo), TRUE)
+			!= WLAN_STATUS_RESOURCES)
+			break;
+
+		if (nicTxPollingResource(prAdapter, ucTC)
+			!= WLAN_STATUS_SUCCESS) {
+			DBGLOG(INIT, ERROR,
+		       "Fail to get TX resource return within timeout\n");
+			status = WLAN_STATUS_FAILURE;
+			prAdapter->fgIsChipNoAck = TRUE;
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+			GL_RESET_TRIGGER_KEYWORD(prAdapter,
+				RST_FLAG_DO_CORE_DUMP |
+				RST_FLAG_PREVENT_POWER_OFF,
+				"[Wi-Fi Off] Fail to get TX resource return within timeout");
+#endif
+			break;
 		}
-		break;
+
+		if (CHECK_FOR_TIMEOUT(kalGetTimeTick(), u4StartTime,
+				      CFG_POWER_CTRL_ACQUIRE_RES_TIMEOUT))
+			break;
 	};
 
 	/* 3.2 Send CMD Info Packet */
@@ -3364,6 +2600,12 @@ uint32_t wlanSendNicPowerCtrlCmd(IN struct ADAPTER
 		     ucTC) != WLAN_STATUS_SUCCESS) {
 		DBGLOG(INIT, ERROR,
 		       "Fail to transmit CMD_NIC_POWER_CTRL command\n");
+#if CFG_ENABLE_KEYWORD_EXCEPTION_MECHANISM
+		GL_RESET_TRIGGER_KEYWORD(prAdapter,
+			RST_FLAG_DO_CORE_DUMP |
+			RST_FLAG_PREVENT_POWER_OFF,
+			"[Wi-Fi Off] Fail to transmit CMD_NIC_POWER_CTRL command");
+#endif
 		status = WLAN_STATUS_FAILURE;
 	}
 
@@ -3388,8 +2630,9 @@ uint32_t wlanSendNicPowerCtrlCmd(IN struct ADAPTER
  * \return (none)
  */
 /*----------------------------------------------------------------------------*/
-u_int8_t wlanIsHandlerAllowedInRFTest(IN PFN_OID_HANDLER_FUNC pfnOidHandler,
-				      IN u_int8_t fgSetInfo)
+u_int8_t wlanIsHandlerAllowedInRFTest(
+			IN PFN_OID_HANDLER_FUNC pfnOidHandler,
+			IN u_int8_t fgSetInfo)
 {
 	PFN_OID_HANDLER_FUNC *apfnOidHandlerAllowedInRFTest;
 	uint32_t i;
@@ -3425,28 +2668,23 @@ u_int8_t wlanIsHandlerAllowedInRFTest(IN PFN_OID_HANDLER_FUNC pfnOidHandler,
  */
 /*----------------------------------------------------------------------------*/
 
-uint32_t wlanSetChipEcoInfo(IN struct ADAPTER *prAdapter)
+void wlanSetChipEcoInfo(IN struct ADAPTER *prAdapter)
 {
-	uint32_t hw_version = 0, sw_version = 0;
+	uint32_t hw_version, sw_version = 0;
 	struct mt66xx_chip_info *prChipInfo = prAdapter->chip_info;
 	uint32_t chip_id = prChipInfo->chip_id;
 	/* WLAN_STATUS status; */
-	uint32_t u4Status = WLAN_STATUS_SUCCESS;
 
 	DEBUGFUNC("wlanSetChipEcoInfo.\n");
 
-	if (wlanAccessRegister(prAdapter,
-		prChipInfo->top_hvr, &hw_version, 0, 0) !=
+	if (wlanAccessRegister(prAdapter, TOP_HVR, &hw_version, 0, 0) !=
 	    WLAN_STATUS_SUCCESS) {
 		DBGLOG(INIT, ERROR,
 		       "wlanSetChipEcoInfo >> get TOP_HVR failed.\n");
-		u4Status = WLAN_STATUS_FAILURE;
-	} else if (wlanAccessRegister(prAdapter,
-		prChipInfo->top_fvr, &sw_version, 0, 0) !=
+	} else if (wlanAccessRegister(prAdapter, TOP_FVR, &sw_version, 0, 0) !=
 	    WLAN_STATUS_SUCCESS) {
 		DBGLOG(INIT, ERROR,
 		       "wlanSetChipEcoInfo >> get TOP_FVR failed.\n");
-		u4Status = WLAN_STATUS_FAILURE;
 	} else {
 		/* success */
 		nicSetChipHwVer((uint8_t)(GET_HW_VER(hw_version) & 0xFF));
@@ -3462,11 +2700,8 @@ uint32_t wlanSetChipEcoInfo(IN struct ADAPTER *prAdapter)
 	       "Chip ID[%04X] Version[E%u] HW[0x%08x] SW[0x%08x]\n",
 	       chip_id, prAdapter->chip_info->eco_ver, hw_version,
 	       sw_version);
-
-	return u4Status;
 }
 
-#if (CFG_ENABLE_FW_DOWNLOAD == 1)
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is called to read/write a certain N9
@@ -3488,6 +2723,7 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 {
 	struct mt66xx_chip_info *prChipInfo;
 	struct CMD_INFO *prCmdInfo;
+	struct INIT_HIF_TX_HEADER *prInitHifTxHeader;
 	struct INIT_WIFI_EVENT *prInitEvent;
 	struct INIT_CMD_ACCESS_REG *prInitCmdAccessReg;
 	struct INIT_EVENT_ACCESS_REG *prInitEventAccessReg;
@@ -3504,8 +2740,7 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 
 	/* 1. Allocate CMD Info Packet and its Buffer. */
 	cmd_size = sizeof(struct INIT_HIF_TX_HEADER) +
-		sizeof(struct INIT_HIF_TX_HEADER_PENDING_FOR_HW_32BYTES) +
-		sizeof(struct INIT_CMD_ACCESS_REG);
+			sizeof(struct INIT_CMD_ACCESS_REG);
 	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
 
 	if (!prCmdInfo) {
@@ -3513,15 +2748,9 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 		return WLAN_STATUS_FAILURE;
 	}
 
-	u4EventSize = prChipInfo->init_evt_rxd_size +
-		prChipInfo->init_event_size +
+	u4EventSize = prChipInfo->rxd_size + prChipInfo->init_event_size +
 		sizeof(struct INIT_EVENT_ACCESS_REG);
 	aucBuffer = kalMemAlloc(u4EventSize, PHY_MEM_TYPE);
-	if (!aucBuffer) {
-		log_dbg(INIT, ERROR, "memory not enough for aucBuffer\n");
-		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-		return WLAN_STATUS_FAILURE;
-	}
 
 	prCmdInfo->u2InfoBufLen = cmd_size;
 
@@ -3536,17 +2765,25 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 	ucTC = TC0_INDEX;
 #endif
 
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-			prCmdInfo->pucInfoBuffer,
-			prCmdInfo->u2InfoBufLen,
-			INIT_CMD_ID_ACCESS_REG,
-			INIT_CMD_PACKET_TYPE_ID,
-			&ucCmdSeqNum,
-			FALSE,
-			(void **)&prInitCmdAccessReg,
-			TRUE, 0, S2D_INDEX_CMD_H2N);
+	/* 3. increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
+
+	/* 4. Setup common CMD Info Packet */
+	prInitHifTxHeader = (struct INIT_HIF_TX_HEADER *)
+					(prCmdInfo->pucInfoBuffer);
+	prInitHifTxHeader->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prInitHifTxHeader->u2PQ_ID = INIT_CMD_PQ_ID;
+	prInitHifTxHeader->ucHeaderFormat = INIT_CMD_PACKET_TYPE_ID;
+	prInitHifTxHeader->ucPktFt = INIT_PKT_FT_CMD;
+
+	prInitHifTxHeader->rInitWifiCmd.ucCID = INIT_CMD_ID_ACCESS_REG;
+
+	prInitHifTxHeader->rInitWifiCmd.ucPktTypeID = INIT_CMD_PACKET_TYPE_ID;
+	prInitHifTxHeader->rInitWifiCmd.ucSeqNum = ucCmdSeqNum;
 
 	/* 5. Setup CMD_ACCESS_REG */
+	prInitCmdAccessReg = (struct INIT_CMD_ACCESS_REG *)
+				(prInitHifTxHeader->rInitWifiCmd.aucBuffer);
 	prInitCmdAccessReg->ucSetQuery = ucSetQuery;
 	prInitCmdAccessReg->u4Address = u4Addr;
 	prInitCmdAccessReg->u4Data = u4Data;
@@ -3554,26 +2791,27 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 	/* 6. Send CMD_ACCESS_REG command */
 	while (1) {
 		/* 6.1 Acquire TX Resource */
-		if (nicTxAcquireResource
-		    (prAdapter, ucTC, nicTxGetPageCount(prAdapter,
-		    prCmdInfo->u2InfoBufLen, TRUE), TRUE)
-		    == WLAN_STATUS_RESOURCES) {
-			if (nicTxPollingResource(prAdapter,
-						 ucTC) != WLAN_STATUS_SUCCESS) {
+		if (nicTxAcquireResource(
+			prAdapter,
+			ucTC,
+			nicTxGetPageCount(prAdapter, prCmdInfo->u2InfoBufLen,
+									TRUE),
+			TRUE) == WLAN_STATUS_RESOURCES) {
+			if (nicTxPollingResource(prAdapter, ucTC)
+				!= WLAN_STATUS_SUCCESS) {
 				u4Status = WLAN_STATUS_FAILURE;
 				DBGLOG(INIT, ERROR,
-				       "Fail to get TX resource return within timeout\n");
+				"Fail to get TX resource within timeout\n");
 				goto exit;
 			}
 			continue;
 		}
-
 		/* 6.2 Send CMD Info Packet */
 		if (nicTxInitCmd(prAdapter, prCmdInfo,
-		    prChipInfo->u2TxInitCmdPort) != WLAN_STATUS_SUCCESS) {
+			prChipInfo->u2TxInitCmdPort) != WLAN_STATUS_SUCCESS) {
 			u4Status = WLAN_STATUS_FAILURE;
 			DBGLOG(INIT, ERROR,
-			       "Fail to transmit image download command\n");
+				"Fail to transmit image download command\n");
 			goto exit;
 		}
 
@@ -3585,21 +2823,14 @@ uint32_t wlanAccessRegister(IN struct ADAPTER *prAdapter,
 					    aucBuffer, u4EventSize);
 	if (ucSetQuery == 0) {
 		prInitEvent = (struct INIT_WIFI_EVENT *)
-			(aucBuffer + prChipInfo->init_evt_rxd_size);
+			(aucBuffer + prChipInfo->rxd_size);
 		prInitEventAccessReg = (struct INIT_EVENT_ACCESS_REG *)
 			prInitEvent->aucBuffer;
 
-		if (!prInitEventAccessReg) {
-			DBGLOG(INIT, ERROR,
-			"prInitEventAccessReg == NULL\n");
-			u4Status = WLAN_STATUS_FAILURE;
-			goto exit;
-		}
-
 		if (prInitEventAccessReg->u4Address != u4Addr) {
 			DBGLOG(INIT, ERROR,
-			       "Event reports address incorrect. 0x%08x, 0x%08x.\n",
-			       u4Addr, prInitEventAccessReg->u4Address);
+			"Event reports address incorrect. 0x%08x, 0x%08x.\n",
+			u4Addr, prInitEventAccessReg->u4Address);
 			u4Status = WLAN_STATUS_FAILURE;
 		}
 		*pru4Result = prInitEventAccessReg->u4Data;
@@ -3642,42 +2873,42 @@ uint32_t wlanAccessRegisterStatus(IN struct ADAPTER *prAdapter,
 	prChipInfo = prAdapter->chip_info;
 
 	do {
-		if (kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE
-		    || fgIsBusAccessFailed == TRUE) {
+		if (kalIsCardRemoved(prAdapter->prGlueInfo) == TRUE ||
+				     fgIsBusAccessFailed == TRUE) {
 			u4Status = WLAN_STATUS_FAILURE;
-		} else if (nicRxWaitResponse(prAdapter, ucPortIdx, prEvent,
-		    u4EventLen, &u4RxPktLength) != WLAN_STATUS_SUCCESS) {
-			glSetRstReason(RST_ACCESS_REG_FAIL);
+		} else if (nicRxWaitResponse(prAdapter,
+					     ucPortIdx,
+					     prEvent,
+					     u4EventLen, &u4RxPktLength) !=
+					     WLAN_STATUS_SUCCESS) {
 			GL_RESET_TRIGGER(prAdapter,
 					 RST_FLAG_DO_CORE_DUMP |
 					 RST_FLAG_PREVENT_POWER_OFF);
 			u4Status = WLAN_STATUS_FAILURE;
 		} else {
 			prInitEvent = (struct INIT_WIFI_EVENT *)
-				(prEvent + prChipInfo->init_evt_rxd_size);
+				(prEvent + prChipInfo->rxd_size);
 
 			/* EID / SeqNum check */
 			if (((prInitEvent->ucEID != INIT_EVENT_ID_CMD_RESULT) &&
 			     (ucSetQuery == 1)) ||
 			    ((prInitEvent->ucEID != INIT_EVENT_ID_ACCESS_REG)
 				&& (ucSetQuery == 0))) {
-				glSetRstReason(RST_ACCESS_REG_FAIL);
 				GL_RESET_TRIGGER(prAdapter,
-						 RST_FLAG_DO_CORE_DUMP |
-						 RST_FLAG_PREVENT_POWER_OFF);
+					RST_FLAG_DO_CORE_DUMP |
+					RST_FLAG_PREVENT_POWER_OFF);
 				u4Status = WLAN_STATUS_FAILURE;
 				DBGLOG(INIT, ERROR,
 				       "wlanAccessRegisterStatus: incorrect ucEID. ucSetQuery = 0x%x\n",
 				       ucSetQuery);
 			} else if (prInitEvent->ucSeqNum != ucCmdSeqNum) {
 				u4Status = WLAN_STATUS_FAILURE;
-				glSetRstReason(RST_ACCESS_REG_FAIL);
 				GL_RESET_TRIGGER(prAdapter,
-						 RST_FLAG_DO_CORE_DUMP |
-						 RST_FLAG_PREVENT_POWER_OFF);
+						RST_FLAG_DO_CORE_DUMP |
+						RST_FLAG_PREVENT_POWER_OFF);
 				DBGLOG(INIT, ERROR,
-				       "wlanAccessRegisterStatus: incorrect ucCmdSeqNum. = 0x%x\n",
-				       ucCmdSeqNum);
+					"incorrect ucCmdSeqNum. = 0x%x\n",
+					ucCmdSeqNum);
 			} else {
 			}
 		}
@@ -3685,8 +2916,6 @@ uint32_t wlanAccessRegisterStatus(IN struct ADAPTER *prAdapter,
 
 	return u4Status;
 }
-#endif /* CFG_ENABLE_FW_DOWNLOAD == 1 */
-
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is called to process queued RX packets
@@ -3853,8 +3082,7 @@ void wlanoidClearTimeoutCheck(IN struct ADAPTER *prAdapter)
  *         WLAN_STATUS_SUCCESS   The request has been processed
  */
 /*----------------------------------------------------------------------------*/
-uint32_t wlanUpdateNetworkAddress(IN struct ADAPTER
-				  *prAdapter)
+uint32_t wlanUpdateNetworkAddress(IN struct ADAPTER *prAdapter)
 {
 	const uint8_t aucZeroMacAddr[] = NULL_MAC_ADDR;
 	uint8_t rMacAddr[PARAM_MAC_ADDR_LEN];
@@ -3893,10 +3121,6 @@ uint32_t wlanUpdateNetworkAddress(IN struct ADAPTER
 #endif
 	}
 
-#if WLAN_INCLUDE_SYS
-	sysMacAddrOverride(rMacAddr);
-#endif
-
 	COPY_MAC_ADDR(prAdapter->rWifiVar.aucMacAddress, rMacAddr);
 
 	return WLAN_STATUS_SUCCESS;
@@ -3917,48 +3141,65 @@ uint32_t wlanUpdateNetworkAddress(IN struct ADAPTER
 /*----------------------------------------------------------------------------*/
 uint32_t wlanUpdateBasicConfig(IN struct ADAPTER *prAdapter)
 {
+	uint8_t ucCmdSeqNum;
 	struct CMD_INFO *prCmdInfo;
+	struct WIFI_CMD *prWifiCmd;
 	struct CMD_BASIC_CONFIG *prCmdBasicConfig;
+	struct PSE_CMD_HDR *prPseCmdHdr;
 	uint32_t rResult;
 	struct WIFI_VAR *prWifiVar = &prAdapter->rWifiVar;
-	struct mt66xx_chip_info *prChipInfo;
-	uint16_t cmd_size;
 
 	DEBUGFUNC("wlanUpdateBasicConfig");
 
 	ASSERT(prAdapter);
-	prChipInfo = prAdapter->chip_info;
 
-	cmd_size = prChipInfo->u2CmdTxHdrSize + sizeof(struct CMD_BASIC_CONFIG);
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
+				CMD_HDR_SIZE + sizeof(struct CMD_BASIC_CONFIG));
 
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
 		return WLAN_STATUS_FAILURE;
 	}
+	/* increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
 
 	/* compose CMD_BUILD_CONNECTION cmd pkt */
 	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
+	prCmdInfo->u2InfoBufLen = CMD_HDR_SIZE + sizeof(
+					  struct CMD_BASIC_CONFIG);
 	prCmdInfo->pfCmdDoneHandler = NULL;
 	prCmdInfo->pfCmdTimeoutHandler = NULL;
 	prCmdInfo->fgIsOid = FALSE;
 	prCmdInfo->ucCID = CMD_ID_BASIC_CONFIG;
 	prCmdInfo->fgSetQuery = TRUE;
 	prCmdInfo->fgNeedResp = FALSE;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = sizeof(struct CMD_BASIC_CONFIG);
 
 	/* Setup WIFI_CMD_T */
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen,
-		prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery,
-		&prCmdBasicConfig, FALSE, 0, S2D_INDEX_CMD_H2N);
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
+
+	prPseCmdHdr = (struct PSE_CMD_HDR *) (
+			      prCmdInfo->pucInfoBuffer);
+	prPseCmdHdr->u2Qidx = TXD_Q_IDX_MCU_RQ0;
+	prPseCmdHdr->u2Pidx = TXD_P_IDX_MCU;
+	prPseCmdHdr->u2Hf = TXD_HF_CMD;
+	prPseCmdHdr->u2Ft = TXD_FT_LONG_FORMAT;
+	prPseCmdHdr->u2PktFt = TXD_PKT_FT_CMD;
+
+	prWifiCmd->u2Length = prWifiCmd->u2TxByteCount - sizeof(
+				      struct PSE_CMD_HDR);
 
 	/* configure CMD_BASIC_CONFIG */
+
+	prCmdBasicConfig = (struct CMD_BASIC_CONFIG *) (
+				   prWifiCmd->aucBuffer);
 	kalMemZero(prCmdBasicConfig,
 		   sizeof(struct CMD_BASIC_CONFIG));
 	prCmdBasicConfig->ucNative80211 = 0;
@@ -4090,9 +3331,6 @@ u_int8_t wlanProcessTxFrame(IN struct ADAPTER *prAdapter,
 			if (rTxPacketInfo.u2Flag & BIT(ENUM_PKT_DNS))
 				GLUE_SET_PKT_FLAG(prPacket, ENUM_PKT_DNS);
 
-			if (rTxPacketInfo.u2Flag & BIT(ENUM_PKT_ICMPV6))
-				GLUE_SET_PKT_FLAG(prPacket, ENUM_PKT_ICMPV6);
-
 		}
 
 		ucMacHeaderLen = ETHER_HEADER_LEN;
@@ -4162,8 +3400,7 @@ u_int8_t wlanProcessSecurityFrame(IN struct ADAPTER
 		prCmdInfo->prPacket = prPacket;
 		prCmdInfo->prMsduInfo = prMsduInfo;
 		prCmdInfo->pfCmdDoneHandler = wlanSecurityFrameTxDone;
-		prCmdInfo->pfCmdTimeoutHandler =
-				wlanSecurityAndCmdDataFrameTxTimeout;
+		prCmdInfo->pfCmdTimeoutHandler = wlanSecurityFrameTxTimeout;
 		prCmdInfo->fgIsOid = FALSE;
 		prCmdInfo->fgSetQuery = TRUE;
 		prCmdInfo->fgNeedResp = FALSE;
@@ -4209,88 +3446,6 @@ u_int8_t wlanProcessSecurityFrame(IN struct ADAPTER
 
 /*----------------------------------------------------------------------------*/
 /*!
- * @brief This function is called to send data frame via firmware and queued
- *        into command queue
- *
- * @param prAdapter      Pointer of Adapter Data Structure
- * @param prPacket       Pointer of native packet
- *
- * @return TRUE
- *         FALSE
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanProcessCmdDataFrame(IN struct ADAPTER
-				  *prAdapter, IN void *prPacket)
-{
-	struct CMD_INFO *prCmdInfo;
-	struct MSDU_INFO *prMsduInfo;
-
-	ASSERT(prAdapter);
-	ASSERT(prPacket);
-
-	/* Allocate command buffer */
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, 0);
-	if (!prCmdInfo) {
-		DBGLOG_LIMITED(TX, INFO,
-			   "Failed to alloc CMD buffer for data frame!!\n");
-		return WLAN_STATUS_RESOURCES;
-	}
-
-	/* Get MSDU_INFO buffer */
-	prMsduInfo = cnmPktAlloc(prAdapter, 0);
-	if (!prMsduInfo) {
-		DBGLOG_LIMITED(TX, INFO,
-			   "Failed to alloc MSDU Info for data frame!!\n");
-
-		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-		return WLAN_STATUS_RESOURCES;
-	}
-
-	/* Fill-up MSDU_INFO and TxD*/
-	if (!nicTxFillMsduInfo(prAdapter, prMsduInfo, prPacket) ||
-		!nicTxProcessCmdDataPacket(prAdapter, prMsduInfo)) {
-
-		kalSendComplete(prAdapter->prGlueInfo, prPacket,
-				WLAN_STATUS_INVALID_PACKET);
-
-		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-		cnmPktFree(prAdapter, prMsduInfo);
-
-		return WLAN_STATUS_INVALID_PACKET;
-	}
-
-	/* Prepare command and enqueue */
-	prCmdInfo->eCmdType = COMMAND_TYPE_DATA_FRAME;
-	prCmdInfo->u2InfoBufLen = prMsduInfo->u2FrameLength;
-	prCmdInfo->pucInfoBuffer = NULL;
-	prCmdInfo->prPacket = prMsduInfo->prPacket;
-	prCmdInfo->prMsduInfo = prMsduInfo;
-	prCmdInfo->pfCmdDoneHandler = wlanCmdDataFrameTxDone;
-	prCmdInfo->pfCmdTimeoutHandler = wlanSecurityAndCmdDataFrameTxTimeout;
-	prCmdInfo->fgIsOid = FALSE;
-	prCmdInfo->fgSetQuery = TRUE;
-	prCmdInfo->fgNeedResp = FALSE;
-	prCmdInfo->ucCmdSeqNum = prMsduInfo->ucTxSeqNum;
-
-	DBGLOG(TX, INFO,
-		"DPP EN-Q MSDU[0x%p] SEQ[%u] BSS[%u] STA[%u] Len[%u]to CMD Q\n",
-		prMsduInfo,
-		prMsduInfo->ucTxSeqNum,
-		prMsduInfo->ucBssIndex,
-		prMsduInfo->ucStaRecIndex,
-		prMsduInfo->u2FrameLength);
-
-	kalEnqueueCommand(prAdapter->prGlueInfo,
-			  (struct QUE_ENTRY *) prCmdInfo);
-
-	GLUE_SET_EVENT(prAdapter->prGlueInfo);
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-
-/*----------------------------------------------------------------------------*/
-/*!
  * @brief This function is called when 802.1x or Bluetooth-over-Wi-Fi
  *        security frames has been sent to firmware
  *
@@ -4313,9 +3468,7 @@ void wlanSecurityFrameTxDone(IN struct ADAPTER *prAdapter,
 	if (GET_BSS_INFO_BY_INDEX(prAdapter,
 				  prMsduInfo->ucBssIndex)->eNetworkType ==
 	    NETWORK_TYPE_AIS
-	    &&
-	    aisGetAisSpecBssInfo(prAdapter,
-	    prMsduInfo->ucBssIndex)->fgCounterMeasure) {
+	    && prAdapter->rWifiVar.rAisSpecificBssInfo.fgCounterMeasure) {
 		struct STA_RECORD *prSta = cnmGetStaRecByIndex(prAdapter,
 					   prMsduInfo->ucBssIndex);
 
@@ -4345,30 +3498,6 @@ void wlanSecurityFrameTxDone(IN struct ADAPTER *prAdapter,
 
 /*----------------------------------------------------------------------------*/
 /*!
- * @brief This function is called when command data frame has been
- *        sent to firmware
- *
- * @param prAdapter      Pointer of Adapter Data Structure
- * @param prCmdInfo      Pointer of CMD_INFO_T
- * @param pucEventBuf    meaningless, only for API compatibility
- *
- * @return none
- */
-/*----------------------------------------------------------------------------*/
-void wlanCmdDataFrameTxDone(IN struct ADAPTER *prAdapter,
-			     IN struct CMD_INFO *prCmdInfo,
-			     IN uint8_t *pucEventBuf)
-{
-
-	ASSERT(prAdapter);
-	ASSERT(prCmdInfo);
-
-	kalSecurityFrameSendComplete(prAdapter->prGlueInfo,
-				     prCmdInfo->prPacket, WLAN_STATUS_SUCCESS);
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
  * @brief This function is called when 802.1x or Bluetooth-over-Wi-Fi
  *        security frames has failed sending to firmware
  *
@@ -4378,7 +3507,7 @@ void wlanCmdDataFrameTxDone(IN struct ADAPTER *prAdapter,
  * @return none
  */
 /*----------------------------------------------------------------------------*/
-void wlanSecurityAndCmdDataFrameTxTimeout(IN struct ADAPTER
+void wlanSecurityFrameTxTimeout(IN struct ADAPTER
 				*prAdapter, IN struct CMD_INFO *prCmdInfo)
 {
 	ASSERT(prAdapter);
@@ -4397,29 +3526,23 @@ void wlanSecurityAndCmdDataFrameTxTimeout(IN struct ADAPTER
  * @return none
  */
 /*----------------------------------------------------------------------------*/
-void wlanClearScanningResult(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucBssIndex)
+void wlanClearScanningResult(IN struct ADAPTER *prAdapter)
 {
 	u_int8_t fgKeepCurrOne = FALSE;
 	uint32_t i;
 	struct WLAN_INFO *prWlanInfo;
-	struct PARAM_BSSID_EX *prCurrBssid;
 
 	ASSERT(prAdapter);
 	prWlanInfo = &(prAdapter->rWlanInfo);
 
-	prCurrBssid = aisGetCurrBssId(prAdapter,
-		ucBssIndex);
-
 	/* clear scanning result */
-	if (kalGetMediaStateIndicated(prAdapter->prGlueInfo,
-		ucBssIndex) ==
-	    MEDIA_STATE_CONNECTED) {
+	if (kalGetMediaStateIndicated(prAdapter->prGlueInfo) ==
+	    PARAM_MEDIA_STATE_CONNECTED) {
 
 		for (i = 0; i < prWlanInfo->u4ScanResultNum; i++) {
 
 		if (EQUAL_MAC_ADDR(
-		    prCurrBssid->arMacAddress,
+		    prWlanInfo->rCurrBssId.arMacAddress,
 		    prWlanInfo->arScanResult[i].arMacAddress)) {
 			fgKeepCurrOne = TRUE;
 
@@ -4624,18 +3747,20 @@ void wlanPrintVersion(IN struct ADAPTER *prAdapter)
  *         WLAN_STATUS_FAILURE
  */
 /*----------------------------------------------------------------------------*/
-uint32_t wlanQueryNicCapability(IN struct ADAPTER
-				*prAdapter)
+uint32_t wlanQueryNicCapability(IN struct ADAPTER *prAdapter)
 {
 	struct mt66xx_chip_info *prChipInfo;
 	uint8_t aucZeroMacAddr[] = NULL_MAC_ADDR;
+	uint8_t ucCmdSeqNum;
 	struct CMD_INFO *prCmdInfo;
+	struct WIFI_CMD *prWifiCmd;
 	uint32_t u4RxPktLength;
 	uint8_t *aucBuffer;
 	uint32_t u4EventSize;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	struct WIFI_EVENT *prEvent;
 	struct EVENT_NIC_CAPABILITY *prEventNicCapability;
-	uint16_t cmd_size;
+	struct PSE_CMD_HDR *prPseCmdHdr;
 
 	ASSERT(prAdapter);
 	prChipInfo = prAdapter->chip_info;
@@ -4643,9 +3768,8 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 	DEBUGFUNC("wlanQueryNicCapability");
 
 	/* 1. Allocate CMD Info Packet and its Buffer */
-	cmd_size = prChipInfo->u2CmdTxHdrSize
-			+ sizeof(struct EVENT_NIC_CAPABILITY);
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
+			CMD_HDR_SIZE + sizeof(struct EVENT_NIC_CAPABILITY));
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
 		return WLAN_STATUS_FAILURE;
@@ -4654,31 +3778,40 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 	u4EventSize = prChipInfo->rxd_size + prChipInfo->event_hdr_size +
 		sizeof(struct EVENT_NIC_CAPABILITY);
 	aucBuffer = kalMemAlloc(u4EventSize, PHY_MEM_TYPE);
-	if (!aucBuffer) {
-		DBGLOG(INIT, ERROR, "Not enough memory for aucBuffer\n");
-		cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-		return WLAN_STATUS_FAILURE;
-	}
+
+	/* increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
 
 	/* compose CMD_BUILD_CONNECTION cmd pkt */
 	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
+	prCmdInfo->u2InfoBufLen = CMD_HDR_SIZE +
+					sizeof(struct EVENT_NIC_CAPABILITY);
 	prCmdInfo->pfCmdDoneHandler = NULL;
 	prCmdInfo->fgIsOid = FALSE;
 	prCmdInfo->ucCID = CMD_ID_GET_NIC_CAPABILITY;
 	prCmdInfo->fgSetQuery = FALSE;
 	prCmdInfo->fgNeedResp = TRUE;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = 0;
 
 	/* Setup WIFI_CMD_T */
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-			prCmdInfo->pucInfoBuffer,
-			prCmdInfo->u2InfoBufLen,
-			prCmdInfo->ucCID,
-			CMD_PACKET_TYPE_ID,
-			&prCmdInfo->ucCmdSeqNum,
-			prCmdInfo->fgSetQuery,
-			NULL, FALSE, 0, S2D_INDEX_CMD_H2N);
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
+
+	prPseCmdHdr = (struct PSE_CMD_HDR *) (prCmdInfo->pucInfoBuffer);
+	prPseCmdHdr->u2Qidx = TXD_Q_IDX_MCU_RQ0;
+	prPseCmdHdr->u2Pidx = TXD_P_IDX_MCU;
+	prPseCmdHdr->u2Hf = TXD_HF_CMD;
+	prPseCmdHdr->u2Ft = TXD_FT_LONG_FORMAT;
+	prPseCmdHdr->u2PktFt = TXD_PKT_FT_CMD;
+
+	prWifiCmd->u2Length = prWifiCmd->u2TxByteCount -
+				sizeof(struct PSE_CMD_HDR);
 
 	wlanSendCommand(prAdapter, prCmdInfo);
 
@@ -4694,11 +3827,11 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 			return WLAN_STATUS_FAILURE;
 		}
 		/* header checking .. */
-		if (NIC_RX_GET_U2_SW_PKT_TYPE(aucBuffer)
-			!= prChipInfo->u2RxSwPktEvent) {
+		prRxStatus = (struct HW_MAC_RX_DESC *) aucBuffer;
+		if (prRxStatus->u2PktTYpe != RXM_RXD_PKT_TYPE_SW_EVENT) {
 			DBGLOG(INIT, WARN,
-			       "%s: skip unexpected Rx pkt type[0x%04x]\n",
-			       __func__, NIC_RX_GET_U2_SW_PKT_TYPE(aucBuffer));
+				"skip unexpected Rx pkt type[0x%04x]\n",
+				prRxStatus->u2PktTYpe);
 			continue;
 		}
 
@@ -4708,39 +3841,35 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 			(struct EVENT_NIC_CAPABILITY *)prEvent->aucBuffer;
 
 		if (prEvent->ucEID != EVENT_ID_NIC_CAPABILITY) {
-			DBGLOG(INIT, WARN,
-			      "%s: skip unexpected event ID[0x%02x]\n",
-			      __func__, prEvent->ucEID);
+			DBGLOG(INIT, WARN, "skip unexpected event ID[0x%02x]\n",
+				prEvent->ucEID);
 			continue;
 		} else {
 			break;
 		}
 	}
 
-	prEventNicCapability = (struct EVENT_NIC_CAPABILITY *) (
-				       prEvent->aucBuffer);
+	prEventNicCapability =
+		(struct EVENT_NIC_CAPABILITY *) (prEvent->aucBuffer);
 
-	prAdapter->rVerInfo.u2FwProductID =
-		prEventNicCapability->u2ProductID;
+	prAdapter->rVerInfo.u2FwProductID = prEventNicCapability->u2ProductID;
 	kalMemCopy(prAdapter->rVerInfo.aucFwBranchInfo,
-		   prEventNicCapability->aucBranchInfo, 4);
+			prEventNicCapability->aucBranchInfo, 4);
 	prAdapter->rVerInfo.u2FwOwnVersion =
-		prEventNicCapability->u2FwVersion;
+			prEventNicCapability->u2FwVersion;
 	prAdapter->rVerInfo.ucFwBuildNumber =
-		prEventNicCapability->ucFwBuildNumber;
+			prEventNicCapability->ucFwBuildNumber;
 	kalMemCopy(prAdapter->rVerInfo.aucFwDateCode,
-		   prEventNicCapability->aucDateCode, 16);
+			prEventNicCapability->aucDateCode, 16);
 	prAdapter->rVerInfo.u2FwPeerVersion =
 		prEventNicCapability->u2DriverVersion;
 	prAdapter->fgIsHw5GBandDisabled =
-			(u_int8_t)prEventNicCapability->ucHw5GBandDisabled;
+		(u_int8_t) prEventNicCapability->ucHw5GBandDisabled;
 	prAdapter->fgIsEepromUsed =
-			(u_int8_t)prEventNicCapability->ucEepromUsed;
-	prAdapter->fgIsEmbbededMacAddrValid =
-			(u_int8_t)(!IS_BMCAST_MAC_ADDR(
-				prEventNicCapability->aucMacAddr) &&
-				!EQUAL_MAC_ADDR(aucZeroMacAddr,
-				prEventNicCapability->aucMacAddr));
+		(u_int8_t) prEventNicCapability->ucEepromUsed;
+	prAdapter->fgIsEmbbededMacAddrValid = (u_int8_t)
+	    (!IS_BMCAST_MAC_ADDR(prEventNicCapability->aucMacAddr) &&
+	     !EQUAL_MAC_ADDR(aucZeroMacAddr, prEventNicCapability->aucMacAddr));
 
 	COPY_MAC_ADDR(prAdapter->rWifiVar.aucPermanentAddress,
 		      prEventNicCapability->aucMacAddr);
@@ -4748,24 +3877,21 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 		      prEventNicCapability->aucMacAddr);
 
 	prAdapter->rWifiVar.ucStaVht &=
-				(!(prEventNicCapability->ucHwNotSupportAC));
+		(!(prEventNicCapability->ucHwNotSupportAC));
 	prAdapter->rWifiVar.ucApVht &=
-				(!(prEventNicCapability->ucHwNotSupportAC));
+		(!(prEventNicCapability->ucHwNotSupportAC));
 	prAdapter->rWifiVar.ucP2pGoVht &=
-				(!(prEventNicCapability->ucHwNotSupportAC));
+		(!(prEventNicCapability->ucHwNotSupportAC));
 	prAdapter->rWifiVar.ucP2pGcVht &=
-				(!(prEventNicCapability->ucHwNotSupportAC));
+		(!(prEventNicCapability->ucHwNotSupportAC));
+
 	prAdapter->rWifiVar.ucHwNotSupportAC =
 				prEventNicCapability->ucHwNotSupportAC;
 
-	prAdapter->u4FwCompileFlag0 =
-		prEventNicCapability->u4CompileFlag0;
-	prAdapter->u4FwCompileFlag1 =
-		prEventNicCapability->u4CompileFlag1;
-	prAdapter->u4FwFeatureFlag0 =
-		prEventNicCapability->u4FeatureFlag0;
-	prAdapter->u4FwFeatureFlag1 =
-		prEventNicCapability->u4FeatureFlag1;
+	prAdapter->u4FwCompileFlag0 = prEventNicCapability->u4CompileFlag0;
+	prAdapter->u4FwCompileFlag1 = prEventNicCapability->u4CompileFlag1;
+	prAdapter->u4FwFeatureFlag0 = prEventNicCapability->u4FeatureFlag0;
+	prAdapter->u4FwFeatureFlag1 = prEventNicCapability->u4FeatureFlag1;
 
 	if (prEventNicCapability->ucHwSetNss1x1)
 		prAdapter->rWifiVar.ucNSS = 1;
@@ -4774,23 +3900,16 @@ uint32_t wlanQueryNicCapability(IN struct ADAPTER
 	if (prEventNicCapability->ucHwNotSupportDBDC)
 		prAdapter->rWifiVar.eDbdcMode = ENUM_DBDC_MODE_DISABLED;
 #endif
-	if (prEventNicCapability->ucHwBssIdNum > 0
-	    && prEventNicCapability->ucHwBssIdNum <= MAX_BSSID_NUM) {
-		prAdapter->ucHwBssIdNum =
-			prEventNicCapability->ucHwBssIdNum;
+	if (prEventNicCapability->ucHwBssIdNum > 0 &&
+	    prEventNicCapability->ucHwBssIdNum <= MAX_BSSID_NUM) {
+		prAdapter->ucHwBssIdNum = prEventNicCapability->ucHwBssIdNum;
 		prAdapter->ucP2PDevBssIdx = prAdapter->ucHwBssIdNum;
-		/* v1 event does not report WmmSetNum,
-		 * Assume it is the same as HwBssNum
-		 */
-		prAdapter->ucWmmSetNum =
-			prEventNicCapability->ucHwBssIdNum;
 		prAdapter->aprBssInfo[prAdapter->ucP2PDevBssIdx] =
-			&prAdapter->rWifiVar.rP2pDevInfo;
+					&prAdapter->rWifiVar.rP2pDevInfo;
 	}
 
 #if CFG_ENABLE_CAL_LOG
-	DBGLOG(INIT, TRACE,
-	       "RF CAL FAIL  = (%d),BB CAL FAIL  = (%d)\n",
+	DBGLOG(INIT, TRACE, "RF CAL FAIL  = (%d),BB CAL FAIL  = (%d)\n",
 	       prEventNicCapability->ucRfCalFail,
 	       prEventNicCapability->ucBbCalFail);
 #endif
@@ -4815,21 +3934,22 @@ uint32_t wlanQueryPdMcr(IN struct ADAPTER *prAdapter,
 			struct PARAM_MCR_RW_STRUCT *prMcrRdInfo)
 {
 	struct mt66xx_chip_info *prChipInfo;
+	uint8_t ucCmdSeqNum;
 	struct CMD_INFO *prCmdInfo;
+	struct WIFI_CMD *prWifiCmd;
 	uint32_t u4RxPktLength;
 	uint8_t *aucBuffer;
 	uint32_t u4EventSize;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	struct WIFI_EVENT *prEvent;
 	struct CMD_ACCESS_REG *prCmdMcrQuery;
-	uint16_t u2PacketType;
-	uint16_t cmd_size;
 
 	ASSERT(prAdapter);
 	prChipInfo = prAdapter->chip_info;
 
 	/* 1. Allocate CMD Info Packet and its Buffer */
-	cmd_size = prChipInfo->u2CmdTxHdrSize + sizeof(struct CMD_ACCESS_REG);
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
+	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
+				CMD_HDR_SIZE + sizeof(struct CMD_ACCESS_REG));
 
 	if (!prCmdInfo) {
 		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T ==> FAILED.\n");
@@ -4840,28 +3960,31 @@ uint32_t wlanQueryPdMcr(IN struct ADAPTER *prAdapter,
 		struct CMD_ACCESS_REG;
 	aucBuffer = kalMemAlloc(u4EventSize, PHY_MEM_TYPE);
 
+	/* increase command sequence number */
+	ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
+
 	/* compose CMD_BUILD_CONNECTION cmd pkt */
 	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
+	prCmdInfo->u2InfoBufLen = (uint16_t) (CMD_HDR_SIZE + sizeof(
+			struct CMD_ACCESS_REG));
 	prCmdInfo->pfCmdDoneHandler = NULL;
 	prCmdInfo->pfCmdTimeoutHandler = nicOidCmdTimeoutCommon;
 	prCmdInfo->fgIsOid = FALSE;
 	prCmdInfo->ucCID = CMD_ID_ACCESS_REG;
 	prCmdInfo->fgSetQuery = FALSE;
 	prCmdInfo->fgNeedResp = TRUE;
+	prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 	prCmdInfo->u4SetInfoLen = sizeof(struct CMD_ACCESS_REG);
 
 	/* Setup WIFI_CMD_T */
-	NIC_FILL_CMD_TX_HDR(
-			prAdapter,
-			prCmdInfo->pucInfoBuffer,
-			prCmdInfo->u2InfoBufLen,
-			prCmdInfo->ucCID,
-			CMD_PACKET_TYPE_ID,
-			&prCmdInfo->ucCmdSeqNum,
-			prCmdInfo->fgSetQuery,
-			&prCmdMcrQuery, FALSE, 0, S2D_INDEX_CMD_H2N);
-	kalMemCopy(prCmdMcrQuery, prMcrRdInfo,
+	prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+	prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+	prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+	prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+	prWifiCmd->ucCID = prCmdInfo->ucCID;
+	prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+	prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
+	kalMemCopy(prWifiCmd->aucBuffer, prMcrRdInfo,
 		   sizeof(struct CMD_ACCESS_REG));
 
 	wlanSendCommand(prAdapter, prCmdInfo);
@@ -4873,8 +3996,8 @@ uint32_t wlanQueryPdMcr(IN struct ADAPTER *prAdapter,
 		return WLAN_STATUS_FAILURE;
 	}
 	/* header checking .. */
-	u2PacketType = NIC_RX_GET_PKT_TYPE(aucBuffer);
-	if (u2PacketType != RX_PKT_TYPE_SW_DEFINED) {
+	prRxStatus = (struct HW_MAC_RX_DESC *) aucBuffer;
+	if (prRxStatus->u2PktTYpe != RXM_RXD_PKT_TYPE_SW_EVENT) {
 		kalMemFree(aucBuffer, PHY_MEM_TYPE, u4EventSize);
 		return WLAN_STATUS_FAILURE;
 	}
@@ -4886,8 +4009,7 @@ uint32_t wlanQueryPdMcr(IN struct ADAPTER *prAdapter,
 		return WLAN_STATUS_FAILURE;
 	}
 
-	prCmdMcrQuery = (struct CMD_ACCESS_REG *) (
-				prEvent->aucBuffer);
+	prCmdMcrQuery = (struct CMD_ACCESS_REG *) (prEvent->aucBuffer);
 	prMcrRdInfo->u4McrOffset = prCmdMcrQuery->u4Address;
 	prMcrRdInfo->u4McrData = prCmdMcrQuery->u4Data;
 
@@ -4949,183 +4071,81 @@ static int32_t wlanCal6628EfuseForm(IN struct ADAPTER
 
 #endif
 
-#define NVRAM_OFS(elment) OFFSET_OF(struct WIFI_CFG_PARAM_STRUCT, elment)
-
-uint32_t wlanGetMiniTxPower(IN struct ADAPTER *prAdapter,
-				  IN enum ENUM_BAND eBand,
-				  IN enum ENUM_PHY_MODE_TYPE ePhyMode,
-				  OUT int8_t *pTxPwr)
+#if CFG_SUPPORT_NVRAM_5G
+uint32_t wlanLoadManufactureData_5G(IN struct ADAPTER
+				    *prAdapter, IN struct REG_INFO *prRegInfo)
 {
-#ifdef SOC3_0
-	struct REG_INFO *prRegInfo;
-	struct WIFI_CFG_PARAM_STRUCT *prNvramSettings;
-	uint8_t *pu1Addr;
-	int8_t bandIdx = 0;
 
-	int8_t minTxPwr = 0x7F;
-	int8_t nvTxPwr = 0;
-	uint32_t rateIdx = 0;
-	uint32_t startOfs = 0;
-	uint32_t endOfs = 0;
-
-	struct NVRAM_FRAGMENT_RANGE arRange[2][PHY_MODE_TYPE_NUM] = {
-		/*BAND2G4*/
-		{
-			/*CCK*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrCck1M),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrCck11M)},
-			/*OFDM*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrOfdm6M),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrOfdm54M)},
-			/*HT20*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrHt20Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrHt20Mcs7)},
-			/*HT40*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrHt40Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrHt40Mcs32)},
-			/*VHT20*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrVht20Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrVht20Mcs9)},
-			/*VHT40*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrVht40Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrVht40Mcs9)},
-			/*VHT80*/
-			{0, 0},
-			/*SU20*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU242Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU242Mcs11)},
-			/*SU40*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU484Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU484Mcs11)},
-			/*SU80*/
-			{0, 0},
-			/*RU26*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU26Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU26Mcs11)},
-			/*RU52*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU52Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU52Mcs11)},
-			/*RU106*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU106Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU106Mcs11)},
-			/*RU242*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU242Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU242Mcs11)},
-			/*RU484*/
-			{NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU484Mcs0),
-			NVRAM_OFS(r2G4Pwr.uc2G4TxPwrRU484Mcs11)},
-			/*RU996*/
-			{0, 0},
-		},
-		/*BAND5G*/
-		{
-			/*CCK*/
-			{0, 0},
-			/*OFDM*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrOfdm6M),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrOfdm54M)},
-			/*HT20*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrHt20Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrHt20Mcs7)},
-			/*HT40*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrHt40Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrHt40Mcs32)},
-			/*VHT20*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrVht20Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrVht20Mcs9)},
-			/*VHT40*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrVht40Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrVht40Mcs9)},
-			/*VHT80*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrVht80Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrVht80Mcs9)},
-			/*SU20*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU242Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU242Mcs11)},
-			/*SU40*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU484Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU484Mcs11)},
-			/*SU80*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU996Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU996Mcs11)},
-			/*RU26*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU26Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU26Mcs11)},
-			/*RU52*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU52Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU52Mcs11)},
-			/*RU106*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU106Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU106Mcs11)},
-			/*RU242*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU242Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU242Mcs11)},
-			/*RU484*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU484Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU484Mcs11)},
-			/*RU996*/
-			{NVRAM_OFS(r5GPwr.uc5GTxPwrRU996Mcs0),
-			NVRAM_OFS(r5GPwr.uc5GTxPwrRU996Mcs11)},
-		}
-	};
+	struct BANDEDGE_5G *pr5GBandEdge;
 
 	ASSERT(prAdapter);
-	prRegInfo = &prAdapter->prGlueInfo->rRegInfo;
 
-	ASSERT(prRegInfo);
-	prNvramSettings = prRegInfo->prNvramSettings;
-	ASSERT(prNvramSettings);
+	pr5GBandEdge =
+		&prRegInfo->prOldEfuseMapping->r5GBandEdgePwr;
 
-	if (prAdapter->prGlueInfo->fgNvramAvailable == FALSE) {
-		DBGLOG(INIT, WARN, "check Nvram fail\n");
-		return WLAN_STATUS_NOT_ACCEPTED;
+	/* 1. set band edge tx power if available */
+	if (pr5GBandEdge->uc5GBandEdgePwrUsed != 0) {
+		struct CMD_EDGE_TXPWR_LIMIT rCmdEdgeTxPwrLimit;
+
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrCCK = 0;
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM20 =
+			pr5GBandEdge->c5GBandEdgeMaxPwrOFDM20;
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM40 =
+			pr5GBandEdge->c5GBandEdgeMaxPwrOFDM40;
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM80 =
+			pr5GBandEdge->c5GBandEdgeMaxPwrOFDM80;
+
+		wlanSendSetQueryCmd(prAdapter,
+				    CMD_ID_SET_EDGE_TXPWR_LIMIT_5G,
+				    TRUE,
+				    FALSE,
+				    FALSE,
+				    NULL,
+				    NULL, sizeof(struct CMD_EDGE_TXPWR_LIMIT),
+				    (uint8_t *) &rCmdEdgeTxPwrLimit, NULL, 0);
+
+		/* dumpMemory8(&rCmdEdgeTxPwrLimit,4); */
 	}
 
-	if (eBand == BAND_2G4)
-		bandIdx = 0;
-	else if (eBand == BAND_5G)
-		bandIdx = 1;
-	else {
-		DBGLOG(INIT, WARN, "check Band fail(%d)\n",
-			eBand);
-		return WLAN_STATUS_NOT_ACCEPTED;
-	}
-	if (ePhyMode >= PHY_MODE_TYPE_NUM || ePhyMode < 0) {
-		DBGLOG(INIT, WARN, "check phy mode fail(%d)\n",
-			ePhyMode);
-		return WLAN_STATUS_NOT_ACCEPTED;
-	}
+	/* 2.set channel offset for 8 sub-band */
+	if (prRegInfo->prOldEfuseMapping->uc5GChannelOffsetVaild) {
+		struct CMD_POWER_OFFSET rCmdPowerOffset;
+		uint8_t i;
 
-	startOfs = arRange[bandIdx][ePhyMode].startOfs;
-	endOfs = arRange[bandIdx][ePhyMode].endOfs;
+		rCmdPowerOffset.ucBand = BAND_5G;
+		for (i = 0; i < MAX_SUBBAND_NUM_5G; i++)
+			rCmdPowerOffset.ucSubBandOffset[i] =
+				prRegInfo->prOldEfuseMapping->auc5GChOffset[i];
 
-
-	/*NVRAM start addreess :0*/
-	pu1Addr = (uint8_t *)&prNvramSettings->u2Part1OwnVersion;
-
-	for (rateIdx = startOfs; rateIdx <= endOfs; rateIdx++) {
-		nvTxPwr = *(pu1Addr + rateIdx);
-
-		if (nvTxPwr < minTxPwr)
-			minTxPwr = nvTxPwr;
+		wlanSendSetQueryCmd(prAdapter,
+				    CMD_ID_SET_CHANNEL_PWR_OFFSET,
+				    TRUE,
+				    FALSE,
+				    FALSE, NULL, NULL, sizeof(rCmdPowerOffset),
+				    (uint8_t *) &rCmdPowerOffset, NULL, 0);
+		/* dumpMemory8(&rCmdPowerOffset,9); */
 	}
 
-	/*NVRAM resolution is S6.1 format*/
-	*pTxPwr = minTxPwr >> 1;
+	/* 3.set 5G AC power */
+	if (prRegInfo->prOldEfuseMapping->uc11AcTxPwrValid) {
 
-	DBGLOG(INIT, INFO, "Band[%s],PhyMode[%d],get mini txpwr=%d\n",
-		(eBand == BAND_2G4)?"2G4":"5G",
-		ePhyMode,
-		*pTxPwr);
+		struct CMD_TX_AC_PWR rCmdAcPwr;
+
+		kalMemCopy(&rCmdAcPwr.rAcPwr,
+			   &prRegInfo->prOldEfuseMapping->r11AcTxPwr,
+			   sizeof(struct AC_PWR_SETTING_STRUCT));
+		rCmdAcPwr.ucBand = BAND_5G;
+
+		wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_80211AC_TX_PWR,
+				    TRUE, FALSE, FALSE, NULL, NULL,
+				    sizeof(struct CMD_TX_AC_PWR),
+				    (uint8_t *) &rCmdAcPwr, NULL, 0);
+		/* dumpMemory8(&rCmdAcPwr,9); */
+	}
 
 	return WLAN_STATUS_SUCCESS;
-#else
-	DBGLOG(INIT, WARN, "Not supported!");
-	return WLAN_STATUS_NOT_SUPPORTED;
-#endif
 }
-
-
+#endif
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is called to load manufacture data from NVRAM
@@ -5141,30 +4161,15 @@ uint32_t wlanGetMiniTxPower(IN struct ADAPTER *prAdapter,
 uint32_t wlanLoadManufactureData(IN struct ADAPTER
 				 *prAdapter, IN struct REG_INFO *prRegInfo)
 {
-
 #if CFG_SUPPORT_RDD_TEST_MODE
 	struct CMD_RDD_CH rRddParam;
 #endif
-	uint8_t index = 0;
-	uint8_t *pu1Addr;
-	uint8_t u1TypeID;
-	uint8_t u1LenLSB;
-	uint8_t u1LenMSB;
-	uint8_t fgSupportFragment = FALSE;
-	uint32_t u4NvramStartOffset = 0, u4NvramOffset = 0;
-	uint32_t u4NvramFragmentSize = 0;
-	struct CMD_NVRAM_FRAGMENT *prCmdNvramFragment;
-	struct WIFI_NVRAM_TAG_FORMAT *prTagDataCurr;
 	struct CMD_NVRAM_SETTING *prCmdNvramSettings;
 
-	if (prRegInfo == NULL) {
-		DBGLOG(INIT, ERROR, "prRegInfo = NULL");
-		return WLAN_STATUS_FAILURE;
-	}
 	ASSERT(prAdapter);
-
-	fgSupportFragment = prAdapter->chip_info->is_support_nvram_fragment;
-
+	prCmdNvramSettings = (struct CMD_NVRAM_SETTING *)kalMemAlloc(
+			      sizeof(struct CMD_NVRAM_SETTING),
+			      VIR_MEM_TYPE);
 
 	/* 1. Version Check */
 	if (prAdapter->prGlueInfo->fgNvramAvailable == TRUE) {
@@ -5178,8 +4183,48 @@ uint32_t wlanLoadManufactureData(IN struct ADAPTER
 			/* prRegInfo->prNvramSettings->u2Part2PeerVersion; */
 	}
 
+#if 0 /* will redefine version */
+#if (CFG_SW_NVRAM_VERSION_CHECK == 1)
+	if (prAdapter->rVerInfo.u2Part1CfgPeerVersion >
+	    CFG_DRV_OWN_VERSION
+	    || prAdapter->rVerInfo.u2Part2CfgPeerVersion >
+	    CFG_DRV_OWN_VERSION
+	    || prAdapter->rVerInfo.u2Part1CfgOwnVersion <
+	    CFG_DRV_PEER_VERSION
+	    || prAdapter->rVerInfo.u2Part2CfgOwnVersion <
+	    CFG_DRV_PEER_VERSION) {
+		log_dbg(INIT, INFO, "NVRAM version check fail\n");
+		return WLAN_STATUS_FAILURE;
+	}
+#endif
+#endif
+
+#if 0 /* removed */
+	/* MT6620 E1/E2 would be ignored directly */
+	if (prAdapter->rVerInfo.u2Part1CfgOwnVersion == 0x0001) {
+		prRegInfo->ucTxPwrValid = 1;
+	} else {
+		/* 2. Load TX power gain parameters if valid */
+		if (prRegInfo->ucTxPwrValid != 0) {
+			/* send to F/W */
+
+			nicUpdateTxPower(prAdapter,
+				(struct CMD_TX_PWR *) (&(prRegInfo->rTxPwr)));
+		}
+	}
+#endif
+
+	/* Todo : Temp Open 20150806 Sam */
+#if 0	/* read setting from nvram */
+	prRegInfo->ucEnable5GBand = 1;
+	prRegInfo->ucSupport5GBand = 1;
+#endif
+
 	/* 3. Check if needs to support 5GHz */
 	if (prRegInfo->ucEnable5GBand) {
+#if CFG_SUPPORT_NVRAM_5G
+		wlanLoadManufactureData_5G(prAdapter, prRegInfo);
+#endif
 		/* check if it is disabled by hardware */
 		if (prAdapter->fgIsHw5GBandDisabled
 		    || prRegInfo->ucSupport5GBand == 0)
@@ -5189,16 +4234,89 @@ uint32_t wlanLoadManufactureData(IN struct ADAPTER
 	} else
 		prAdapter->fgEnable5GBand = FALSE;
 
-	DBGLOG(INIT, INFO, "Enable5GBand = %d, Detail = [%d,%d,%d]",
-		prAdapter->fgEnable5GBand,
-		prRegInfo->ucEnable5GBand,
-		prRegInfo->ucSupport5GBand,
-		prAdapter->fgIsHw5GBandDisabled);
+#if 0 /* removed */
+	/* 4. Send EFUSE data */
+#if CFG_SUPPORT_NVRAM_5G
+	/* If NvRAM read failed, this pointer will be NULL */
+	if (prRegInfo->prOldEfuseMapping) {
+		/*2.set channel offset for 3 sub-band */
+		if (prRegInfo->prOldEfuseMapping->ucChannelOffsetVaild) {
+			struct CMD_POWER_OFFSET rCmdPowerOffset;
+			uint8_t i;
+
+			rCmdPowerOffset.ucBand = BAND_2G4;
+			for (i = 0; i < 3; i++)
+				rCmdPowerOffset.ucSubBandOffset[i] =
+					prRegInfo->prOldEfuseMapping
+					->aucChOffset[i];
+			rCmdPowerOffset.ucSubBandOffset[i] =
+				prRegInfo->prOldEfuseMapping
+				->acAllChannelOffset;
+
+			wlanSendSetQueryCmd(prAdapter,
+					    CMD_ID_SET_CHANNEL_PWR_OFFSET,
+					    TRUE, FALSE, FALSE, NULL, NULL,
+					    sizeof(rCmdPowerOffset),
+					    (uint8_t *) &rCmdPowerOffset, NULL,
+					    0);
+			/* dumpMemory8(&rCmdPowerOffset,9); */
+		}
+	}
+#else
+
+	wlanSendSetQueryCmd(prAdapter,
+			    CMD_ID_SET_PHY_PARAM,
+			    TRUE,
+			    FALSE,
+			    FALSE, NULL, NULL, sizeof(struct CMD_PHY_PARAM),
+			    (uint8_t *) (prRegInfo->aucEFUSE), NULL, 0);
+
+#endif
+	/*RSSI path compasation */
+	if (prRegInfo->ucRssiPathCompasationUsed) {
+		struct CMD_RSSI_PATH_COMPASATION rCmdRssiPathCompasation;
+
+		rCmdRssiPathCompasation.c2GRssiCompensation =
+			prRegInfo->rRssiPathCompasation.c2GRssiCompensation;
+		rCmdRssiPathCompasation.c5GRssiCompensation =
+			prRegInfo->rRssiPathCompasation.c5GRssiCompensation;
+
+		wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_PATH_COMPASATION,
+				    TRUE, FALSE, FALSE, NULL, NULL,
+				    sizeof(rCmdRssiPathCompasation),
+				    (uint8_t *) &rCmdRssiPathCompasation,
+				    NULL, 0);
+	}
+#if CFG_SUPPORT_RDD_TEST_MODE
+	rRddParam.ucRddTestMode = (uint8_t)
+				  prRegInfo->u4RddTestMode;
+	rRddParam.ucRddShutCh = (uint8_t) prRegInfo->u4RddShutFreq;
+	rRddParam.ucRddStartCh = (uint8_t) nicFreq2ChannelNum(
+					 prRegInfo->u4RddStartFreq);
+	rRddParam.ucRddStopCh = (uint8_t) nicFreq2ChannelNum(
+					prRegInfo->u4RddStopFreq);
+	rRddParam.ucRddDfs = (uint8_t) prRegInfo->u4RddDfs;
+	prAdapter->ucRddStatus = 0;
+	nicUpdateRddTestMode(prAdapter,
+			     (struct CMD_RDD_CH *) (&rRddParam));
+#endif
+#endif /* if 0 */
 
 	/* 5. Get 16-bits Country Code and Bandwidth */
-	prAdapter->rWifiVar.u2CountryCode =
+	prAdapter->rWifiVar.rConnSettings.u2CountryCode =
 		(((uint16_t) prRegInfo->au2CountryCode[0]) << 8) | (((
 			uint16_t) prRegInfo->au2CountryCode[1]) & BITS(0, 7));
+
+#if 0	/* Bandwidth control will be controlled by GUI. 20110930
+	 * So ignore the setting from registry/NVRAM
+	 */
+	prAdapter->rWifiVar.rConnSettings.uc2G4BandwidthMode =
+		prRegInfo->uc2G4BwFixed20M ? CONFIG_BW_20M :
+		CONFIG_BW_20_40M;
+	prAdapter->rWifiVar.rConnSettings.uc5GBandwidthMode =
+		prRegInfo->uc5GBwFixed20M ? CONFIG_BW_20M :
+		CONFIG_BW_20_40M;
+#endif
 
 	/* 6. Set domain and channel information to chip */
 	rlmDomainSendCmd(prAdapter);
@@ -5206,113 +4324,60 @@ uint32_t wlanLoadManufactureData(IN struct ADAPTER
 	/* Update supported channel list in channel table */
 	wlanUpdateChannelTable(prAdapter->prGlueInfo);
 
-	/* 9. Send the full Parameters of NVRAM to FW */
+#if 0 /* removed */
+	/* 7. set band edge tx power if available */
+	if (prRegInfo->fg2G4BandEdgePwrUsed) {
+		struct CMD_EDGE_TXPWR_LIMIT rCmdEdgeTxPwrLimit;
 
-	/*NVRAM Parameter fragment, if NVRAM length is over 2048 bytes*/
-	/*Driver will split NVRAM by TLV Group ,each TX CMD is 1564 bytes*/
-	if (fgSupportFragment) {
-		prCmdNvramFragment = (struct CMD_NVRAM_FRAGMENT *)kalMemAlloc(
-					  sizeof(struct CMD_NVRAM_FRAGMENT),
-					  VIR_MEM_TYPE);
-		if (prCmdNvramFragment == NULL) {
-			DBGLOG(INIT, ERROR,
-				"prCmdNvramFragment allocate fail\n");
-			return WLAN_STATUS_FAILURE;
-		}
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrCCK =
+			prRegInfo->cBandEdgeMaxPwrCCK;
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM20 =
+			prRegInfo->cBandEdgeMaxPwrOFDM20;
+		rCmdEdgeTxPwrLimit.cBandEdgeMaxPwrOFDM40 =
+			prRegInfo->cBandEdgeMaxPwrOFDM40;
 
-		u4NvramStartOffset = 0;
-		pu1Addr = (uint8_t *)
-			&prRegInfo->prNvramSettings->u2Part1OwnVersion;
-
-		prTagDataCurr =
-			(struct WIFI_NVRAM_TAG_FORMAT *)(pu1Addr
-			+ OFFSET_OF(struct WIFI_CFG_PARAM_STRUCT, ucTypeID0));
-		u1TypeID = prTagDataCurr->u1NvramTypeID;
-		u1LenLSB = prTagDataCurr->u1NvramTypeLenLsb;
-		u1LenMSB = prTagDataCurr->u1NvramTypeLenMsb;
-		u4NvramOffset +=
-			OFFSET_OF(struct WIFI_CFG_PARAM_STRUCT, ucTypeID0);
-
-		DBGLOG(INIT, TRACE,
-			   "NVRAM-Frag Startofs[0x%08X]ID[%d][0x%08X]Len:%d\n"
-			    , u4NvramStartOffset
-			    , u1TypeID
-			    , u4NvramOffset
-			    , (u1LenMSB << 8) | (u1LenLSB));
-
-		while (1) {
-
-			kalMemZero(prCmdNvramFragment,
-				 sizeof(struct CMD_NVRAM_FRAGMENT));
-
-			u4NvramOffset += NVRAM_TAG_HDR_SIZE;
-			u4NvramOffset += (u1LenMSB << 8) | (u1LenLSB);
-			u4NvramFragmentSize = u4NvramOffset-u4NvramStartOffset;
-
-			DBGLOG(INIT, TRACE,
-			   "NVRAM Fragement(%d)Startofs[0x%08X]ID[%d]Len:%d\n",
-			   index, u4NvramStartOffset,
-			   u1TypeID, u4NvramFragmentSize);
-
-			kalMemCopy(prCmdNvramFragment,
-					   (pu1Addr + u4NvramStartOffset),
-					   u4NvramFragmentSize);
-
-			wlanSendSetQueryCmd(prAdapter,
-				CMD_ID_SET_NVRAM_SETTINGS,
-				TRUE,
-				FALSE,
-				FALSE, NULL, NULL,
-				sizeof(struct CMD_NVRAM_FRAGMENT),
-				(uint8_t *) prCmdNvramFragment, NULL, 0);
-
-			/*update the next Fragment group start offset*/
-			u4NvramStartOffset = u4NvramOffset;
-			index++;
-
-			/*get the nex TLV format*/
-			prTagDataCurr = (struct WIFI_NVRAM_TAG_FORMAT *)
-				(pu1Addr + u4NvramOffset);
-
-			u1TypeID = prTagDataCurr->u1NvramTypeID;
-			u1LenLSB = prTagDataCurr->u1NvramTypeLenLsb;
-			u1LenMSB = prTagDataCurr->u1NvramTypeLenMsb;
-			/*sanity check*/
-			if ((u1TypeID == 0) &&
-				(u1LenLSB == 0) && (u1LenMSB == 0)) {
-				DBGLOG(INIT, INFO,
-					"TLV is Null, last index = %d\n",
-					index);
-				break;
-			}
-		}
-
-		kalMemFree(prCmdNvramFragment, VIR_MEM_TYPE,
-			 sizeof(struct CMD_NVRAM_FRAGMENT));
-
-	} else {
-
-		prCmdNvramSettings = (struct CMD_NVRAM_SETTING *)kalMemAlloc(
-				      sizeof(struct CMD_NVRAM_SETTING),
-				      VIR_MEM_TYPE);
-
-		kalMemCopy(&prCmdNvramSettings->rNvramSettings,
-			   &prRegInfo->prNvramSettings->u2Part1OwnVersion,
-			   sizeof(struct CMD_NVRAM_SETTING));
-		ASSERT(sizeof(struct WIFI_CFG_PARAM_STRUCT) == 2048);
 		wlanSendSetQueryCmd(prAdapter,
-				    CMD_ID_SET_NVRAM_SETTINGS,
+				    CMD_ID_SET_EDGE_TXPWR_LIMIT,
 				    TRUE,
 				    FALSE,
-				    FALSE, NULL, NULL,
-				    sizeof(*prCmdNvramSettings),
-				    (uint8_t *) prCmdNvramSettings, NULL, 0);
-		kalMemFree(prCmdNvramSettings, VIR_MEM_TYPE,
-				   sizeof(struct CMD_NVRAM_SETTING));
+				    FALSE,
+				    NULL,
+				    NULL, sizeof(struct CMD_EDGE_TXPWR_LIMIT),
+				    (uint8_t *) &rCmdEdgeTxPwrLimit, NULL, 0);
 	}
+	/*8. Set 2.4G AC power */
+	if (prRegInfo->prOldEfuseMapping
+	    && prRegInfo->prOldEfuseMapping->uc11AcTxPwrValid2G) {
 
+		struct CMD_TX_AC_PWR rCmdAcPwr;
 
-	wlanNvramSetState(NVRAM_STATE_SEND_TO_FW);
+		kalMemCopy(&rCmdAcPwr.rAcPwr,
+			   &prRegInfo->prOldEfuseMapping->r11AcTxPwr2G,
+			   sizeof(struct AC_PWR_SETTING_STRUCT));
+		rCmdAcPwr.ucBand = BAND_2G4;
+
+		wlanSendSetQueryCmd(prAdapter, CMD_ID_SET_80211AC_TX_PWR,
+				    TRUE, FALSE, FALSE, NULL, NULL,
+				    sizeof(struct CMD_TX_AC_PWR),
+				    (uint8_t *) &rCmdAcPwr, NULL, 0);
+		/* dumpMemory8(&rCmdAcPwr,9); */
+	}
+#endif /* if 0 */
+
+	/* 9. Send the full Parameters of NVRAM to FW */
+	kalMemCopy(&prCmdNvramSettings->rNvramSettings,
+			   &prRegInfo->prNvramSettings->u2Part1OwnVersion,
+			   sizeof(struct WIFI_CFG_PARAM_STRUCT));
+	ASSERT(sizeof(struct WIFI_CFG_PARAM_STRUCT) == 2048);
+	wlanSendSetQueryCmd(prAdapter,
+			    CMD_ID_SET_NVRAM_SETTINGS,
+			    TRUE,
+			    FALSE,
+			    FALSE, NULL, NULL, sizeof(*prCmdNvramSettings),
+			    (uint8_t *) prCmdNvramSettings, NULL, 0);
+
+	kalMemFree(prCmdNvramSettings, VIR_MEM_TYPE,
+			   sizeof(struct CMD_NVRAM_SETTING));
 
 	return WLAN_STATUS_SUCCESS;
 }
@@ -5331,8 +4396,7 @@ uint32_t wlanLoadManufactureData(IN struct ADAPTER
  *           The media stream mode is default value
  */
 /*----------------------------------------------------------------------------*/
-u_int8_t wlanResetMediaStreamMode(IN struct ADAPTER
-				  *prAdapter)
+u_int8_t wlanResetMediaStreamMode(IN struct ADAPTER *prAdapter)
 {
 	ASSERT(prAdapter);
 
@@ -5373,8 +4437,7 @@ uint32_t wlanTimerTimeoutCheck(IN struct ADAPTER *prAdapter)
  * @return WLAN_STATUS_SUCCESS
  */
 /*----------------------------------------------------------------------------*/
-uint32_t wlanProcessMboxMessage(IN struct ADAPTER
-				*prAdapter)
+uint32_t wlanProcessMboxMessage(IN struct ADAPTER *prAdapter)
 {
 	uint32_t i;
 
@@ -5420,13 +4483,6 @@ uint32_t wlanEnqueueTxPacket(IN struct ADAPTER *prAdapter,
 		/* Tx profiling */
 		wlanTxProfilingTagMsdu(prAdapter, prMsduInfo,
 				       TX_PROF_TAG_DRV_ENQUE);
-
-		/* Check if need to send a MSCS request */
-		if (mscsIsNeedRequest(prAdapter, prNativePacket)) {
-			/* Request a mscs frame if needed */
-			mscsRequest(prAdapter, prNativePacket, MSCS_REQUEST,
-				FRAME_CLASSIFIER_TYPE_4);
-		}
 
 		/* enqueue to QM */
 		nicTxEnqueueMsdu(prAdapter, prMsduInfo);
@@ -5534,10 +4590,7 @@ uint32_t wlanAcquirePowerControl(IN struct ADAPTER *prAdapter)
 
 	/* DBGLOG(INIT, INFO, ("Acquire Power Ctrl\n")); */
 
-#if CFG_ENABLE_FULL_PM
-	if (nicpmSetDriverOwn(prAdapter) != TRUE)
-		return WLAN_STATUS_FAILURE;
-#endif
+	ACQUIRE_POWER_CONTROL_FROM_PM(prAdapter);
 
 	/* Reset sleepy state */
 	if (prAdapter->fgWiFiInSleepyState == TRUE)
@@ -5659,6 +4712,82 @@ uint8_t wlanGetEcoVersion(IN struct ADAPTER *prAdapter)
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * @brief This function is to setting the default Tx Power configuration
+ *
+ * @param prAdapter      Pointer of Adapter Data Structure
+ *
+ * @return zero      Unable to retrieve ECO version information
+ *         non-zero  ECO version (1-based)
+ */
+/*----------------------------------------------------------------------------*/
+void wlanDefTxPowerCfg(IN struct ADAPTER *prAdapter)
+{
+	uint8_t i;
+	struct GLUE_INFO *prGlueInfo = prAdapter->prGlueInfo;
+	struct SET_TXPWR_CTRL *prTxpwr;
+
+	ASSERT(prGlueInfo);
+
+	prTxpwr = &prGlueInfo->rTxPwr;
+
+	prTxpwr->c2GLegacyStaPwrOffset = 0;
+	prTxpwr->c2GHotspotPwrOffset = 0;
+	prTxpwr->c2GP2pPwrOffset = 0;
+	prTxpwr->c2GBowPwrOffset = 0;
+	prTxpwr->c5GLegacyStaPwrOffset = 0;
+	prTxpwr->c5GHotspotPwrOffset = 0;
+	prTxpwr->c5GP2pPwrOffset = 0;
+	prTxpwr->c5GBowPwrOffset = 0;
+	prTxpwr->ucConcurrencePolicy = 0;
+	for (i = 0; i < 3; i++)
+		prTxpwr->acReserved1[i] = 0;
+
+	for (i = 0; i < 14; i++)
+		prTxpwr->acTxPwrLimit2G[i] = 63;
+
+	for (i = 0; i < 4; i++)
+		prTxpwr->acTxPwrLimit5G[i] = 63;
+
+	for (i = 0; i < 2; i++)
+		prTxpwr->acReserved2[i] = 0;
+
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
+ * @brief This function is to
+ *        set preferred band configuration corresponding to network type
+ *
+ * @param prAdapter      Pointer of Adapter Data Structure
+ * @param eBand          Given band
+ * @param ucBssIndex     BSS Info Index
+ *
+ * @return none
+ */
+/*----------------------------------------------------------------------------*/
+void wlanSetPreferBandByNetwork(IN struct ADAPTER *prAdapter,
+				IN enum ENUM_BAND eBand, IN uint8_t ucBssIndex)
+{
+	ASSERT(prAdapter);
+	ASSERT(eBand <= BAND_NUM);
+	ASSERT(ucBssIndex <= prAdapter->ucHwBssIdNum);
+
+
+	/* 1. set prefer band according to network type */
+	prAdapter->aePreferBand[ucBssIndex] = eBand;
+
+	/* 2. remove buffered BSS descriptors correspondingly */
+	if (eBand == BAND_2G4)
+		scanRemoveBssDescByBandAndNetwork(prAdapter, BAND_5G,
+						  ucBssIndex);
+	else if (eBand == BAND_5G)
+		scanRemoveBssDescByBandAndNetwork(prAdapter, BAND_2G4,
+						  ucBssIndex);
+
+}
+
+/*----------------------------------------------------------------------------*/
+/*!
  * @brief This function is to
  *        get channel information corresponding to specified network type
  *
@@ -5684,30 +4813,6 @@ uint8_t wlanGetChannelNumberByNetwork(IN struct ADAPTER
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is to
- *        get band information corresponding to specified network type
- *
- * @param prAdapter      Pointer of Adapter Data Structure
- * @param ucBssIndex     BSS Info Index
- *
- * @return Band index
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanGetBandIndexByNetwork(IN struct ADAPTER
-				      *prAdapter, IN uint8_t ucBssIndex)
-{
-	struct BSS_INFO *prBssInfo;
-
-	ASSERT(prAdapter);
-	ASSERT(ucBssIndex <= prAdapter->ucHwBssIdNum);
-
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-
-	return prBssInfo->eBand;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * @brief This function is to
  *        check unconfigured system properties and generate related message on
  *        scan list to notify users
  *
@@ -5716,8 +4821,7 @@ uint32_t wlanGetBandIndexByNetwork(IN struct ADAPTER
  * @return WLAN_STATUS_SUCCESS
  */
 /*----------------------------------------------------------------------------*/
-uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER
-				      *prAdapter)
+uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER *prAdapter)
 {
 #if (CFG_NVRAM_EXISTENCE_CHECK == 1) || (CFG_SW_NVRAM_VERSION_CHECK == 1)
 	const uint8_t aucZeroMacAddr[] = NULL_MAC_ADDR;
@@ -5751,11 +4855,6 @@ uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER
 #if (CFG_SW_NVRAM_VERSION_CHECK == 1)
 	prRegInfo = kalGetConfiguration(prAdapter->prGlueInfo);
 
-	if (prRegInfo == NULL) {
-		DBGLOG(INIT, ERROR, "prRegInfo = NULL");
-		return WLAN_STATUS_FAILURE;
-	}
-
 #if (CFG_SUPPORT_PWR_LIMIT_COUNTRY == 1)
 	if (fgIsConfExist == TRUE
 	    && (prAdapter->rVerInfo.u2Part1CfgPeerVersion >
@@ -5771,6 +4870,7 @@ uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER
 		|| (prAdapter->fgIsEmbbededMacAddrValid == FALSE &&
 		    (IS_BMCAST_MAC_ADDR(prRegInfo->aucMacAddr)
 		     || EQUAL_MAC_ADDR(aucZeroMacAddr, prRegInfo->aucMacAddr)))
+		|| prRegInfo->ucTxPwrValid == 0
 		|| prAdapter->fgIsPowerLimitTableValid == FALSE))
 		fgGenErrMsg = TRUE;
 #else
@@ -5788,7 +4888,7 @@ uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER
 		|| (prAdapter->fgIsEmbbededMacAddrValid == FALSE &&
 		    (IS_BMCAST_MAC_ADDR(prRegInfo->aucMacAddr)
 		     || EQUAL_MAC_ADDR(aucZeroMacAddr, prRegInfo->aucMacAddr)))
-		))
+		|| prRegInfo->ucTxPwrValid == 0))
 		fgGenErrMsg = TRUE;
 #endif
 #endif
@@ -5878,6 +4978,9 @@ uint32_t wlanCheckSystemConfiguration(IN struct ADAPTER
 		     || prAdapter->rVerInfo.u2FwOwnVersion <
 		     CFG_DRV_PEER_VERSION))
 			u4ErrCode |= NVRAM_ERROR_VERSION_MISMATCH;
+
+		if (prRegInfo->ucTxPwrValid == 0)
+			u4ErrCode |= NVRAM_ERROR_INVALID_TXPWR;
 
 		if (prAdapter->fgIsEmbbededMacAddrValid == FALSE
 		    && (IS_BMCAST_MAC_ADDR(prRegInfo->aucMacAddr)
@@ -6127,33 +5230,8 @@ wlanoidQueryStaStatistics(IN struct ADAPTER *prAdapter,
 			  IN uint32_t u4QueryBufferLen,
 			  OUT uint32_t *pu4QueryInfoLen)
 {
-#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
-	uint8_t ucBssIndex = AIS_DEFAULT_INDEX;
-
-	ucBssIndex = GET_IOCTL_BSSIDX(prAdapter);
-	if (ucBssIndex == AIS_DEFAULT_INDEX &&
-	    !CHECK_FOR_TIMEOUT(kalGetTimeTick(),
-		prAdapter->u4LastLinkQuality,
-		SEC_TO_MSEC(CFG_LQ_MONITOR_FREQUENCY))) {
-		kalMemCopy((struct PARAM_GET_STA_STATISTICS *)pvQueryBuffer,
-			   &prAdapter->rQueryStaStatistics,
-			   sizeof(struct PARAM_GET_STA_STATISTICS));
-		return WLAN_STATUS_SUCCESS;
-	} else {
-		uint32_t r;
-
-		DBGLOG(REQ, TRACE, "Call, pvQueryBuffer=%p, pu4QueryInfoLen=%p",
-			pvQueryBuffer, pu4QueryInfoLen);
-		r = wlanQueryStaStatistics(prAdapter, pvQueryBuffer,
-				u4QueryBufferLen, pu4QueryInfoLen, TRUE);
-		DBGLOG(REQ, TRACE, "r=%u, pvQueryBuffer=%p, pu4QueryInfoLen=%p",
-				r, pvQueryBuffer, pu4QueryInfoLen);
-		return r;
-	}
-#else
 	return wlanQueryStaStatistics(prAdapter, pvQueryBuffer,
 				      u4QueryBufferLen, pu4QueryInfoLen, TRUE);
-#endif
 }
 
 uint32_t
@@ -6168,7 +5246,7 @@ wlanQueryStaStatistics(IN struct ADAPTER *prAdapter,
 	struct PARAM_GET_STA_STATISTICS *prQueryStaStatistics;
 	uint8_t ucStaRecIdx;
 	struct QUE_MGT *prQM;
-	struct CMD_GET_STA_STATISTICS rQueryCmdStaStatistics = {0};
+	struct CMD_GET_STA_STATISTICS rQueryCmdStaStatistics;
 	uint8_t ucIdx;
 	enum ENUM_WMM_ACI eAci;
 
@@ -6369,8 +5447,6 @@ wlanQueryStaStatistics(IN struct ADAPTER *prAdapter,
 		rQueryCmdStaStatistics.ucResetCounter =
 			prQueryStaStatistics->ucResetCounter;
 
-		DBGLOG(REQ, TRACE, "Call fgIsOid=%u, pvQueryBuffer=%p",
-				fgIsOid, pvQueryBuffer);
 		rResult = wlanSendSetQueryCmd(prAdapter,
 				      CMD_ID_GET_STA_STATISTICS,
 				      FALSE,
@@ -6381,8 +5457,6 @@ wlanQueryStaStatistics(IN struct ADAPTER *prAdapter,
 				      sizeof(struct CMD_GET_STA_STATISTICS),
 				      (uint8_t *)&rQueryCmdStaStatistics,
 				      pvQueryBuffer, u4QueryBufferLen);
-		DBGLOG(REQ, TRACE, "rResult=%u, fgIsOid=%u, pvQueryBuffer=%p",
-				rResult, fgIsOid, pvQueryBuffer);
 
 		if ((!fgIsOid) && (rResult == WLAN_STATUS_PENDING))
 			rResult = WLAN_STATUS_SUCCESS;
@@ -6393,180 +5467,6 @@ wlanQueryStaStatistics(IN struct ADAPTER *prAdapter,
 
 	return rResult;
 }				/* wlanoidQueryP2pVersion */
-
-uint32_t
-wlanQueryStatistics(IN struct ADAPTER *prAdapter,
-		       IN void *pvQueryBuffer, IN uint32_t u4QueryBufferLen,
-		       OUT uint32_t *pu4QueryInfoLen, IN uint8_t fgIsOid)
-{
-	struct PARAM_802_11_STATISTICS_STRUCT rStatistics = {0};
-
-	DEBUGFUNC("wlanQueryStatistics");
-
-	ASSERT(prAdapter);
-	if (u4QueryBufferLen)
-		ASSERT(pvQueryBuffer);
-	ASSERT(pu4QueryInfoLen);
-
-	*pu4QueryInfoLen = sizeof(struct PARAM_802_11_STATISTICS_STRUCT);
-
-	if (prAdapter->rAcpiState == ACPI_STATE_D3) {
-		DBGLOG(REQ, WARN,
-		       "Fail in query receive error! (Adapter not ready). ACPI=D%d, Radio=%d\n",
-		       prAdapter->rAcpiState, prAdapter->fgIsRadioOff);
-		*pu4QueryInfoLen = sizeof(uint32_t);
-		return WLAN_STATUS_ADAPTER_NOT_READY;
-	} else if (u4QueryBufferLen < sizeof(struct
-					     PARAM_802_11_STATISTICS_STRUCT)) {
-		DBGLOG(REQ, WARN, "Too short length %u\n",
-		       u4QueryBufferLen);
-		return WLAN_STATUS_INVALID_LENGTH;
-	}
-#if CFG_ENABLE_STATISTICS_BUFFERING
-	if (IsBufferedStatisticsUsable(prAdapter) == TRUE) {
-		struct PARAM_802_11_STATISTICS_STRUCT *prStatistics;
-
-		*pu4QueryInfoLen = sizeof(struct
-					  PARAM_802_11_STATISTICS_STRUCT);
-		prStatistics = (struct PARAM_802_11_STATISTICS_STRUCT *)
-			       pvQueryBuffer;
-
-		prStatistics->u4Length = sizeof(struct
-						PARAM_802_11_STATISTICS_STRUCT);
-		prStatistics->rTransmittedFragmentCount =
-			prAdapter->rStatStruct.rTransmittedFragmentCount;
-		prStatistics->rMulticastTransmittedFrameCount =
-			prAdapter->rStatStruct.rMulticastTransmittedFrameCount;
-		prStatistics->rFailedCount =
-			prAdapter->rStatStruct.rFailedCount;
-		prStatistics->rRetryCount =
-			prAdapter->rStatStruct.rRetryCount;
-		prStatistics->rMultipleRetryCount =
-			prAdapter->rStatStruct.rMultipleRetryCount;
-		prStatistics->rRTSSuccessCount =
-			prAdapter->rStatStruct.rRTSSuccessCount;
-		prStatistics->rRTSFailureCount =
-			prAdapter->rStatStruct.rRTSFailureCount;
-		prStatistics->rACKFailureCount =
-			prAdapter->rStatStruct.rACKFailureCount;
-		prStatistics->rFrameDuplicateCount =
-			prAdapter->rStatStruct.rFrameDuplicateCount;
-		prStatistics->rReceivedFragmentCount =
-			prAdapter->rStatStruct.rReceivedFragmentCount;
-		prStatistics->rMulticastReceivedFrameCount =
-			prAdapter->rStatStruct.rMulticastReceivedFrameCount;
-		prStatistics->rFCSErrorCount =
-			prAdapter->rStatStruct.rFCSErrorCount;
-		prStatistics->rTKIPLocalMICFailures.QuadPart = 0;
-		prStatistics->rTKIPICVErrors.QuadPart = 0;
-		prStatistics->rTKIPCounterMeasuresInvoked.QuadPart = 0;
-		prStatistics->rTKIPReplays.QuadPart = 0;
-		prStatistics->rCCMPFormatErrors.QuadPart = 0;
-		prStatistics->rCCMPReplays.QuadPart = 0;
-		prStatistics->rCCMPDecryptErrors.QuadPart = 0;
-		prStatistics->rFourWayHandshakeFailures.QuadPart = 0;
-		prStatistics->rWEPUndecryptableCount.QuadPart = 0;
-		prStatistics->rWEPICVErrorCount.QuadPart = 0;
-		prStatistics->rDecryptSuccessCount.QuadPart = 0;
-		prStatistics->rDecryptFailureCount.QuadPart = 0;
-
-		return WLAN_STATUS_SUCCESS;
-	}
-#endif
-
-	return wlanSendSetQueryCmd(prAdapter,
-				CMD_ID_GET_STATISTICS,
-				FALSE,
-				TRUE,
-				fgIsOid,
-				nicCmdEventQueryStatistics,
-				nicOidCmdTimeoutCommon,
-				sizeof(struct PARAM_802_11_STATISTICS_STRUCT),
-				(uint8_t *)&rStatistics,
-				pvQueryBuffer, u4QueryBufferLen);
-
-} /* wlanQueryStatistics */
-
-/**
- * Called to save STATS_LLS_BSSLOAD_INFO information on scan operation.
- * Update slot by bit mask in fgIsConnected.
- */
-void updateLinkStatsApRec(struct ADAPTER *prAdapter, struct BSS_DESC *prBssDesc)
-{
-#if CFG_SUPPORT_LLS
-	struct STATS_LLS_PEER_AP_REC *prPeerApRec;
-	int32_t i = 0;
-
-	if (!prBssDesc->fgIsConnected)
-		return;
-
-	for (i = 0; i < KAL_AIS_NUM; i++) {
-		if ((prBssDesc->fgIsConnected >> i) & 0x1)
-			break;
-	}
-	if (i == KAL_AIS_NUM) {
-		DBGLOG(REQ, WARN, "AP connected flag set %u over limit", i);
-		return;
-	}
-
-	prPeerApRec = &prAdapter->rPeerApRec[i];
-	COPY_MAC_ADDR(prPeerApRec->mac_addr, prBssDesc->aucBSSID);
-	prPeerApRec->sta_count = prBssDesc->u2StaCnt;
-	prPeerApRec->chan_util = prBssDesc->ucChnlUtilization;
-
-	if (prAdapter->rWifiVar.fgLinkStatsDump)
-		DBGLOG(REQ, INFO, "Update record %u: " MACSTR " %u %u",
-				i, MAC2STR(prBssDesc->aucBSSID),
-				prBssDesc->u2StaCnt,
-				prBssDesc->ucChnlUtilization);
-#endif
-}
-
-#if CFG_SUPPORT_LLS
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to get LLS data from FW
- *
- * \param[in]  prAdapter        A pointer to the Adapter structure.
- * \param[in]  pvQueryBuffer    Buffer holding query command, also used to hold
- *                              the returned result if any
- * \param[in]  u4QueryBufferLen The size of query command buffer
- * \param[out] pu4QueryInfoLen  Pointer to integer to pass returned size copied
- *                              to return buffer
- *
- * \retval WLAN_STATUS_SUCCESS: Send command success
- *         WLAN_STATUS_FAILURE: Send command failed
- *         WLAN_STATUS_PENDING: Pending for waiting event
- */
-/*----------------------------------------------------------------------------*/
-uint32_t
-wlanQueryLinkStats(IN struct ADAPTER *prAdapter,
-		IN void *pvQueryBuffer, IN uint32_t u4QueryBufferLen,
-		OUT uint32_t *pu4QueryInfoLen)
-{
-	struct CMD_GET_STATS_LLS rQuery;
-	struct CMD_GET_STATS_LLS *cmd =
-		(struct CMD_GET_STATS_LLS *)pvQueryBuffer;
-
-	DBGLOG(REQ, INFO, "cmd: u4Tag=%08x, args=%u/%u/%u/%u, len=%u",
-			cmd->u4Tag, cmd->ucArg0, cmd->ucArg1,
-			cmd->ucArg2, cmd->ucArg3, *pu4QueryInfoLen);
-	rQuery = *cmd;
-
-	return wlanSendSetQueryCmd(prAdapter,	/* prAdapter */
-			    CMD_ID_GET_STATS_LLS,	/* ucCID */
-			    FALSE,	/* fgSetQuery */
-			    TRUE,	/* fgNeedResp */
-			    TRUE,	/* fgIsOid */
-			    nicCmdEventQueryLinkStats,    /* pfCmdDoneHandler */
-			    nicOidCmdTimeoutCommon, /* pfCmdTimeoutHandler */
-			    *pu4QueryInfoLen,    /* u4SetQueryInfoLen */
-			    (uint8_t *)&rQuery,  /* pucInfoBuffer */
-			    pvQueryBuffer,       /* pvSetQueryBuffer */
-			    u4QueryBufferLen);   /* u4SetQueryBufferLen */
-}
-#endif
-
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -6598,19 +5498,20 @@ void wlanQueryNicResourceInformation(IN struct ADAPTER *prAdapter)
 /*----------------------------------------------------------------------------*/
 uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 {
+	uint8_t ucCmdSeqNum;
 	struct CMD_INFO *prCmdInfo;
+	struct WIFI_CMD *prWifiCmd;
 	uint32_t u4RxPktLength;
 	uint8_t *prEventBuff;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	struct WIFI_EVENT *prEvent;
 	struct mt66xx_chip_info *prChipInfo;
 	uint32_t chip_id;
-	uint32_t u4Time;
 
 	ASSERT(prAdapter);
 	prChipInfo = prAdapter->chip_info;
 	chip_id = prChipInfo->chip_id;
 
-	ASSERT(prAdapter);
 
 	/* Get Nic resource information from FW */
 	if (!prChipInfo->isNicCapV1
@@ -6624,34 +5525,37 @@ uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 		 */
 
 		/* 1. Allocate CMD Info Packet and its Buffer */
-		prCmdInfo = cmdBufAllocateCmdInfo(prAdapter,
-			prChipInfo->u2CmdTxHdrSize);
+		prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, CMD_HDR_SIZE);
 		if (!prCmdInfo) {
 			DBGLOG(INIT, ERROR,
 			       "Allocate CMD_INFO_T ==> FAILED.\n");
 			return WLAN_STATUS_FAILURE;
 		}
+		/* increase command sequence number */
+		ucCmdSeqNum = nicIncreaseCmdSeqNum(prAdapter);
 
 		/* compose CMD_BUILD_CONNECTION cmd pkt */
 		prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-		prCmdInfo->u2InfoBufLen = prChipInfo->u2CmdTxHdrSize;
+		prCmdInfo->u2InfoBufLen = CMD_HDR_SIZE;
 		prCmdInfo->pfCmdDoneHandler = NULL;
 		prCmdInfo->fgIsOid = FALSE;
 		prCmdInfo->ucCID = CMD_ID_GET_NIC_CAPABILITY_V2;
 		prCmdInfo->fgSetQuery = FALSE;
 		prCmdInfo->fgNeedResp = TRUE;
+		prCmdInfo->ucCmdSeqNum = ucCmdSeqNum;
 		prCmdInfo->u4SetInfoLen = 0;
 
 		/* Setup WIFI_CMD_T */
-		NIC_FILL_CMD_TX_HDR(
-			prAdapter,
-			prCmdInfo->pucInfoBuffer,
-			prCmdInfo->u2InfoBufLen,
-			prCmdInfo->ucCID,
-			CMD_PACKET_TYPE_ID,
-			&prCmdInfo->ucCmdSeqNum,
-			prCmdInfo->fgSetQuery,
-			NULL, FALSE, 0, S2D_INDEX_CMD_H2N);
+		prWifiCmd = (struct WIFI_CMD *) (prCmdInfo->pucInfoBuffer);
+		prWifiCmd->u2TxByteCount = prCmdInfo->u2InfoBufLen;
+		prWifiCmd->u2PQ_ID = CMD_PQ_ID;
+		prWifiCmd->ucPktTypeID = CMD_PACKET_TYPE_ID;
+		prWifiCmd->ucCID = prCmdInfo->ucCID;
+		prWifiCmd->ucSetQuery = prCmdInfo->fgSetQuery;
+		prWifiCmd->ucSeqNum = prCmdInfo->ucCmdSeqNum;
+
+		prWifiCmd->u2Length = prCmdInfo->u2InfoBufLen -
+				(uint16_t) OFFSET_OF(struct WIFI_CMD, u2Length);
 
 		wlanSendCommand(prAdapter, prCmdInfo);
 
@@ -6671,7 +5575,6 @@ uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 		}
 
 		/* get event */
-		u4Time = kalGetTimeTick();
 		while (TRUE) {
 			if (nicRxWaitResponse(prAdapter,
 					      1,
@@ -6689,21 +5592,14 @@ uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 				return WLAN_STATUS_FAILURE;
 			}
 
-			if (CHECK_FOR_TIMEOUT(kalGetTimeTick(), u4Time,
-				MSEC_TO_SYSTIME(3000))) {
-				DBGLOG(HAL, ERROR,
-					"Query nic capability timeout\n");
-				return WLAN_STATUS_FAILURE;
-			}
-
 			/* header checking .. */
-			if ((NIC_RX_GET_U2_SW_PKT_TYPE(prEventBuff) &
-				prChipInfo->u2RxSwPktBitMap) !=
-				prChipInfo->u2RxSwPktEvent) {
+			prRxStatus = (struct HW_MAC_RX_DESC *) prEventBuff;
+			if ((prRxStatus->u2PktTYpe &
+			    RXM_RXD_PKT_TYPE_SW_BITMAP) !=
+			    RXM_RXD_PKT_TYPE_SW_EVENT) {
 				DBGLOG(INIT, WARN,
 				       "%s: skip unexpected Rx pkt type[0x%04x]\n",
-				       __func__,
-				       NIC_RX_GET_U2_SW_PKT_TYPE(prEventBuff));
+				       __func__, prRxStatus->u2PktTYpe);
 
 				continue;
 			}
@@ -6720,7 +5616,6 @@ uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 				/* hit */
 				break;
 			}
-
 		}
 
 		/*
@@ -6757,8 +5652,7 @@ uint32_t wlanQueryNicCapabilityV2(IN struct ADAPTER *prAdapter)
 	return WLAN_STATUS_SUCCESS;
 }
 
-void wlanSetNicResourceParameters(IN struct ADAPTER
-				  *prAdapter)
+void wlanSetNicResourceParameters(IN struct ADAPTER *prAdapter)
 {
 	uint8_t string[128], idx;
 	uint32_t u4share;
@@ -6820,7 +5714,7 @@ void wlanSetNicResourceParameters(IN struct ADAPTER
 
 		/* construct prefix: Tc0Page, Tc1Page... */
 		memset(string, 0, sizeof(string) / sizeof(uint8_t));
-		kalSnprintf(string, sizeof(string) / sizeof(uint8_t),
+		snprintf(string, sizeof(string) / sizeof(uint8_t),
 			 "Tc%xPage", idx);
 
 		/* update the final value */
@@ -6835,7 +5729,7 @@ void wlanSetNicResourceParameters(IN struct ADAPTER
 
 		/* construct prefix: Tc0Grt, Tc1Grt... */
 		memset(string, 0, sizeof(string) / sizeof(uint8_t));
-		kalSnprintf(string, sizeof(string) / sizeof(uint8_t),
+		snprintf(string, sizeof(string) / sizeof(uint8_t),
 			 "Tc%xGrt", idx);
 
 		/* update the final value */
@@ -6849,142 +5743,6 @@ void wlanSetNicResourceParameters(IN struct ADAPTER
 }
 
 
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-void wlanCfgDumpIotApRule(IN struct ADAPTER *prAdapter)
-{
-	uint8_t ucRuleIdx;
-	struct WLAN_IOT_AP_RULE_T *prIotApRule;
-
-	ASSERT(prAdapter);
-	for (ucRuleIdx = 0; ucRuleIdx < CFG_IOT_AP_RULE_MAX_CNT; ucRuleIdx++) {
-		prIotApRule = &prAdapter->rIotApRule[ucRuleIdx];
-		if (!prIotApRule->u2MatchFlag)
-			continue;
-		DBGLOG(INIT, TRACE, "IOTAP%d is valid rule\n", ucRuleIdx);
-		DBGLOG(INIT, TRACE, "IOTAP%d Flag:0x%X Ver:0x%X\n",
-			ucRuleIdx, prIotApRule->u2MatchFlag,
-			prIotApRule->ucVersion);
-		DBGLOG(INIT, TRACE, "IOTAP%d OUI:%02X:%02X:%02X\n",
-			ucRuleIdx,
-			prIotApRule->aVendorOui[0],
-			prIotApRule->aVendorOui[1],
-			prIotApRule->aVendorOui[2]);
-		DBGLOG(INIT, TRACE, "IOTAP%d Data:"MACSTR" Mask:"MACSTR"\n",
-			ucRuleIdx, MAC2STR(prIotApRule->aVendorData),
-			MAC2STR(prIotApRule->aVendorDataMask));
-		DBGLOG(INIT, TRACE, "IOTAP%d aBssid:"MACSTR" Mask:"MACSTR"\n",
-			ucRuleIdx, MAC2STR(prIotApRule->aBssid),
-			MAC2STR(prIotApRule->aBssidMask));
-		DBGLOG(INIT, TRACE, "IOTAP%d NSS:%X HT:%X Band:%X Act:%X\n",
-			ucRuleIdx, prIotApRule->ucNss,
-			prIotApRule->ucHtType,
-			prIotApRule->ucBand,
-			prIotApRule->ucAction);
-	}
-}
-
-
-void wlanCfgLoadIotApRule(IN struct ADAPTER *prAdapter)
-{
-	uint8_t  ucCnt;
-	uint8_t  *pOffset;
-	uint8_t  *pCurTok;
-	uint8_t  ucTokId;
-	uint8_t  *pNexTok;
-	uint8_t  ucStatus;
-	uint8_t  aucCfgKey[WLAN_CFG_KEY_LEN_MAX];
-	uint8_t  aucCfgVal[WLAN_CFG_VALUE_LEN_MAX];
-	struct WLAN_IOT_AP_RULE_T *prIotApRule = NULL;
-	int8_t  aucEleSize[] = {
-		sizeof(prIotApRule->ucVersion),
-		sizeof(prIotApRule->aVendorOui),
-		sizeof(prIotApRule->aVendorData),
-		sizeof(prIotApRule->aVendorDataMask),
-		sizeof(prIotApRule->aBssid),
-		sizeof(prIotApRule->aBssidMask),
-		sizeof(prIotApRule->ucNss),
-		sizeof(prIotApRule->ucHtType),
-		sizeof(prIotApRule->ucBand),
-		sizeof(prIotApRule->ucAction)
-		};
-
-	ASSERT(prAdapter);
-	ASSERT(prAdapter->rIotApRule);
-
-	DBGLOG(INIT, INFO, "IOTAP: Start Parsing Rules\n");
-	for (ucCnt = 0; ucCnt < CFG_IOT_AP_RULE_MAX_CNT; ucCnt++) {
-		prIotApRule = &prAdapter->rIotApRule[ucCnt];
-		kalMemSet(prIotApRule, '\0', sizeof(struct WLAN_IOT_AP_RULE_T));
-		kalMemSet(aucCfgVal, '\0', WLAN_CFG_VALUE_LEN_MAX);
-		kalMemSet(aucCfgKey, '\0', WLAN_CFG_KEY_LEN_MAX);
-		pOffset = (uint8_t *)prIotApRule +
-			OFFSET_OF(struct WLAN_IOT_AP_RULE_T, ucVersion);
-		pCurTok = &aucCfgVal[0];
-		pNexTok = &aucCfgVal[0];
-		kalSprintf(aucCfgKey, "IOTAP%d", ucCnt);
-		ucStatus = wlanCfgGet(prAdapter, aucCfgKey, aucCfgVal, NULL, 0);
-		/*Skip empty rule*/
-		if (ucStatus != WLAN_STATUS_SUCCESS)
-			continue;
-
-		/*Rule String Check*/
-		ucStatus = 0;
-		while (*pCurTok != '\0') {
-			if (*pCurTok == ':')
-				ucStatus++;
-			else if (wlanHexToNum(*pCurTok) == -1) {
-				ucStatus = -EINVAL;
-				break;
-			}
-			pCurTok++;
-		}
-		if (ucStatus != WLAN_IOT_AP_FG_MAX-1) {
-			DBGLOG(INIT, INFO,
-				"Invalid rule IOTAP%d with status %d\n",
-				ucCnt, ucStatus);
-			continue;
-		}
-
-		for (ucTokId = 0; ucTokId < WLAN_IOT_AP_FG_MAX; ucTokId++) {
-			pCurTok = kalStrSep((char **)&pNexTok, ":");
-			if (pCurTok)
-				ucStatus = wlanHexToArrayR(pCurTok, pOffset,
-							   aucEleSize[ucTokId]);
-			else {
-				DBGLOG(INIT, TRACE,
-				       "Invalid Tok IOTAP%d\n", ucCnt);
-				continue;
-			}
-			DBGLOG(INIT, TRACE,
-				"IOTAP%d tok:%d Str:%s status:%d len:%d flag:0x%x\n",
-				ucCnt, ucTokId, pCurTok, ucStatus,
-				aucEleSize[ucTokId], prIotApRule->u2MatchFlag);
-
-			if (ucStatus) {
-				prIotApRule->u2MatchFlag |= BIT(ucTokId);
-				/*Record vendor data length*/
-				if (ucTokId == WLAN_IOT_AP_FG_DATA)
-					prIotApRule->ucDataLen = ucStatus;
-				if (ucTokId == WLAN_IOT_AP_FG_DATA_MASK)
-					prIotApRule->ucDataMaskLen = ucStatus;
-			}
-			pOffset += aucEleSize[ucTokId];
-		}
-		/*Rule Check*/
-		if (prIotApRule->ucDataMaskLen &&
-			prIotApRule->ucDataMaskLen != prIotApRule->ucDataLen)
-			prIotApRule->u2MatchFlag = 0;
-		if (prIotApRule->ucAction >= WLAN_IOT_AP_ACT_MAX)
-			prIotApRule->u2MatchFlag = 0;
-		if (prIotApRule->u2MatchFlag == 0)
-			DBGLOG(INIT, INFO, "Invalid Rule IOTAP%d\n", ucCnt);
-	}
-
-}
-#endif
-
-
-
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is to re-assign tx resource based on firmware's report
@@ -6994,8 +5752,7 @@ void wlanCfgLoadIotApRule(IN struct ADAPTER *prAdapter)
  * @return WLAN_STATUS_SUCCESS
  */
 /*----------------------------------------------------------------------------*/
-void wlanUpdateNicResourceInformation(IN struct ADAPTER
-				      *prAdapter)
+void wlanUpdateNicResourceInformation(IN struct ADAPTER *prAdapter)
 {
 	/*
 	 * 3 1. Query TX resource
@@ -7074,10 +5831,6 @@ void wlanBindBssIdxToNetInterface(IN struct GLUE_INFO *prGlueInfo,
 		return;
 	}
 
-	DBGLOG(INIT, LOUD,
-		"ucBssIndex = %d, pvNetInterface = %p\n",
-		ucBssIndex, pvNetInterface);
-
 	prNetIfInfo = &prGlueInfo->arNetInterfaceInfo[ucBssIndex];
 
 	prNetIfInfo->ucBssIndex = ucBssIndex;
@@ -7085,7 +5838,7 @@ void wlanBindBssIdxToNetInterface(IN struct GLUE_INFO *prGlueInfo,
 	/* prGlueInfo->aprBssIdxToNetInterfaceInfo[ucBssIndex] = prNetIfInfo; */
 }
 
-#if CFG_SUPPORT_NAN
+#if 0
 /*----------------------------------------------------------------------------*/
 /*!
  * @brief This function is to GET BSS index for a network interface.
@@ -7097,12 +5850,15 @@ void wlanBindBssIdxToNetInterface(IN struct GLUE_INFO *prGlueInfo,
  * @return UINT_8                         Index of BSS
  */
 /*----------------------------------------------------------------------------*/
-uint8_t wlanGetBssIdxByNetInterface(IN struct GLUE_INFO *prGlueInfo,
-			    IN void *pvNetInterface)
+uint8_t wlanGetBssIdxByNetInterface(IN struct GLUE_INFO
+				    *prGlueInfo, IN void *pvNetInterface)
 {
 	uint8_t ucIdx = 0;
 
-	for (ucIdx = 0; ucIdx < HW_BSSID_NUM; ucIdx++) {
+	ASSERT(prGlueInfo);
+
+	for (ucIdx = 0; ucIdx < prGlueInfo->prAdapter->ucHwBssIdNum;
+	     ucIdx++) {
 		if (prGlueInfo->arNetInterfaceInfo[ucIdx].pvNetInterface ==
 		    pvNetInterface)
 			break;
@@ -7130,6 +5886,22 @@ void *wlanGetNetInterfaceByBssIdx(IN struct GLUE_INFO
 
 /*----------------------------------------------------------------------------*/
 /*!
+ * @brief This function is to get BSS-INDEX for AIS network.
+ *
+ * @param prAdapter  Pointer of ADAPTER_T
+ *
+ * @return value, as corresponding index of BSS
+ */
+/*----------------------------------------------------------------------------*/
+uint8_t wlanGetAisBssIndex(IN struct ADAPTER *prAdapter)
+{
+	ASSERT(prAdapter);
+	ASSERT(prAdapter->prAisBssInfo);
+
+	return prAdapter->prAisBssInfo->ucBssIndex;
+}
+/*----------------------------------------------------------------------------*/
+/*!
  * @brief This function is to initialize WLAN feature options
  *
  * @param prAdapter  Pointer of ADAPTER_T
@@ -7143,18 +5915,8 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 #if QM_ADAPTIVE_TC_RESOURCE_CTRL
 	struct QUE_MGT *prQM = &prAdapter->rQM;
 #endif
-	uint32_t u4TxHifRes = 0, u4Idx = 0;
-#if CFG_TC10_FEATURE
-	uint32_t u4MinValue = 0, u4MaxValue = 0;
-	int32_t  i4MinValue = 0, i4MaxValue = 0;
-#endif
-	uint32_t u4PlatformBoostCpuTh = 1;
 
 	/* Feature options will be filled by config file */
-
-	prWifiVar->fgEnDefaultIotApRule = (uint8_t) wlanCfgGetUint32(prAdapter,
-					"EnDefaultIotApRule",
-					FEATURE_ENABLED);
 
 	prWifiVar->ucQoS = (uint8_t) wlanCfgGetUint32(prAdapter, "Qos",
 					FEATURE_ENABLED);
@@ -7164,68 +5926,10 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucStaVht = (uint8_t) wlanCfgGetUint32(prAdapter, "StaVHT",
 					FEATURE_ENABLED);
 
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (fgEfuseCtrlAxOn == 1) {
-		prWifiVar->ucStaHe = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "StaHE", FEATURE_ENABLED);
-		prWifiVar->ucApHe = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "ApHE", FEATURE_ENABLED);
-		prWifiVar->ucP2pGoHe = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "P2pGoHE",
-					FEATURE_ENABLED);
-		prWifiVar->ucP2pGcHe = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "P2pGcHE",
-					FEATURE_ENABLED);
-
-		prWifiVar->ucApSelAxWeight = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "ApSelAxWeight", AX_SEL_DEF_WEIGHT);
-
-		prWifiVar->ucApSelAxScoreDiv = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "ApSelAxScoreDiv",
-			AX_SEL_DEF_DIVIDER);
-	}
-#endif
-
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	prWifiVar->ucP2pPrefer6G = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "P2pPrefer6G", FEATURE_DISABLED);
-#endif
-
-#if (CFG_SUPPORT_802_11BE == 1)
-	prWifiVar->ucStaEht = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "StaEHT", FEATURE_ENABLED);
-	prWifiVar->ucApEht = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "ApEHT", FEATURE_ENABLED);
-	prWifiVar->ucP2pGoEht = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "P2pGoEHT",
-				FEATURE_ENABLED);
-	prWifiVar->ucP2pGcEht = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "P2pGcEHT",
-				FEATURE_ENABLED);
-	prWifiVar->u2RxEhtBaSize = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "RxEhtBaSize",
-			WLAN_EHT_MAX_BA_SIZE);
-	prWifiVar->u2TxEhtBaSize = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "TxEhtBaSize",
-			WLAN_EHT_MAX_BA_SIZE);
-	prWifiVar->ucEhtAmsduInAmpduRx = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"EhtAmsduInAmpduRx", FEATURE_ENABLED);
-	prWifiVar->ucEhtAmsduInAmpduTx = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"EhtAmsduInAmpduTx", FEATURE_ENABLED);
-	prWifiVar->ucStaEhtBfee = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"StaEHTBfee", FEATURE_ENABLED);
-#endif
-
 	prWifiVar->ucApHt = (uint8_t) wlanCfgGetUint32(prAdapter, "ApHT",
 					FEATURE_ENABLED);
-#if CFG_TC1_FEATURE
-	prWifiVar->ucApVht = (uint8_t) wlanCfgGetUint32(prAdapter, "ApVHT",
-					FEATURE_FORCE_ENABLED);
-#else
 	prWifiVar->ucApVht = (uint8_t) wlanCfgGetUint32(prAdapter, "ApVHT",
 					FEATURE_ENABLED);
-#endif
 
 	prWifiVar->ucP2pGoHt = (uint8_t) wlanCfgGetUint32(prAdapter, "P2pGoHT",
 					FEATURE_ENABLED);
@@ -7247,9 +5951,9 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucAmsduInAmpduTx = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"AmsduInAmpduTx", FEATURE_ENABLED);
 	prWifiVar->ucHtAmsduInAmpduRx = (uint8_t) wlanCfgGetUint32(prAdapter,
-					"HtAmsduInAmpduRx", FEATURE_ENABLED);
+					"HtAmsduInAmpduRx", FEATURE_DISABLED);
 	prWifiVar->ucHtAmsduInAmpduTx = (uint8_t) wlanCfgGetUint32(prAdapter,
-					"HtAmsduInAmpduTx", FEATURE_ENABLED);
+					"HtAmsduInAmpduTx", FEATURE_DISABLED);
 	prWifiVar->ucVhtAmsduInAmpduRx = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"VhtAmsduInAmpduRx", FEATURE_ENABLED);
 	prWifiVar->ucVhtAmsduInAmpduTx = (uint8_t) wlanCfgGetUint32(prAdapter,
@@ -7266,13 +5970,8 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 					"ApUapsd", FEATURE_DISABLED);
 	prWifiVar->ucP2pUapsd = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"P2pUapsd", FEATURE_ENABLED);
-#if (CFG_ENABLE_WIFI_DIRECT && CFG_MTK_ANDROID_WMT)
-	prWifiVar->u4RegP2pIfAtProbe = (uint8_t) wlanCfgGetUint32(prAdapter,
-					"RegP2pIfAtProbe", FEATURE_ENABLED);
-#else
 	prWifiVar->u4RegP2pIfAtProbe = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"RegP2pIfAtProbe", FEATURE_DISABLED);
-#endif
 	prWifiVar->ucP2pShareMacAddr = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"P2pShareMacAddr", FEATURE_DISABLED);
 
@@ -7298,37 +5997,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucRxGf = (uint8_t) wlanCfgGetUint32(prAdapter, "GfRx",
 					FEATURE_ENABLED);
 
-	prWifiVar->ucMCS32 = (uint8_t) wlanCfgGetUint32(prAdapter, "MCS32",
-					FEATURE_ENABLED);
-
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (fgEfuseCtrlAxOn == 1) {
-	prWifiVar->ucHeAmsduInAmpduRx = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"HeAmsduInAmpduRx", FEATURE_ENABLED);
-	prWifiVar->ucHeAmsduInAmpduTx = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"HeAmsduInAmpduTx", FEATURE_ENABLED);
-	prWifiVar->ucTrigMacPadDur = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"TrigMacPadDur", HE_CAP_TRIGGER_PAD_DURATION_16);
-	prWifiVar->ucMaxAmpduLenExp = (uint8_t) wlanCfgGetUint32(prAdapter,
-		"MaxAmpduLenExt", HE_CAP_MAX_AMPDU_LEN_EXP);
-	}
-#endif
-
-#if (CFG_SUPPORT_TWT == 1)
-	prWifiVar->ucTWTRequester = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "TWTRequester", FEATURE_ENABLED);
-	prWifiVar->ucTWTResponder = (uint8_t)
-		wlanCfgGetUint32(prAdapter, "TWTResponder", FEATURE_DISABLED);
-	prWifiVar->ucTWTStaBandBitmap = (uint8_t)
-		wlanCfgGetUint32(prAdapter,
-			"TWTStaBandBitmap",
-			BIT(BAND_2G4) | BIT(BAND_5G)
-#if (CFG_SUPPORT_WIFI_6G == 1)
-			| BIT(BAND_6G)
-#endif
-		);
-#endif
-
 	prWifiVar->ucSigTaRts = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"SigTaRts", FEATURE_DISABLED);
 	prWifiVar->ucDynBwRts = (uint8_t) wlanCfgGetUint32(prAdapter,
@@ -7346,13 +6014,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 					"StaHTBfer", FEATURE_DISABLED);
 	prWifiVar->ucStaVhtBfer = (uint8_t) wlanCfgGetUint32(prAdapter,
 					"StaVHTBfer", FEATURE_DISABLED);
-
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (fgEfuseCtrlAxOn == 1) {
-		prWifiVar->ucStaHeBfee = (uint8_t) wlanCfgGetUint32(prAdapter,
-						"StaHEBfee", FEATURE_ENABLED);
-	}
-#endif
 
 	/* 0: disabled
 	 * 1: Tx done event to driver
@@ -7388,14 +6049,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	 */
 	prWifiVar->ucApChannel = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "ApChannel", 0);
-	prWifiVar->u2ApFreq = (uint16_t) wlanCfgGetUint32(
-					prAdapter, "ApFreq", 0);
-	prWifiVar->ucApAcsChannel[0] = (uint16_t) wlanCfgGetUint32(
-					prAdapter, "ApAcs2gChannel", 0);
-	prWifiVar->ucApAcsChannel[1] = (uint16_t) wlanCfgGetUint32(
-					prAdapter, "ApAcs5gChannel", 0);
-	prWifiVar->ucApAcsChannel[2] = (uint16_t) wlanCfgGetUint32(
-					prAdapter, "ApAcs6gChannel", 0);
 
 	/*
 	 * 0: SCN
@@ -7421,55 +6074,22 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucSta2gBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "Sta2gBw", MAX_BW_20MHZ);
 	prWifiVar->ucSta5gBandwidth = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "Sta5gBw", MAX_BW_160MHZ);
-	prWifiVar->ucSta6gBandwidth = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "Sta6gBw", MAX_BW_160MHZ);
+				prAdapter, "Sta5gBw", MAX_BW_80MHZ);
 	/* GC,GO */
 	prWifiVar->ucP2p2gBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "P2p2gBw", MAX_BW_20MHZ);
 	prWifiVar->ucP2p5gBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "P2p5gBw", MAX_BW_80MHZ);
-	prWifiVar->ucP2p6gBandwidth = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "P2p6gBw", MAX_BW_160MHZ);
 	prWifiVar->ucApBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "ApBw", MAX_BW_160MHZ);
 	prWifiVar->ucAp2gBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "Ap2gBw", MAX_BW_20MHZ);
 	prWifiVar->ucAp5gBandwidth = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "Ap5gBw", MAX_BW_80MHZ);
-	prWifiVar->ucAp6gBandwidth = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "Ap6gBw", MAX_BW_160MHZ);
 	prWifiVar->ucApChnlDefFromCfg = (uint8_t) wlanCfgGetUint32(
 				prAdapter, "ApChnlDefFromCfg", FEATURE_ENABLED);
-	prWifiVar->ucApAllowHtVhtTkip = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "ApAllowHtVhtTkip",
-				FEATURE_DISABLED);
-	prWifiVar->ucForceBw = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "ForceBw", FEATURE_DISABLED);
-	prWifiVar->ucNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Nss", 2);
 
-#ifdef CFG_FORCE_AP1NSS
-	prWifiVar->ucAp6gNSS = (uint8_t)wlanCfgGetUint32
-				(prAdapter, "Ap6gNss", 1);
-	prWifiVar->ucAp5gNSS = (uint8_t)wlanCfgGetUint32
-				(prAdapter, "Ap5gNss", 1);
-	prWifiVar->ucAp2gNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Ap2gNss", 1);
-#else
-	prWifiVar->ucAp6gNSS = (uint8_t)wlanCfgGetUint32
-				(prAdapter, "Ap6gNss", 2);
-	prWifiVar->ucAp5gNSS = (uint8_t)wlanCfgGetUint32
-				(prAdapter, "Ap5gNss", 2);
-	prWifiVar->ucAp2gNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Ap2gNss", 2);
-#endif
-	prWifiVar->ucGo6gNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Go6gNss", 2);
-	prWifiVar->ucGo5gNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Go5gNss", 2);
-	prWifiVar->ucGo2gNSS = (uint8_t) wlanCfgGetUint32
-				(prAdapter, "Go2gNss", 2);
+	prWifiVar->ucNSS = (uint8_t) wlanCfgGetUint32(prAdapter, "Nss", 2);
 
 	/* Max Rx MPDU length setting
 	 * 0: 3k
@@ -7479,16 +6099,10 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucRxMaxMpduLen = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "RxMaxMpduLen",
 					VHT_CAP_INFO_MAX_MPDU_LEN_3K);
-
-#if (CFG_SUPPORT_RX_QUOTA_INFO == 1)
-	prWifiVar->ucRxQuotaInfoEn = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "RxQuotaInfoEn",
-					FEATURE_ENABLED);
-#endif
 	/* Max Tx AMSDU in AMPDU length *in BYTES* */
 	prWifiVar->u4TxMaxAmsduInAmpduLen = wlanCfgGetUint32(
 					prAdapter, "TxMaxAmsduInAmpduLen",
-					8192);
+					4096);
 
 	prWifiVar->ucTcRestrict = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "TcRestrict", 0xFF);
@@ -7510,14 +6124,20 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucGbandProbe256QAM = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "Probe256QAM",
 					FEATURE_ENABLED);
+	prWifiVar->ucEn256QAM = (u_int8_t) wlanCfgGetUint32(prAdapter,
+				"En256QAM", FEATURE_ENABLED);
+	if (IS_FEATURE_DISABLED(prWifiVar->ucEn256QAM))
+		prWifiVar->aucMtkFeature[0] &=
+			~(MTK_SYNERGY_CAP_SUPPORT_24G_MCS89);
 #endif
+
+	prWifiVar->ucCmdRsvResource = (uint8_t) wlanCfgGetUint32(
+					prAdapter, "TxCmdRsv",
+					QM_CMD_RESERVED_THRESHOLD);
 #if CFG_SUPPORT_VHT_IE_IN_2G
 	prWifiVar->ucVhtIeIn2g = (uint8_t) wlanCfgGetUint32(
 			prAdapter, "VhtIeIn2G", FEATURE_ENABLED);
 #endif
-	prWifiVar->ucCmdRsvResource = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "TxCmdRsv",
-					QM_CMD_RESERVED_THRESHOLD);
 	prWifiVar->u4MgmtQueueDelayTimeout =
 		(uint32_t) wlanCfgGetUint32(prAdapter, "TxMgmtQueTO",
 					QM_MGMT_QUEUED_TIMEOUT); /* ms */
@@ -7545,37 +6165,12 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 					prAdapter, "NetifStartTh",
 					CFG_TX_START_NETIF_PER_QUEUE_THRESHOLD);
 	prWifiVar->ucTxBaSize = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "TxBaSize",
-					WLAN_LEGACY_MAX_BA_SIZE);
+					prAdapter, "TxBaSize", 64);
 	prWifiVar->ucRxHtBaSize = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "RxHtBaSize",
-					WLAN_LEGACY_MAX_BA_SIZE);
+					prAdapter, "RxHtBaSize", 64);
 	prWifiVar->ucRxVhtBaSize = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "RxVhtBaSize",
-					WLAN_LEGACY_MAX_BA_SIZE);
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (fgEfuseCtrlAxOn == 1) {
-		prWifiVar->u2RxHeBaSize = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "RxHeBaSize",
-				WLAN_HE_MAX_BA_SIZE);
-		prWifiVar->u2TxHeBaSize = (uint8_t)
-			wlanCfgGetUint32(prAdapter, "TxHeBaSize",
-				WLAN_HE_MAX_BA_SIZE);
-	}
-#endif
+					prAdapter, "RxVhtBaSize", 64);
 
-#if CFG_SUPPORT_SMART_GEAR
-	prWifiVar->ucSGCfg = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SGCfg", FEATURE_ENABLED);
-	/* 2.4G default is WF0 when enable SG SISO mode*/
-	prWifiVar->ucSG24GFavorANT = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SG24GFavorANT",
-					FEATURE_DISABLED);
-	/* 5G default is WF1 when enable SG SISO mode*/
-	prWifiVar->ucSG5GFavorANT = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SG5GFavorANT",
-					FEATURE_ENABLED);
-#endif
 	/* Tx Buffer Management */
 	prWifiVar->ucExtraTxDone = (uint32_t) wlanCfgGetUint32(
 					prAdapter, "ExtraTxDone", 1);
@@ -7601,20 +6196,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 					NIC_TX_PAGE_COUNT_TC4);
 	prWifiVar->ucTxMsduQueue = (uint32_t) wlanCfgGetUint32(
 		prAdapter, "NicTxMsduQueue", 0);
-
-	prWifiVar->ucTxMsduQueueInit = prWifiVar->ucTxMsduQueue;
-
-	/* 1 resource for AC_BK(TC0_INDEX), AC_BE(TC1_INDEX) */
-	/* 2 resource for AC_VI(TC2_INDEX) */
-	/* 4 resource for AC_VO(TC3_INDEX) */
-	/* 1 resource for MGMT(TC4_INDEX) & TC_NUM */
-	u4TxHifRes = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxHifResCtl", 0x00114211);
-	prWifiVar->u4TxHifRes = u4TxHifRes;
-	for (u4Idx = 0; u4Idx < TX_PORT_NUM && u4TxHifRes; u4Idx++) {
-		prAdapter->au4TxHifResCtl[u4Idx] = u4TxHifRes & BITS(0, 3);
-		u4TxHifRes = u4TxHifRes >> 4;
-	}
 
 #if QM_ADAPTIVE_TC_RESOURCE_CTRL
 	prQM->au4MinReservedTcResource[TC0_INDEX] = (uint32_t) wlanCfgGetUint32(
@@ -7680,7 +6261,7 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 				       prAdapter, "MacOverride", 0);
 	if (wlanCfgGet(prAdapter, "MacAddr", prWifiVar->aucMacAddrStr,
 	    "00:0c:e7:66:32:e1", 0))
-		DBGLOG(INIT, TRACE, "get MacAddr fail, use defaul\n");
+		DBGLOG(INIT, ERROR, "get MacAddr fail, use defaul\n");
 
 	prWifiVar->ucCtiaMode = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "CtiaMode", 0);
@@ -7692,19 +6273,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	/* ucTpTestMode == 3, for sigma WMM PS */
 	prWifiVar->ucTpTestMode = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "TpTestMode", 0);
-#if CFG_SUPPORT_TPENHANCE_MODE
-	/* tp enhance config */
-	prWifiVar->ucTpEnhanceEnable = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "TpEnhanceEnable", 0);
-	prWifiVar->ucTpEnhancePktNum = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "TpEnhancePktNum", 20);
-	prWifiVar->u4TpEnhanceInterval = (uint32_t) wlanCfgGetUint32(
-					prAdapter, "TpEnhanceInterval", 6000);
-	prWifiVar->cTpEnhanceRSSI = (int8_t) wlanCfgGetInt32(
-					prAdapter, "TpEnhanceRSSI", -65);
-	prWifiVar->u4TpEnhanceThreshold = (uint32_t) wlanCfgGetUint32(
-					prAdapter, "TpEnhanceThreshold", 300);
-#endif /* CFG_SUPPORT_TPENHANCE_MODE */
 
 #if 0
 	prWifiVar->ucSigmaTestMode = (uint8_t) wlanCfgGetUint32(
@@ -7756,7 +6324,7 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 
 	/* SW Test Mode: Mainly used for Sigma */
 	prWifiVar->u4SwTestMode = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SwTestMode",
+					prAdapter, "Sigma",
 					ENUM_SW_TEST_MODE_NONE);
 	prWifiVar->ucCtrlFlagAssertPath = (uint8_t) wlanCfgGetUint32(
 					prAdapter, "AssertPath",
@@ -7796,9 +6364,6 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 					prAdapter, "DisBcnLostDetection", 0);
 	prWifiVar->fgDisRoaming = (uint32_t) wlanCfgGetUint32(
 					prAdapter, "DisRoaming", 0);
-	prWifiVar->u4AisRoamingNumber = (uint32_t) wlanCfgGetUint32(
-					prAdapter, "AisRoamingNumber",
-					KAL_AIS_NUM);
 	prWifiVar->fgEnArpFilter = (uint32_t) wlanCfgGetUint32(
 					prAdapter, "EnArpFilter",
 					FEATURE_ENABLED);
@@ -7839,7 +6404,7 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->u4PerfMonTpTh[1] =
 		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv2", 50);
 	prWifiVar->u4PerfMonTpTh[2] =
-		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv3", 100);
+		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv3", 135);
 	prWifiVar->u4PerfMonTpTh[3] =
 		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv4", 180);
 	prWifiVar->u4PerfMonTpTh[4] =
@@ -7854,143 +6419,9 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv9", 600);
 	prWifiVar->u4PerfMonTpTh[9] =
 		(uint32_t) wlanCfgGetUint32(prAdapter, "PerfMonLv10", 700);
-
-#if CFG_SUPPORT_MCC_BOOST_CPU
-	prWifiVar->u4MccBoostTputLvTh =
-		(uint32_t) wlanCfgGetUint32(prAdapter, "MccBoostTputLvTh",
-			MCC_BOOST_LEVEL);
-	prWifiVar->u4MccBoostPresentTime =
-		(uint32_t) wlanCfgGetUint32(prAdapter,
-			"MccBoostPresentTimeMin", MCC_BOOST_MIN_TIME);
-	prWifiVar->u4MccBoostForAllTputLvTh =
-		(uint32_t) wlanCfgGetUint32(prAdapter,
-			"MccBoostForAllTputLvTh", MCC_BOOST_FOR_ALL_LEVEL);
-#endif /* CFG_SUPPORT_MCC_BOOST_CPU */
-
-#if CFG_SUPPORT_TX_LATENCY_STATS
-	prWifiVar->fgPacketLatencyLog = (bool)wlanCfgGetUint32(
-		prAdapter, "TxLatencyPacketLog", 0);
-
-	prWifiVar->fgTxLatencyKeepCounting = (bool)wlanCfgGetUint32(
-		prAdapter, "TxLatencyKeepCounting", 0);
-
-	prWifiVar->u4MsduStatsUpdateInterval = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyUpdateInterval",
-		TX_LATENCY_STATS_UPDATE_INTERVAL);
-	prWifiVar->u4ContinuousTxFailThreshold = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyContinuousFailThrehold",
-		TX_LATENCY_STATS_CONTINUOUS_FAIL_THREHOLD);
-
-	prWifiVar->au4DriverTxDelayMax[0] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyDriverDelayMaxL1",
-		TX_LATENCY_STATS_MAX_DRIVER_DELAY_L1);
-	prWifiVar->au4DriverTxDelayMax[1] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyDriverDelayMaxL2",
-		TX_LATENCY_STATS_MAX_DRIVER_DELAY_L2);
-	prWifiVar->au4DriverTxDelayMax[2] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyDriverDelayMaxL3",
-		TX_LATENCY_STATS_MAX_DRIVER_DELAY_L3);
-	prWifiVar->au4DriverTxDelayMax[3] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyDriverDelayMaxL4",
-		TX_LATENCY_STATS_MAX_DRIVER_DELAY_L4);
-	prWifiVar->au4DriverTxDelayMax[4] = UINT_MAX;
-
-	prWifiVar->au4ConnsysTxDelayMax[0] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyConnsysDelayMaxL1",
-		TX_LATENCY_STATS_MAX_CONNSYS_DELAY_L1);
-	prWifiVar->au4ConnsysTxDelayMax[1] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyConnsysDelayMaxL2",
-		TX_LATENCY_STATS_MAX_CONNSYS_DELAY_L2);
-	prWifiVar->au4ConnsysTxDelayMax[2] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyConnsysDelayMaxL3",
-		TX_LATENCY_STATS_MAX_CONNSYS_DELAY_L3);
-	prWifiVar->au4ConnsysTxDelayMax[3] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyConnsysDelayMaxL4",
-		TX_LATENCY_STATS_MAX_CONNSYS_DELAY_L4);
-	prWifiVar->au4ConnsysTxDelayMax[4] = UINT_MAX;
-
-	prWifiVar->au4MacTxDelayMax[0] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyMacDelayMaxL1",
-		TX_LATENCY_STATS_MAX_MAC_DELAY_L1);
-	prWifiVar->au4MacTxDelayMax[1] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyMacDelayMaxL2",
-		TX_LATENCY_STATS_MAX_MAC_DELAY_L2);
-	prWifiVar->au4MacTxDelayMax[2] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyMacDelayMaxL3",
-		TX_LATENCY_STATS_MAX_MAC_DELAY_L3);
-	prWifiVar->au4MacTxDelayMax[3] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyMacDelayMaxL4",
-		TX_LATENCY_STATS_MAX_MAC_DELAY_L4);
-	prWifiVar->au4MacTxDelayMax[4] = UINT_MAX;
-
-	prWifiVar->au4ConnsysTxFailDelayMax[0] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyFailConnsysDelayMaxL1",
-		TX_LATENCY_STATS_MAX_FAIL_CONNSYS_DELAY_L1);
-	prWifiVar->au4ConnsysTxFailDelayMax[1] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyFailConnsysDelayMaxL2",
-		TX_LATENCY_STATS_MAX_FAIL_CONNSYS_DELAY_L2);
-	prWifiVar->au4ConnsysTxFailDelayMax[2] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyFailConnsysDelayMaxL3",
-		TX_LATENCY_STATS_MAX_FAIL_CONNSYS_DELAY_L3);
-	prWifiVar->au4ConnsysTxFailDelayMax[3] = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "TxLatencyFailConnsysDelayMaxL4",
-		TX_LATENCY_STATS_MAX_FAIL_CONNSYS_DELAY_L4);
-	prWifiVar->au4ConnsysTxFailDelayMax[4] = UINT_MAX;
-#endif /* CFG_SUPPORT_TX_LATENCY_STATS */
-
-#if CFG_SUPPORT_LLS
-	prWifiVar->fgLinkStatsDump = (bool)wlanCfgGetUint32(
-		prAdapter, "LinkStatsDump", 0);
-	prWifiVar->fgStatsLlsEn = (bool)wlanCfgGetUint32(
-		prAdapter, "StatsLlsEn",
-		prAdapter->chip_info->is_supported_full_lls);
-	wlanCfgSetUint32(prAdapter, "StatsLlsEn", prWifiVar->fgStatsLlsEn);
-#endif
-
-	/**
-	 * A debugging switch enables RXD, RXP dumping when driver drops packets
-	 * for ICV error.
-	 */
-	prWifiVar->fgRxIcvErrDbg = wlanCfgGetUint32(prAdapter,
-					"RxIcvErrDbg", FEATURE_DISABLED);
-	/**
-	 * Switching dumping TX/RX memory, set by bitmap format.
-	 * TXP(0x04),        TXDMAD(0x02), TXD(0x01),
-	 * RXDSEGMENT(0x40), RXDMAD(0x20), RXD(0x10).
-	 */
-	prWifiVar->u4TxRxDescDump = wlanCfgGetUint32(prAdapter,
-					"TRXDescDump", 0x40);
-	DBGLOG(INIT, TRACE,
-		"TxP,TxDmad,TxD/RxDsegment,RxDmad,RxD=%u,%u,%u/%u,%u,%u",
-		prWifiVar->fgDumpTxP, prWifiVar->fgDumpTxDmad,
-		prWifiVar->fgDumpTxD,
-		prWifiVar->fgDumpRxDsegment, prWifiVar->fgDumpRxDmad,
-		prWifiVar->fgDumpRxD);
-
-	u4PlatformBoostCpuTh = kalGetCpuBoostThreshold();
 	prWifiVar->u4BoostCpuTh =
-		(uint32_t) wlanCfgGetUint32(prAdapter, "BoostCpuTh",
-			u4PlatformBoostCpuTh);
-	prWifiVar->u4CpuBoostMinFreq =
-		wlanCfgGetUint32(prAdapter, "CpuBoostMinFreq", 3000);
-	prWifiVar->fgIsBoostCpuThAdjustable = FALSE;
-	if (!wlanCfgGetEntry(prAdapter, "BoostCpuTh", FALSE)) {
-		prWifiVar->fgIsBoostCpuThAdjustable  = TRUE;
-		DBGLOG(INIT, TRACE, "BoostCPUTh is not config, adjustable\n");
-	}
+		(uint32_t) wlanCfgGetUint32(prAdapter, "BoostCpuTh", 1);
 
-	prWifiVar->u4PerfMonPendingTh = (uint8_t)wlanCfgGetUint32(prAdapter,
-						"PerfMonPendingTh", 80);
-
-	prWifiVar->u4PerfMonUsedTh = (uint8_t)wlanCfgGetUint32(prAdapter,
-						"PerfMonUsedTh", 80);
-
-	/* for SER */
-	prWifiVar->fgEnableSer = (uint8_t)wlanCfgGetUint32(prAdapter,
-						"SerEnable", FEATURE_ENABLED);
-
-	prWifiVar->fgRstRecover = (uint8_t) wlanCfgGetUint32(prAdapter,
-					"RstRecover", FEATURE_DISABLED);
 	/*
 	 * For Certification purpose,forcibly set
 	 * "Compressed Steering Number of Beamformer Antennas Supported" to our
@@ -8002,15 +6433,7 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucChannelSwtichColdownTime = (uint8_t) wlanCfgGetUint32(
 			prAdapter, "CSACdTime", 60);/*Second*/
 	prWifiVar->fgCrossBandSwitchEn = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "SapCrossBandSwitchEn", 0);
-#endif
-#if CFG_SUPPORT_PERF_IND
-	prWifiVar->fgPerfIndicatorEn = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "PerfIndicatorEn", 1);
-#endif
-#if CFG_SUPPORT_SPE_IDX_CONTROL
-	prWifiVar->ucSpeIdxCtrl = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SpeIdxCtrl", 2);
+			prAdapter, "CrossBandSwitchEn", 1);
 #endif
 
 #if CFG_SUPPORT_LOWLATENCY_MODE
@@ -8019,338 +6442,15 @@ void wlanInitFeatureOption(IN struct ADAPTER *prAdapter)
 	prWifiVar->ucLowLatencyModeReOrder = (uint32_t) wlanCfgGetUint32(
 			prAdapter, "LowLatencyModeReOrder", FEATURE_ENABLED);
 	prWifiVar->ucLowLatencyModePower = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "LowLatencyModePower", FEATURE_DISABLED);
-	prWifiVar->ucLowLatencyPacketPriority = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "LowLatencyPacketPriority", BITS(0, 1));
-	prWifiVar->ucLowLatencyCmdData = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "LowLatencyCmdData", FEATURE_ENABLED);
-	prWifiVar->ucLowLatencyCmdDataAllPacket = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "LowLatencyCmdDataAllPacket", FEATURE_DISABLED);
+			prAdapter, "LowLatencyModePower", FEATURE_ENABLED);
 #endif /* CFG_SUPPORT_LOWLATENCY_MODE */
-
-#if CFG_SUPPORT_SPE_IDX_CONTROL
-	prWifiVar->ucSpeIdxCtrl = (uint8_t) wlanCfgGetUint32(
-					prAdapter, "SpeIdxCtrl", 2);
-#endif
-
-	prWifiVar->u4MTU = wlanCfgGetUint32(prAdapter, "MTU", 0);
-
-#if CFG_SUPPORT_RX_GRO
-	prWifiVar->ucGROFlushTimeout = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "GROFlushTimeout", 1);
-	prWifiVar->ucGROEnableTput = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "GROEnableTput", 6250000);
-#endif
-	prWifiVar->ucMsduReportTimeout =
-		(uint8_t) wlanCfgGetUint32(prAdapter,
-		"MsduReportTimeout", NIC_MSDU_REPORT_DUMP_TIMEOUT);
-
-#if CFG_SUPPORT_DATA_STALL
-	prWifiVar->u4PerHighThreshole = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "PerHighThreshole",
-			EVENT_PER_HIGH_THRESHOLD);
-	prWifiVar->u4TxLowRateThreshole = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "TxLowRateThreshole",
-			EVENT_TX_LOW_RATE_THRESHOLD);
-	prWifiVar->u4RxLowRateThreshole = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "RxLowRateThreshole",
-			EVENT_RX_LOW_RATE_THRESHOLD);
-	prWifiVar->u4ReportEventInterval = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "ReportEventInterval",
-			REPORT_EVENT_INTERVAL);
-	prWifiVar->u4TrafficThreshold = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "TrafficThreshold",
-			TRAFFIC_RHRESHOLD);
-#endif
-
-#if CFG_SUPPORT_HE_ER
-	prWifiVar->u4ExtendedRange = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "ExtendedRange",
-			FEATURE_ENABLED);
-#endif
-
-#if (CFG_SUPPORT_P2PGO_ACS == 1)
-	prWifiVar->ucP2pGoACS = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "P2pGoACSEnable",
-			FEATURE_ENABLED);
-#endif
-
-#if CFG_SUPPORT_NAN
-	prWifiVar->ucNanMacAddrOverride = (uint8_t) wlanCfgGetInt32(
-		prAdapter, "NanMacOverride", 0);
-	if (wlanCfgGet(prAdapter, "NanMacAddr", prWifiVar->aucNanMacAddrStr,
-		"00:0c:e7:11:22:33", 0))
-		DBGLOG(INIT, TRACE, "get NanMacAddr fail, use default\n");
-
-	prWifiVar->ucMasterPref =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanMasterPref", 2);
-	prWifiVar->ucConfig5gChannel =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanConfig5gChannel", 1);
-	prWifiVar->ucChannel5gVal =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanChannel5gVal", 149);
-	prWifiVar->ucAisQuotaVal =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanAisQuota", 8);
-	prWifiVar->ucDftNdlQuotaVal =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDftNdlQuota",
-#if (CFG_NAN_SCHEDULER_VERSION == 1)
-		NAN_DEFAULT_NDL_QUOTA_UP_BOUND);
-#else
-		5);
-#endif
-	prWifiVar->ucDftRangQuotaVal =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDftRangQuota", 1);
-	prWifiVar->ucDftQuotaStartOffset =
-		(uint8_t)wlanCfgGetUint32(prAdapter,
-		"NanDftQuotaStartOffset", 2);
-	prWifiVar->ucDftNdcStartOffset =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDftNdcStartOffset", 0);
-	prWifiVar->ucNanFixChnl =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanFixChnl", 0);
-	prWifiVar->fgEnableNDPE =
-		wlanCfgGetUint32(prAdapter, "NanEnableNDPE", 1);
-	prWifiVar->u2DftNdlQosLatencyVal =
-		wlanCfgGetUint32(prAdapter, "NanDftNdlQosLatency", 0);
-	prWifiVar->ucDftNdlQosQuotaVal =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDftNdlQosQuota", 0);
-	prWifiVar->fgEnNanVHT =
-		(unsigned char)wlanCfgGetUint32(prAdapter, "NanVHT", 1);
-	prWifiVar->ucNanFtmBw = (uint8_t)wlanCfgGetUint32(
-		prAdapter, "NanFtmBw", FTM_FORMAT_BW_HT_MIXED_BW20);
-	prWifiVar->ucNanDiscBcnInterval =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDiscBcnInterval", 100);
-	prWifiVar->ucNanCommittedDw =
-		(uint8_t)wlanCfgGetUint32(prAdapter, "NanDftCommittedDw", 1);
-	prWifiVar->fgNoPmf =
-		(unsigned char)wlanCfgGetUint32(prAdapter, "NanForceNoPmf", 0);
-	prWifiVar->fgNanIsSigma =
-		(unsigned char)wlanCfgGetUint32(prAdapter, "NanIsSigma", 0);
-	prWifiVar->ucNan2gBandwidth = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "Nan2gBw", MAX_BW_20MHZ);
-	prWifiVar->ucNan5gBandwidth = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "Nan5gBw", MAX_BW_80MHZ);
-	prWifiVar->ucNdlFlowCtrlVer =
-		(unsigned char)wlanCfgGetUint32(prAdapter,
-		"NanNdlFlowCtrlVer",
-		CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL);
-	prWifiVar->ucNanMaxNdpSession = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "NanMaxNdpSession", NAN_MAX_NDP_SESSIONS);
-	prWifiVar->fgEnableRandNdpid =
-		wlanCfgGetUint32(prAdapter, "NanEnableRandNdpid", 1);
-	prWifiVar->u4NanSendPacketGuardTime =
-		wlanCfgGetUint32(prAdapter, "NanSendPacketGuardTime",
-				 NAN_SEND_PKT_TIME_GUARD_TIME);
-	prWifiVar->fgNanUnrollInstallTk =
-		wlanCfgGetUint32(prAdapter, "NanUnrollInstallTk", 0);
-#endif
-
-	prWifiVar->fgReuseRSNIE = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "ReuseRSNIE",
-			FEATURE_ENABLED);
-
-	wlanCfgSetUint32(prAdapter, "MddpSupport", FEATURE_ENABLED);
-
-	prWifiVar->u4DiscoverTimeout = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "DiscoverTimeout", ROAMING_DISCOVER_TIMEOUT_SEC);
-
-	prWifiVar->u4InactiveTimeout = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "InactiveTimeout", ROAMING_INACTIVE_TIMEOUT_SEC);
-
-	prWifiVar->u4BtmDelta = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "BtmDelta", ROAMING_BTM_DELTA);
-	prWifiVar->u4BtmDisTimerThreshold = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "BtmDisTimerThreshold", AIS_BTM_DIS_IMMI_TIMEOUT);
 
 #if ARP_MONITER_ENABLE
 	prWifiVar->uArpMonitorNumber = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "ArpMonitorNumber", 20);
-	prWifiVar->uArpMonitorRxPktNum = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "ArpMonitorRxPktNum", 0);
+			prAdapter, "ArpMonitorNumber", 20);
 #endif /* ARP_MONITER_ENABLE */
 
-#if CFG_SUPPORT_SCAN_NO_AP_RECOVERY
-	prWifiVar->ucScanNoApRecover = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "ScanNoApRecover", FEATURE_ENABLED);
-	prWifiVar->ucScanNoApRecoverTh = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "ucScanNoApRecoverTh", 3);
-
-#endif
-
-	prWifiVar->fgSapCheckPmkidInDriver = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapCheckPmkidInDriver", FEATURE_ENABLED);
-
-	prWifiVar->fgSapOffload = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapOffload", FEATURE_DISABLED);
-
-	prWifiVar->fgSapChannelSwitchPolicy = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapChannelSwitchPolicy",
-		P2P_CHANNEL_SWITCH_POLICY_SCC);
-
-	prWifiVar->fgSapConcurrencyPolicy = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapConcurrencyPolicy",
-		P2P_CONCURRENCY_POLICY_REMOVE);
-
-	prWifiVar->fgSapAuthPolicy = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapAuthPolicy",
-		P2P_AUTH_POLICY_NONE);
-
-	prWifiVar->fgSapOverwriteAcsChnlBw = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapOverwriteAcsChnlBw", FEATURE_ENABLED);
-
-	prWifiVar->fgSapAddTPEIE = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "SapAddTPEIE", FEATURE_DISABLED);
-
-	prWifiVar->ucDfsRegion = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "DfsRegion", NL80211_DFS_UNSET);
-	if (prWifiVar->ucDfsRegion)
-		rlmDomainSetDfsRegion(prWifiVar->ucDfsRegion);
-
-	prWifiVar->u4ByPassCacTime = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "ByPassCacTime", 0);
-	if (prWifiVar->u4ByPassCacTime) {
-		p2pFuncEnableManualCac();
-		p2pFuncSetDriverCacTime(prWifiVar->u4ByPassCacTime);
-	}
-
-	prWifiVar->u4CC2Region = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "CC2Region", FEATURE_ENABLED);
-
-	prWifiVar->fgAllowSameBandDualSta = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "AllowSameBandDualSta", FEATURE_ENABLED);
-#if CFG_MODIFY_TX_POWER_BY_BAT_VOLT
-	prWifiVar->u4BackoffLevel = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "BackoffLevel", 3);
-#endif
-
-#if (CFG_SUPPORT_APF == 1)
-	prWifiVar->ucApfEnable = (uint32_t) wlanCfgGetUint32(
-			prAdapter, "ApfEnable", FEATURE_ENABLED);
-#endif
-	prWifiVar->u4RxRateProtoFilterMask = (uint32_t) wlanCfgGetUint32(
-		prAdapter, "RxRateProtoFilterMask", BIT(ENUM_PKT_ARP));
-
-	prWifiVar->ucUdpTspecUp = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "UdpTspecUp", 7);
-	prWifiVar->ucTcpTspecUp = (uint8_t) wlanCfgGetUint32(
-				prAdapter, "TcpTspecUp", 5);
-	prWifiVar->u4UdpDelayBound = wlanCfgGetUint32(
-			prAdapter, "UdpDelayBound", 7000);
-	prWifiVar->u4TcpDelayBound = wlanCfgGetUint32(
-			prAdapter, "TcpDelayBound", 10000);
-	prWifiVar->ucDataRate = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "TspecDataRate", 0);
-	prWifiVar->ucSupportProtocol = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "SupportProtocol", 0);
-	prWifiVar->ucCheckBeacon = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "MscsCheckBeacon", FEATURE_ENABLED);
-	prWifiVar->ucEnableFastPath = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "EnableFastPath", FEATURE_ENABLED);
-	prWifiVar->ucFastPathAllPacket = (uint8_t) wlanCfgGetUint32(
-			prAdapter, "FastPathAllPacket", FEATURE_DISABLED);
-
-#if CFG_SUPPORT_BAR_DELAY_INDICATION
-	prWifiVar->fgBARDelayIndicationEn = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "BARDelayIndicationEn", FEATURE_ENABLED);
-#endif /* CFG_SUPPORT_BAR_DELAY_INDICATION */
-#if CFG_TC10_FEATURE
-	prWifiVar->ucLogEnhancement = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "LogEnhancement", FEATURE_ENABLED);
-	prWifiVar->ucSinglePMK = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "SinglePMK", FEATURE_ENABLED);
-	u4MinValue = 0;
-	u4MaxValue = 100;
-	prWifiVar->ucRCMinRoamDetla = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamCommon_MinRoamDetla", 15,
-		&u4MinValue, &u4MaxValue);
-	u4MinValue = 0;
-	u4MaxValue = 30;
-	prWifiVar->ucRCDelta = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamCommon_Delta", 20,
-		&u4MinValue, &u4MaxValue);
-	u4MinValue = 0;
-	u4MaxValue = 20;
-	prWifiVar->ucRIDelta = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamIdle_Delta", 0,
-		&u4MinValue, &u4MaxValue);
-	i4MinValue = -70;
-	i4MaxValue = -127;
-	prWifiVar->cRBMinRssi = (int8_t) wlanCfgGetInt32Range(
-		prAdapter, "RoamBeaconLoss_TargetMinRSSI", -75,
-		&i4MinValue, &i4MaxValue);
-	u4MinValue = 0;
-	u4MaxValue = 20;
-	prWifiVar->ucRBTMDelta = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamBTM_Delta", 0,
-		&u4MinValue, &u4MaxValue);
-	u4MinValue = 0;
-	u4MaxValue = 100;
-	prWifiVar->ucRssiWeight = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamAPScore_RSSIWeight", 65,
-		&u4MinValue, &u4MaxValue);
-	u4MinValue = 0;
-	u4MaxValue = 100;
-	prWifiVar->ucCUWeight = (uint8_t) wlanCfgGetUint32Range(
-		prAdapter, "RoamAPScore_CUWeight", 35,
-		&u4MinValue, &u4MaxValue);
-	/* AP socring */
-	prWifiVar->cB1RssiFactorVal1 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorValue1", -55);
-	prWifiVar->cB1RssiFactorVal2 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorValue2", -60);
-	prWifiVar->cB1RssiFactorVal3 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorValue3", -70);
-	prWifiVar->cB1RssiFactorVal4 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorValue4", -80);
-	prWifiVar->cB2RssiFactorVal1 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorValue1", -55);
-	prWifiVar->cB2RssiFactorVal2 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorValue2", -60);
-	prWifiVar->cB2RssiFactorVal3 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorValue3", -70);
-	prWifiVar->cB2RssiFactorVal4 = (int8_t) wlanCfgGetInt32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorValue4", -80);
-	prWifiVar->ucB1RssiFactorScore1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorScore1", 100);
-	prWifiVar->ucB1RssiFactorScore2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorScore2", 90);
-	prWifiVar->ucB1RssiFactorScore3 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorScore3", 60);
-	prWifiVar->ucB1RssiFactorScore4 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_RSSIFactorScore4", 20);
-	prWifiVar->ucB2RssiFactorScore1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorScore1", 100);
-	prWifiVar->ucB2RssiFactorScore2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorScore2", 90);
-	prWifiVar->ucB2RssiFactorScore3 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorScore3", 60);
-	prWifiVar->ucB2RssiFactorScore4 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_RSSIFactorScore4", 20);
-	prWifiVar->ucB1CUFactorVal1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_CUFactorValue1", 10);
-	prWifiVar->ucB1CUFactorVal2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_CUFactorValue2", 70);
-	prWifiVar->ucB2CUFactorVal1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_CUFactorValue1", 30);
-	prWifiVar->ucB2CUFactorVal2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_CUFactorValue2", 80);
-	prWifiVar->ucB1CUFactorScore1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_CUFactorScore1", 100);
-	prWifiVar->ucB1CUFactorScore2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band1_CUFactorScore2", 20);
-	prWifiVar->ucB2CUFactorScore1 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_CUFactorScore1", 100);
-	prWifiVar->ucB2CUFactorScore2 = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "RoamAPScore_Band2_CUFactorScore2", 20);
-#else
-	prWifiVar->ucLogEnhancement = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "LogEnhancement", FEATURE_DISABLED);
-	prWifiVar->ucSinglePMK = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "SinglePMK", FEATURE_DISABLED);
-
-#endif
-	prWifiVar->ucSAEAuthNoResp = (uint8_t) wlanCfgGetUint32(
-		prAdapter, "SAEAuthNoResp", FEATURE_DISABLED);
-
-
+	prWifiVar->u4MTU = wlanCfgGetUint32(prAdapter, "MTU", 0);
 }
 
 void wlanCfgSetSwCtrl(IN struct ADAPTER *prAdapter)
@@ -8362,7 +6462,7 @@ void wlanCfgSetSwCtrl(IN struct ADAPTER *prAdapter)
 	const int8_t acDelim[] = " ";
 	int8_t *pcPtr = NULL;
 	int8_t *pcDupValue = NULL;
-	uint32_t au4Values[2] = {};
+	uint32_t au4Values[2];
 	uint32_t u4TokenCount = 0;
 	uint32_t u4BufLen = 0;
 	uint32_t rStatus = WLAN_STATUS_SUCCESS;
@@ -8454,53 +6554,8 @@ void wlanCfgSetChip(IN struct ADAPTER *prAdapter)
 				   &rChipConfigInfo, sizeof(rChipConfigInfo),
 				   FALSE, FALSE, TRUE, &u4BufLen);
 	}
+
 }
-
-#if (CFG_SUPPORT_CONNINFRA == 1)
-/* Send kernel time to FW */
-void wlanCfgSetChipSyncTime(IN struct ADAPTER *prAdapter)
-{
-	struct timespec64 time;
-	unsigned int second, usecond;
-
-	int8_t aucKey[WLAN_CFG_VALUE_LEN_MAX];
-	int8_t aucValue[WLAN_CFG_VALUE_LEN_MAX];
-
-	uint32_t u4BufLen = 0;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
-	struct GLUE_INFO *prGlueInfo = prAdapter->prGlueInfo;
-	struct PARAM_CUSTOM_CHIP_CONFIG_STRUCT rChipConfigInfo;
-
-	ktime_get_real_ts64(&time);
-	/* UTC time second unit */
-	second = (unsigned int)time.tv_sec;
-	/* UTC time microsecond unit */
-	usecond = (unsigned int)NSEC_TO_USEC(time.tv_nsec);
-	prAdapter->u4FWLastUpdateTime = second;
-
-	kalMemZero(aucValue, WLAN_CFG_VALUE_LEN_MAX);
-	kalMemZero(aucKey, WLAN_CFG_VALUE_LEN_MAX);
-	kalSnprintf(aucKey, sizeof(aucKey), "SetChip");
-	kalSnprintf(aucValue, sizeof(aucValue),
-		"SyncTime %u %u", second, usecond);
-
-	DBGLOG(INIT, INFO,
-		"Sync kernel time, key=%s, value=%s",
-		aucKey, aucValue);
-
-	kalMemZero(&rChipConfigInfo, sizeof(rChipConfigInfo));
-
-	rChipConfigInfo.ucType = CHIP_CONFIG_TYPE_WO_RESPONSE;
-	rChipConfigInfo.u2MsgSize = kalStrnLen(aucValue,
-						   WLAN_CFG_VALUE_LEN_MAX);
-	kalStrnCpy(rChipConfigInfo.aucCmd, aucValue,
-		   CHIP_CONFIG_RESP_SIZE);
-
-	rStatus = kalIoctl(prGlueInfo, wlanoidSetChipConfig,
-			   &rChipConfigInfo, sizeof(rChipConfigInfo),
-			   FALSE, FALSE, TRUE, &u4BufLen);
-}
-#endif /* CFG_SUPPORT_CONNINFRA */
 
 void wlanCfgSetDebugLevel(IN struct ADAPTER *prAdapter)
 {
@@ -8511,7 +6566,7 @@ void wlanCfgSetDebugLevel(IN struct ADAPTER *prAdapter)
 	int8_t *pcDupValue;
 	int8_t *pcPtr = NULL;
 
-	uint32_t au4Values[2] = {0};
+	uint32_t au4Values[2];
 	uint32_t u4TokenCount = 0;
 	uint32_t u4DbgIdx = 0;
 	uint32_t u4DbgMask = 0;
@@ -8586,12 +6641,12 @@ void wlanCfgSetCountryCode(IN struct ADAPTER *prAdapter)
 	/* Apply COUNTRY Config */
 	if (wlanCfgGet(prAdapter, "Country", aucValue, "",
 		       0) == WLAN_STATUS_SUCCESS) {
-		prAdapter->rWifiVar.u2CountryCode =
+		prAdapter->rWifiVar.rConnSettings.u2CountryCode =
 			(((uint16_t) aucValue[0]) << 8) |
 			((uint16_t) aucValue[1]);
 
 		DBGLOG(INIT, TRACE, "u2CountryCode=0x%04x\n",
-		       prAdapter->rWifiVar.u2CountryCode);
+			   prAdapter->rWifiVar.rConnSettings.u2CountryCode);
 
 		if (regd_is_single_sku_en()) {
 			rlmDomainOidSetCountry(prAdapter, aucValue, 2);
@@ -8613,23 +6668,18 @@ void wlanCfgSetCountryCode(IN struct ADAPTER *prAdapter)
 
 struct WLAN_CFG_ENTRY *wlanCfgGetEntry(IN struct ADAPTER *prAdapter,
 				       const int8_t *pucKey,
-				       uint32_t u4Flags)
+				       u_int8_t fgGetCfgRec)
 {
 
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	struct WLAN_CFG *prWlanCfg = NULL;
 	struct WLAN_CFG_REC *prWlanCfgRec = NULL;
-	struct WLAN_CFG *prWlanCfgEm = NULL;
 	uint32_t i, u32MaxNum;
 
-	if (u4Flags == WLAN_CFG_REC) {
+	if (fgGetCfgRec) {
 		prWlanCfgRec = prAdapter->prWlanCfgRec;
 		u32MaxNum = WLAN_CFG_REC_ENTRY_NUM_MAX;
 		ASSERT(prWlanCfgRec);
-	} else if (u4Flags == WLAN_CFG_EM) {
-		prWlanCfgEm = prAdapter->prWlanCfgEm;
-		u32MaxNum = WLAN_CFG_REC_ENTRY_NUM_MAX;
-		ASSERT(prWlanCfgEm);
 	} else {
 		prWlanCfg = prAdapter->prWlanCfg;
 		u32MaxNum = WLAN_CFG_ENTRY_NUM_MAX;
@@ -8642,10 +6692,8 @@ struct WLAN_CFG_ENTRY *wlanCfgGetEntry(IN struct ADAPTER *prAdapter,
 	prWlanCfgEntry = NULL;
 
 	for (i = 0; i < u32MaxNum; i++) {
-		if (u4Flags == WLAN_CFG_REC)
+		if (fgGetCfgRec)
 			prWlanCfgEntry = &prWlanCfgRec->arWlanCfgBuf[i];
-		else if (u4Flags == WLAN_CFG_EM)
-			prWlanCfgEntry = &prWlanCfgEm->arWlanCfgBuf[i];
 		else
 			prWlanCfgEntry = &prWlanCfg->arWlanCfgBuf[i];
 
@@ -8660,24 +6708,6 @@ struct WLAN_CFG_ENTRY *wlanCfgGetEntry(IN struct ADAPTER *prAdapter,
 
 }
 
-uint32_t wlanCfgGetTotalCfgNum(
-	IN struct ADAPTER *prAdapter, uint32_t flag)
-{
-	uint32_t i = 0;
-	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
-	uint32_t count = 0;
-
-	for (i = 0; i < WLAN_CFG_REC_ENTRY_NUM_MAX; i++) {
-		prWlanCfgEntry = wlanCfgGetEntryByIndex(prAdapter, i, flag);
-
-		if ((!prWlanCfgEntry) || (prWlanCfgEntry->aucKey[0] == '\0'))
-			break;
-
-		count++;
-	}
-	return count;
-}
-
 
 struct WLAN_CFG_ENTRY *wlanCfgGetEntryByIndex(
 	IN struct ADAPTER *prAdapter, const uint8_t ucIdx,
@@ -8687,24 +6717,19 @@ struct WLAN_CFG_ENTRY *wlanCfgGetEntryByIndex(
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	struct WLAN_CFG *prWlanCfg;
 	struct WLAN_CFG_REC *prWlanCfgRec;
-	struct WLAN_CFG *prWlanCfgEm;
 
 
 	prWlanCfg = prAdapter->prWlanCfg;
 	prWlanCfgRec = prAdapter->prWlanCfgRec;
-	prWlanCfgEm = prAdapter->prWlanCfgEm;
 
 	ASSERT(prWlanCfg);
 	ASSERT(prWlanCfgRec);
-	ASSERT(prWlanCfgEm);
 
 
 	prWlanCfgEntry = NULL;
 
-	if (flag == WLAN_CFG_REC)
+	if (flag & WLAN_CFG_REC_FLAG_BIT)
 		prWlanCfgEntry = &prWlanCfgRec->arWlanCfgBuf[ucIdx];
-	else if (flag == WLAN_CFG_EM)
-		prWlanCfgEntry = &prWlanCfgEm->arWlanCfgBuf[ucIdx];
 	else
 		prWlanCfgEntry = &prWlanCfg->arWlanCfgBuf[ucIdx];
 
@@ -8728,11 +6753,15 @@ uint32_t wlanCfgGet(IN struct ADAPTER *prAdapter,
 {
 
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
+	struct WLAN_CFG *prWlanCfg;
 
+	prWlanCfg = prAdapter->prWlanCfg;
+
+	ASSERT(prWlanCfg);
 	ASSERT(pucValue);
 
 	/* Find the exist */
-	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, u4Flags);
+	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, FALSE);
 
 	if (prWlanCfgEntry) {
 		kalStrnCpy(pucValue, prWlanCfgEntry->aucValue,
@@ -8753,37 +6782,24 @@ void wlanCfgRecordValue(IN struct ADAPTER *prAdapter,
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	uint8_t aucBuf[WLAN_CFG_VALUE_LEN_MAX];
 
-	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_REC);
+	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, TRUE);
 
 	kalMemZero(aucBuf, sizeof(aucBuf));
 
-	kalSnprintf(aucBuf, WLAN_CFG_VALUE_LEN_MAX, "%d",
-		    (int32_t)u4Value);
+	kalSnprintf(aucBuf, WLAN_CFG_VALUE_LEN_MAX, "0x%x",
+		    (unsigned int)u4Value);
 
-	wlanCfgSet(prAdapter, pucKey, aucBuf, WLAN_CFG_REC);
+	wlanCfgSet(prAdapter, pucKey, aucBuf, 1);
 }
+
+
 
 uint32_t wlanCfgGetUint32(IN struct ADAPTER *prAdapter,
 			  const int8_t *pucKey, uint32_t u4ValueDef)
 {
-	return wlanCfgGetUint32Range(prAdapter, pucKey, u4ValueDef,
-				NULL, NULL);
-}
-
-int32_t wlanCfgGetInt32(IN struct ADAPTER *prAdapter,
-			const int8_t *pucKey, int32_t i4ValueDef)
-{
-	return wlanCfgGetInt32Range(prAdapter, pucKey, i4ValueDef,
-				NULL, NULL);
-}
-
-uint32_t wlanCfgGetUint32Range(IN struct ADAPTER *prAdapter,
-			  const int8_t *pucKey, uint32_t u4ValueDef,
-			  uint32_t *pu4MinValue, uint32_t *pu4MaxValue)
-{
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	struct WLAN_CFG *prWlanCfg;
-	uint32_t u4Value, u4ReadValue;
+	uint32_t u4Value;
 	int32_t u4Ret;
 
 	prWlanCfg = prAdapter->prWlanCfg;
@@ -8792,36 +6808,27 @@ uint32_t wlanCfgGetUint32Range(IN struct ADAPTER *prAdapter,
 
 	u4Value = u4ValueDef;
 	/* Find the exist */
-	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_DEFAULT);
+	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, FALSE);
 
 	if (prWlanCfgEntry) {
 		/* u4Ret = kalStrtoul(prWlanCfgEntry->aucValue, NULL, 0); */
-		u4Ret = kalkStrtou32(prWlanCfgEntry->aucValue, 0, &u4ReadValue);
-		if (u4Ret) {
+		u4Ret = kalkStrtou32(prWlanCfgEntry->aucValue, 0, &u4Value);
+		if (u4Ret)
 			DBGLOG(INIT, LOUD, "parse aucValue error u4Ret=%d\n",
 			       u4Ret);
-		} else {
-			if (pu4MinValue && u4ReadValue < *pu4MinValue)
-				goto exit;
-			if (pu4MaxValue && u4ReadValue > *pu4MaxValue)
-				goto exit;
-			u4Value = u4ReadValue;
-		}
 	}
 
-exit:
 	wlanCfgRecordValue(prAdapter, pucKey, u4Value);
 
 	return u4Value;
 }
 
-int32_t wlanCfgGetInt32Range(IN struct ADAPTER *prAdapter,
-			const int8_t *pucKey, int32_t i4ValueDef,
-			int32_t *pi4MinValue, int32_t *pi4MaxValue)
+int32_t wlanCfgGetInt32(IN struct ADAPTER *prAdapter,
+			const int8_t *pucKey, int32_t i4ValueDef)
 {
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	struct WLAN_CFG *prWlanCfg;
-	int32_t i4Value = 0, i4ReadValue = 0;
+	int32_t i4Value = 0;
 	int32_t i4Ret = 0;
 
 	prWlanCfg = prAdapter->prWlanCfg;
@@ -8830,24 +6837,16 @@ int32_t wlanCfgGetInt32Range(IN struct ADAPTER *prAdapter,
 
 	i4Value = i4ValueDef;
 	/* Find the exist */
-	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_DEFAULT);
+	prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, FALSE);
 
 	if (prWlanCfgEntry) {
 		/* i4Ret = kalStrtol(prWlanCfgEntry->aucValue, NULL, 0); */
-		i4Ret = kalkStrtos32(prWlanCfgEntry->aucValue, 0, &i4ReadValue);
-		if (i4Ret) {
+		i4Ret = kalkStrtos32(prWlanCfgEntry->aucValue, 0, &i4Value);
+		if (i4Ret)
 			DBGLOG(INIT, LOUD, "parse aucValue error i4Ret=%d\n",
 			       i4Ret);
-		} else {
-			if (pi4MinValue && i4ReadValue < *pi4MinValue)
-				goto exit;
-			if (pi4MaxValue && i4ReadValue > *pi4MaxValue)
-				goto exit;
-			i4Value = i4ReadValue;
-		}
 	}
 
-exit:
 	wlanCfgRecordValue(prAdapter, pucKey, (uint32_t)i4Value);
 
 	return i4Value;
@@ -8856,35 +6855,28 @@ exit:
 uint32_t wlanCfgSet(IN struct ADAPTER *prAdapter,
 		    const int8_t *pucKey, int8_t *pucValue, uint32_t u4Flags)
 {
+
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
 	struct WLAN_CFG *prWlanCfg = NULL;
-	struct WLAN_CFG *prWlanCfgEm = NULL;
 	struct WLAN_CFG_REC *prWlanCfgRec = NULL;
 	uint32_t u4EntryIndex;
 	uint32_t i;
 	uint8_t ucExist;
+	u_int8_t fgGetCfgRec = FALSE;
+
+
+	fgGetCfgRec = u4Flags & WLAN_CFG_REC_FLAG_BIT;
 
 	ASSERT(pucKey);
-#if CFG_TC10_FEATURE
-	DBGLOG(INIT, INFO, "[%s]:[%s] OP:%d\n", pucKey, pucValue, u4Flags);
-#else
-	DBGLOG(INIT, LOUD, "[%s]:[%s] OP:%d\n", pucKey, pucValue, u4Flags);
-#endif
+
 	/* Find the exist */
 	ucExist = 0;
-	if (u4Flags == WLAN_CFG_REC) {
-		prWlanCfgEntry =
-			wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_REC);
+	if (fgGetCfgRec) {
+		prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, TRUE);
 		prWlanCfgRec = prAdapter->prWlanCfgRec;
 		ASSERT(prWlanCfgRec);
-	} else if (u4Flags == WLAN_CFG_EM) {
-		prWlanCfgEntry =
-			wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_EM);
-		prWlanCfgEm = prAdapter->prWlanCfgEm;
-		ASSERT(prWlanCfgEm);
 	} else {
-		prWlanCfgEntry =
-			wlanCfgGetEntry(prAdapter, pucKey, WLAN_CFG_DEFAULT);
+		prWlanCfgEntry = wlanCfgGetEntry(prAdapter, pucKey, FALSE);
 		prWlanCfg = prAdapter->prWlanCfg;
 		ASSERT(prWlanCfg);
 	}
@@ -8892,25 +6884,19 @@ uint32_t wlanCfgSet(IN struct ADAPTER *prAdapter,
 	if (!prWlanCfgEntry) {
 		/* Find the empty */
 		for (i = 0; i < WLAN_CFG_ENTRY_NUM_MAX; i++) {
-			if (u4Flags == WLAN_CFG_REC)
+			if (fgGetCfgRec)
 				prWlanCfgEntry = &prWlanCfgRec->arWlanCfgBuf[i];
-			else if (u4Flags == WLAN_CFG_EM)
-				prWlanCfgEntry = &prWlanCfgEm->arWlanCfgBuf[i];
 			else
 				prWlanCfgEntry = &prWlanCfg->arWlanCfgBuf[i];
-
 			if (prWlanCfgEntry->aucKey[0] == '\0')
 				break;
 		}
 
 		u4EntryIndex = i;
 		if (u4EntryIndex < WLAN_CFG_ENTRY_NUM_MAX) {
-			if (u4Flags == WLAN_CFG_REC)
+			if (fgGetCfgRec)
 				prWlanCfgEntry =
 				    &prWlanCfgRec->arWlanCfgBuf[u4EntryIndex];
-			else if (u4Flags == WLAN_CFG_EM)
-				prWlanCfgEntry =
-				    &prWlanCfgEm->arWlanCfgBuf[u4EntryIndex];
 			else
 				prWlanCfgEntry =
 				    &prWlanCfg->arWlanCfgBuf[u4EntryIndex];
@@ -8931,6 +6917,7 @@ uint32_t wlanCfgSet(IN struct ADAPTER *prAdapter,
 				   WLAN_CFG_KEY_LEN_MAX - 1);
 			prWlanCfgEntry->aucKey[WLAN_CFG_KEY_LEN_MAX - 1] = '\0';
 		}
+
 		if (pucValue && pucValue[0] != '\0') {
 			kalStrnCpy(prWlanCfgEntry->aucValue, pucValue,
 				   WLAN_CFG_VALUE_LEN_MAX - 1);
@@ -8953,9 +6940,9 @@ uint32_t wlanCfgSet(IN struct ADAPTER *prAdapter,
 
 	}
 	/* prWlanCfgEntry */
-	if (prWlanCfgEntry) {
+	if (prWlanCfgEntry)
 		return WLAN_STATUS_SUCCESS;
-	}
+
 	if (pucKey)
 		DBGLOG(INIT, ERROR, "Set wifi config error key \'%s\'\n",
 		       pucKey);
@@ -9009,10 +6996,10 @@ uint32_t wlanCfgSetUint32(IN struct ADAPTER *prAdapter,
 
 	kalMemZero(aucBuf, sizeof(aucBuf));
 
-	kalSnprintf(aucBuf, WLAN_CFG_VALUE_LEN_MAX, "%d",
-		    (int32_t)u4Value);
+	kalSnprintf(aucBuf, WLAN_CFG_VALUE_LEN_MAX, "0x%x",
+		    (unsigned int)u4Value);
 
-	return wlanCfgSet(prAdapter, pucKey, aucBuf, WLAN_CFG_DEFAULT);
+	return wlanCfgSet(prAdapter, pucKey, aucBuf, 0);
 }
 
 enum {
@@ -9031,11 +7018,14 @@ struct WLAN_CFG_PARSE_STATE_S {
 	uint32_t maxSize;
 };
 
-int32_t wlanCfgFindNextToken(struct WLAN_CFG_PARSE_STATE_S
-			     *state)
+#define IS_CFG_IGNORE_CHARACTER(c) (c == ' ' || c == ',' \
+				 || c == '\t' || c == '\r')
+#define IS_CFG_SPACE_CHARACTER(c) (c == ' ' || c == '\t')
+
+int32_t wlanCfgFindNextToken(struct WLAN_CFG_PARSE_STATE_S *state)
 {
-	int8_t *x = state->ptr;
-	int8_t *s;
+	int8_t *chr = state->ptr;
+	int8_t *text = NULL;
 
 	if (state->nexttoken) {
 		int32_t t = state->nexttoken;
@@ -9044,115 +7034,97 @@ int32_t wlanCfgFindNextToken(struct WLAN_CFG_PARSE_STATE_S
 		return t;
 	}
 
-	for (;;) {
-		switch (*x) {
-		case 0:
-			state->ptr = x;
-			return STATE_EOF;
-		case '\n':
-			x++;
-			state->ptr = x;
-			return STATE_NEWLINE;
-		case ' ':
-		case ',':
-		/*case ':':  should not including : , mac addr would be fail*/
-		case '\t':
-		case '\r':
-			x++;
-			continue;
-		case '#':
-#if CFG_TC10_FEATURE
-		case '[':
-#endif
-			while (*x && (*x != '\n'))
-				x++;
-			if (*x == '\n') {
-				state->ptr = x + 1;
+	while (TRUE) {
+		if (*chr == '#') {
+			while (*chr && (*chr != '\n'))
+				chr++;
+			if (*chr == '\n') {
+				state->ptr = chr + 1;
 				return STATE_NEWLINE;
 			}
-			state->ptr = x;
+			state->ptr = chr;
 			return STATE_EOF;
-
-		default:
-			goto text;
+		} else if (IS_CFG_IGNORE_CHARACTER(*chr)) {
+			chr++;
+			continue;
+		} else if (*chr == 0) {
+			state->ptr = chr;
+			return STATE_EOF;
+		} else if (*chr == '\n') {
+			chr++;
+			state->ptr = chr;
+			return STATE_NEWLINE;
 		}
+		goto text_handle;
 	}
 
-textdone:
-	state->ptr = x;
-	*s = 0;
+text_done:
+	state->ptr = chr;
+	*text = 0;
 	return STATE_TEXT;
-text:
-	state->text = s = x;
-textresume:
-	for (;;) {
-		switch (*x) {
-		case 0:
-			goto textdone;
-		case ' ':
-		case ',':
-		/* case ':': */
-		case '\t':
-		case '\r':
-			x++;
-			goto textdone;
-		case '\n':
-			state->nexttoken = STATE_NEWLINE;
-			x++;
-			goto textdone;
-		case '"':
-			x++;
-			for (;;) {
-				switch (*x) {
-				case 0:
-					/* unterminated quoted thing */
-					state->ptr = x;
-					return STATE_EOF;
-				case '"':
-					x++;
-					goto textresume;
-				default:
-					*s++ = *x++;
-				}
-			}
-			break;
-		case '\\':
-			x++;
-			switch (*x) {
-			case 0:
-				goto textdone;
-			case 'n':
-				*s++ = '\n';
-				break;
-			case 'r':
-				*s++ = '\r';
-				break;
-			case 't':
-				*s++ = '\t';
-				break;
-			case '\\':
-				*s++ = '\\';
-				break;
-			case '\r':
-				/* \ <cr> <lf> -> line continuation */
-				if (x[1] != '\n') {
-					x++;
+text_handle:
+	state->text = text = chr;
+	while (TRUE) {
+		if (IS_CFG_IGNORE_CHARACTER(*chr)) {
+			chr++;
+			goto text_done;
+		} else if (*chr == '\\') {
+			chr++;
+			if (*chr == 'n')
+				*text = '\n';
+			else if (*chr == 'r')
+				*text = '\r';
+			else if (*chr == '\r') {
+				if (*(chr + 1) != '\n') {
+					chr++;
 					continue;
 				}
-			case '\n':
-				/* \ <lf> -> line continuation */
-				x++;
-				/* eat any extra whitespace */
-				while ((*x == ' ') || (*x == '\t'))
-					x++;
+				chr++;
+				while (IS_CFG_SPACE_CHARACTER(*chr))
+					chr++;
 				continue;
-			default:
-				/* unknown escape -- just copy */
-				*s++ = *x++;
+			} else if (*chr == '\n') {
+				chr++;
+				while (IS_CFG_SPACE_CHARACTER(*chr))
+					chr++;
+				continue;
+			} else if (*chr == 't')
+				*text = '\t';
+			else if (*chr == '\\')
+				*text = '\\';
+			else if (*chr == 0)
+				goto text_done;
+			else
+				*text = *chr++;
+		} else if (*chr == '\n') {
+			state->nexttoken = STATE_NEWLINE;
+			chr++;
+			goto text_done;
+		} else if (*chr == '\r') {
+			chr++;
+			goto text_done;
+		} else if (*chr == '"') {
+			u_int8_t fgResume = FALSE;
+
+			chr++;
+			while (TRUE) {
+				if (*chr == 0) {
+					state->ptr = chr;
+					return STATE_EOF;
+				} else if (*chr == '"') {
+					chr++;
+					fgResume = TRUE;
+					break;
+				}
+				*text++ = *chr++;
 			}
-			continue;
-		default:
-			*s++ = *x++;
+
+			if (fgResume)
+				continue;
+		} else if (*chr == 0)
+			goto text_done;
+		else {
+			*text++ = *chr++;
 #if CFG_SUPPORT_EASY_DEBUG
 			state->textsize++;
 #endif
@@ -9266,7 +7238,7 @@ wlanCfgParseAddEntry(IN struct ADAPTER *prAdapter,
 
 	if ((pucKeyHead == NULL)
 	    || (pucValueHead == NULL)
-	   )
+	    )
 		return WLAN_STATUS_FAILURE;
 
 	if (pucKeyTail) {
@@ -9294,7 +7266,7 @@ wlanCfgParseAddEntry(IN struct ADAPTER *prAdapter,
 
 	kalStrnCpy(aucValue, pucValueHead, u4Len);
 
-	return wlanCfgSet(prAdapter, aucKey, aucValue, WLAN_CFG_DEFAULT);
+	return wlanCfgSet(prAdapter, aucKey, aucValue, 0);
 }
 
 enum {
@@ -9306,6 +7278,18 @@ enum {
 };
 
 #if CFG_SUPPORT_EASY_DEBUG
+
+int8_t atoi(uint8_t ch)
+{
+	if (ch >= 'a' && ch <= 'f')
+		return ch - 87;
+	else if (ch >= 'A' && ch <= 'F')
+		return ch - 55;
+	else if (ch >= '0' && ch <= '9')
+		return ch - 48;
+
+	return 0;
+}
 
 uint32_t wlanCfgParseToFW(int8_t **args, int8_t *args_size,
 			  uint8_t nargs, int8_t *buffer, uint8_t times)
@@ -9320,7 +7304,7 @@ uint32_t wlanCfgParseToFW(int8_t **args, int8_t *args_size,
 	memset(&cmd_v1, 0, sizeof(struct CMD_FORMAT_V1));
 
 #if 0
-	cmd_v1.itemType = kalAtoi(*args[ED_ITEMTYPE_SITE]);
+	cmd_v1.itemType = atoi(*args[ED_ITEMTYPE_SITE]);
 #else
 	cmd_v1.itemType = ITEM_TYPE_DEC;
 #endif
@@ -9375,10 +7359,9 @@ uint32_t wlanCfgParseToFW(int8_t **args, int8_t *args_size,
 
 		for (j = args_size[ED_VALUE_SITE] - 1 - startOffset; j >= 0;
 		     j--) {
-			sum = sum * base + kalAtoi(*data);
+			sum = sum * base + atoi(*data);
 			DBGLOG(INIT, WARN, "size:%d data[%d]=%u, sum=%u\n",
-			       args_size[ED_VALUE_SITE], j,
-				   kalAtoi(*data), sum);
+			       args_size[ED_VALUE_SITE], j, atoi(*data), sum);
 
 			data++;
 		}
@@ -9416,7 +7399,7 @@ uint32_t wlanCfgParseToFW(int8_t **args, int8_t *args_size,
  * @return none
  */
 /*----------------------------------------------------------------------------*/
-void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
+void wlanFeatureToFw(IN struct ADAPTER *prAdapter)
 {
 
 	struct WLAN_CFG_ENTRY *prWlanCfgEntry;
@@ -9441,7 +7424,7 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 
 	for (i = 0; i < WLAN_CFG_ENTRY_NUM_MAX; i++) {
 
-		prWlanCfgEntry = wlanCfgGetEntryByIndex(prAdapter, i, u4Flag);
+		prWlanCfgEntry = wlanCfgGetEntryByIndex(prAdapter, i, 0);
 
 		if (prWlanCfgEntry) {
 
@@ -9451,8 +7434,6 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 			/*send string format to firmware */
 			rCmd_v1.itemStringLength = kalStrLen(
 							prWlanCfgEntry->aucKey);
-			if (rCmd_v1.itemStringLength > MAX_CMD_NAME_MAX_LENGTH)
-				continue;
 			kalMemZero(rCmd_v1.itemString, MAX_CMD_NAME_MAX_LENGTH);
 			kalMemCopy(rCmd_v1.itemString, prWlanCfgEntry->aucKey,
 				   rCmd_v1.itemStringLength);
@@ -9460,8 +7441,6 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 
 			rCmd_v1.itemValueLength = kalStrLen(
 						  prWlanCfgEntry->aucValue);
-			if (rCmd_v1.itemValueLength > MAX_CMD_VALUE_MAX_LENGTH)
-				continue;
 			kalMemZero(rCmd_v1.itemValue, MAX_CMD_VALUE_MAX_LENGTH);
 			kalMemCopy(rCmd_v1.itemValue, prWlanCfgEntry->aucValue,
 				   rCmd_v1.itemValueLength);
@@ -9469,8 +7448,8 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 
 
 			DBGLOG(INIT, TRACE,
-			       "Send key word (%s) WITH (%s) to firmware\n",
-			       rCmd_v1.itemString, rCmd_v1.itemValue);
+				"Send key word (%s) WITH (%s) to firmware\n",
+				rCmd_v1.itemString, rCmd_v1.itemValue);
 
 			kalMemCopy(((struct CMD_FORMAT_V1 *)rCmdV1Header.buffer)
 				   + ucTimes,
@@ -9481,6 +7460,7 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 			rCmdV1Header.cmdBufferLen +=
 						sizeof(struct CMD_FORMAT_V1);
 			rCmdV1Header.itemNum += ucTimes;
+
 
 			if (ucTimes == MAX_CMD_ITEM_MAX) {
 				/* Send to FW */
@@ -9515,7 +7495,7 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 					       "[Fail]kalIoctl wifiSefCFG fail 0x%x\n",
 					       rStatus);
 
-				DBGLOG(INIT, TRACE,
+				DBGLOG(INIT, INFO,
 				       "kalIoctl wifiSefCFG num:%d\n", ucTimes);
 				kalMemSet(rCmdV1Header.buffer, 0,
 					  MAX_CMD_BUFFER_LENGTH);
@@ -9535,22 +7515,21 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 		rCmdV1Header.itemNum = ucTimes;
 
 		rStatus = wlanSendSetQueryCmd(
-			  prAdapter,	/* prAdapter */
-			  CMD_ID_GET_SET_CUSTOMER_CFG,	/* 0x70 */
-			  TRUE,		/* fgSetQuery */
-			  FALSE,	/* fgNeedResp */
-			  FALSE,	/* fgIsOid */
-			  NULL,		/* pfCmdDoneHandler*/
-			  NULL,		/* pfCmdTimeoutHandler */
-			  sizeof(struct CMD_HEADER),	/* u4SetQueryInfoLen */
-			  (uint8_t *)&rCmdV1Header,/* pucInfoBuffer */
-			  NULL,	/* pvSetQueryBuffer */
-			  0);	/* u4SetQueryBufferLen */
+			prAdapter,		     /* prAdapter */
+			CMD_ID_GET_SET_CUSTOMER_CFG, /* 0x70 */
+			TRUE,			     /* fgSetQuery */
+			FALSE,			     /* fgNeedResp */
+			FALSE,			     /* fgIsOid */
+			NULL,			     /* pfCmdDoneHandler*/
+			NULL,			     /* pfCmdTimeoutHandler */
+			sizeof(struct CMD_HEADER),   /* u4SetQueryInfoLen */
+			(uint8_t *)&rCmdV1Header,    /* pucInfoBuffer */
+			NULL,                        /* pvSetQueryBuffer */
+			  0);			     /* u4SetQueryBufferLen */
 
 		if (rStatus == WLAN_STATUS_FAILURE)
 			DBGLOG(INIT, INFO,
-			       "[Fail]kalIoctl wifiSefCFG fail 0x%x\n",
-			       rStatus);
+			    "[Fail]kalIoctl wifiSefCFG fail 0x%x\n", rStatus);
 
 		DBGLOG(INIT, TRACE,
 			"cmdV1Header.itemNum:%d, kalIoctl wifiSefCFG num:%d\n",
@@ -9561,21 +7540,9 @@ void wlanFeatureToFw(IN struct ADAPTER *prAdapter, uint32_t u4Flag)
 		ucTimes = 0;
 	}
 
-#if CFG_SUPPORT_SMART_GEAR
-	/*Send Event, Notify Fwks*/
-	#if CFG_SUPPORT_DATA_STALL
-	if (prAdapter->rWifiVar.ucSGCfg == 0x00) {
-		enum ENUM_VENDOR_DRIVER_EVENT eEvent = EVENT_SG_DISABLE;
-
-		KAL_REPORT_ERROR_EVENT(prAdapter,
-			eEvent, (uint16_t)sizeof(u_int8_t),
-			0,
-			TRUE);
-	}
-	#endif /* CFG_SUPPORT_DATA_STALL */
-#endif
-
 }
+
+
 
 uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 		      uint8_t *pucConfigBuf, uint32_t u4ConfigBufLen,
@@ -9605,10 +7572,8 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 		DBGLOG(INIT, ERROR, "pucConfigBuf is NULL\n");
 		return WLAN_STATUS_FAILURE;
 	}
-	if (kalStrnLen(pucConfigBuf, WLAN_CFG_FILE_BUF_SIZE)
-		>= WLAN_CFG_FILE_BUF_SIZE) {
-		DBGLOG(INIT, ERROR, "pucConfigBuf >= %u\n",
-			WLAN_CFG_FILE_BUF_SIZE);
+	if (kalStrnLen(pucConfigBuf, 4000) >= 4000) {
+		DBGLOG(INIT, ERROR, "pucConfigBuf >= 4000\n");
 		return WLAN_STATUS_FAILURE;
 	}
 	if (u4ConfigBufLen == 0)
@@ -9620,7 +7585,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 	state.nexttoken = 0;
 	state.textsize = 0;
 	state.maxSize = u4ConfigBufLen;
-	DBGLOG(INIT, LOUD, "wlanCfgParse()\n");
+	DBGLOG(INIT, INFO, "wlanCfgParse()\n");
 
 	for (;;) {
 		switch (wlanCfgFindNextToken(&state)) {
@@ -9628,7 +7593,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 			if (i4Nargs < 2)
 				goto exit;
 
-			DBGLOG(INIT, LOUD, "STATE_EOF\n");
+			DBGLOG(INIT, INFO, "STATE_EOF\n");
 
 			/* 3 parmeter mode transforation */
 			if (i4Nargs == 3 && !isFwConfig &&
@@ -9660,8 +7625,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 				wlanCfgParseAddEntry(prAdapter, ppcArgs[1],
 						     NULL, ucTmp, NULL);
 				kalMemSet(arcArgv_size, 0, WLAN_CFG_ARGV_MAX);
-				kalMemSet(apcArgv, 0,
-					WLAN_CFG_ARGV_MAX * sizeof(int8_t *));
+				kalMemSet(apcArgv, 0, WLAN_CFG_ARGV_MAX);
 				i4Nargs = 0;
 				goto exit;
 
@@ -9691,7 +7655,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 			if (i4Nargs < 2)
 				break;
 
-			DBGLOG(INIT, LOUD, "STATE_NEWLINE\n");
+			DBGLOG(INIT, INFO, "STATE_NEWLINE\n");
 #if 1
 			/* 3 parmeter mode transforation */
 			if (i4Nargs == 3 && !isFwConfig &&
@@ -9723,8 +7687,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 				wlanCfgParseAddEntry(prAdapter, ppcArgs[1],
 						     NULL, ucTmp, NULL);
 				kalMemSet(arcArgv_size, 0, WLAN_CFG_ARGV_MAX);
-				kalMemSet(apcArgv, 0,
-					WLAN_CFG_ARGV_MAX * sizeof(int8_t *));
+				kalMemSet(apcArgv, 0, WLAN_CFG_ARGV_MAX);
 				i4Nargs = 0;
 				break;
 
@@ -9751,7 +7714,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 						       i);
 						break;
 					}
-					u4RetSize = kalScnprintf(pucCurrBuf,
+					u4RetSize = scnprintf(pucCurrBuf,
 							      u4CurrSize, "%s ",
 							      ppcArgs[i]);
 					pucCurrBuf += u4RetSize;
@@ -9759,7 +7722,7 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 				}
 			}
 
-			DBGLOG(INIT, LOUD,
+			DBGLOG(INIT, WARN,
 			       "Save to driver temp buffer as [%s]\n",
 			       ucTmp);
 			wlanCfgParseAddEntry(prAdapter, ppcArgs[0], NULL, ucTmp,
@@ -9809,10 +7772,10 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 						0);
 
 					if (rStatus == WLAN_STATUS_FAILURE)
-						DBGLOG(INIT, LOUD,
+						DBGLOG(INIT, INFO,
 						       "kalIoctl wifiSefCFG fail 0x%x\n",
 						       rStatus);
-					DBGLOG(INIT, LOUD,
+					DBGLOG(INIT, INFO,
 					       "kalIoctl wifiSefCFG num:%d X\n",
 					       ucTimes);
 					kalMemSet(rCmdV1Header.buffer, 0,
@@ -9825,17 +7788,16 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 
 #endif
 			kalMemSet(arcArgv_size, 0, WLAN_CFG_ARGV_MAX);
-			kalMemSet(apcArgv, 0,
-				WLAN_CFG_ARGV_MAX * sizeof(int8_t *));
+			kalMemSet(apcArgv, 0, WLAN_CFG_ARGV_MAX);
 			i4Nargs = 0;
 			break;
 
 		case STATE_TEXT:
-			if (i4Nargs >= 0 && i4Nargs < WLAN_CFG_ARGV_MAX) {
+			if (i4Nargs < WLAN_CFG_ARGV_MAX) {
 				ppcArgs[i4Nargs++] = state.text;
-				arcArgv_size[i4Nargs - 1] = state.textsize;
+				arcArgv_size[i4Nargs-1] = state.textsize;
 				state.textsize = 0;
-				DBGLOG(INIT, LOUD,
+				DBGLOG(INIT, INFO,
 				       " nargs= %d STATE_TEXT = %s, SIZE = %d\n",
 				       i4Nargs - 1, ppcArgs[i4Nargs - 1],
 				       arcArgv_size[i4Nargs - 1]);
@@ -9849,7 +7811,7 @@ exit:
 		/* Send to FW */
 		rCmdV1Header.itemNum = ucTimes;
 
-		DBGLOG(INIT, LOUD, "cmdV1Header.itemNum:%d\n",
+		DBGLOG(INIT, INFO, "cmdV1Header.itemNum:%d\n",
 		       rCmdV1Header.itemNum);
 		rStatus = wlanSendSetQueryCmd(
 			  prAdapter,	/* prAdapter */
@@ -9892,10 +7854,8 @@ uint32_t wlanCfgParse(IN struct ADAPTER *prAdapter,
 		DBGLOG(INIT, ERROR, "pucConfigBuf is NULL\n");
 		return WLAN_STATUS_FAILURE;
 	}
-	if (kalStrnLen(pucConfigBuf, WLAN_CFG_FILE_BUF_SIZE)
-		>= WLAN_CFG_FILE_BUF_SIZE) {
-		DBGLOG(INIT, ERROR, "pucConfigBuf >= %u\n",
-			WLAN_CFG_FILE_BUF_SIZE);
+	if (kalStrnLen(pucConfigBuf, 4000) >= 4000) {
+		DBGLOG(INIT, ERROR, "pucConfigBuf >= 4000\n");
 		return WLAN_STATUS_FAILURE;
 	}
 	if (u4ConfigBufLen == 0)
@@ -10015,8 +7975,6 @@ uint32_t wlanCfgInit(IN struct ADAPTER *prAdapter,
 {
 	struct WLAN_CFG *prWlanCfg;
 	struct WLAN_CFG_REC *prWlanCfgRec;
-	struct WLAN_CFG *prWlanCfgEm;
-
 	/* P_WLAN_CFG_ENTRY_T prWlanCfgEntry; */
 	prAdapter->prWlanCfg = &prAdapter->rWlanCfg;
 	prWlanCfg = prAdapter->prWlanCfg;
@@ -10024,15 +7982,8 @@ uint32_t wlanCfgInit(IN struct ADAPTER *prAdapter,
 	prAdapter->prWlanCfgRec = &prAdapter->rWlanCfgRec;
 	prWlanCfgRec = prAdapter->prWlanCfgRec;
 
-	prAdapter->prWlanCfgEm = &prAdapter->rWlanCfgEm;
-	prWlanCfgEm = prAdapter->prWlanCfgEm;
-
 	kalMemZero(prWlanCfg, sizeof(struct WLAN_CFG));
 	ASSERT(prWlanCfg);
-
-	kalMemZero(prWlanCfgEm, sizeof(struct WLAN_CFG));
-	ASSERT(prWlanCfgEm);
-
 	prWlanCfg->u4WlanCfgEntryNumMax = WLAN_CFG_ENTRY_NUM_MAX;
 	prWlanCfg->u4WlanCfgKeyLenMax = WLAN_CFG_KEY_LEN_MAX;
 	prWlanCfg->u4WlanCfgValueLenMax = WLAN_CFG_VALUE_LEN_MAX;
@@ -10040,26 +7991,20 @@ uint32_t wlanCfgInit(IN struct ADAPTER *prAdapter,
 	prWlanCfgRec->u4WlanCfgEntryNumMax =
 		WLAN_CFG_REC_ENTRY_NUM_MAX;
 	prWlanCfgRec->u4WlanCfgKeyLenMax =
-		WLAN_CFG_KEY_LEN_MAX;
+		WLAN_CFG_REC_ENTRY_NUM_MAX;
 	prWlanCfgRec->u4WlanCfgValueLenMax =
-		WLAN_CFG_VALUE_LEN_MAX;
-
-	prWlanCfgEm->u4WlanCfgEntryNumMax = WLAN_CFG_ENTRY_NUM_MAX;
-	prWlanCfgEm->u4WlanCfgKeyLenMax = WLAN_CFG_KEY_LEN_MAX;
-	prWlanCfgEm->u4WlanCfgValueLenMax = WLAN_CFG_VALUE_LEN_MAX;
-
+		WLAN_CFG_REC_ENTRY_NUM_MAX;
 
 	DBGLOG(INIT, INFO, "Init wifi config len %u max entry %u\n",
 	       u4ConfigBufLen, prWlanCfg->u4WlanCfgEntryNumMax);
 #if DBG
 	/* self test */
-	wlanCfgSet(prAdapter, "ConfigValid", "0x123", WLAN_CFG_DEFAULT);
-	if (wlanCfgGetUint32(prAdapter, "ConfigValid", WLAN_CFG_DEFAULT)
-		!= 0x123)
+	wlanCfgSet(prAdapter, "ConfigValid", "0x123", 0);
+	if (wlanCfgGetUint32(prAdapter, "ConfigValid", 0) != 0x123)
 		DBGLOG(INIT, INFO, "wifi config error %u\n", __LINE__);
 
-	wlanCfgSet(prAdapter, "ConfigValid", "1", WLAN_CFG_DEFAULT);
-	if (wlanCfgGetUint32(prAdapter, "ConfigValid", WLAN_CFG_DEFAULT) != 1)
+	wlanCfgSet(prAdapter, "ConfigValid", "1", 0);
+	if (wlanCfgGetUint32(prAdapter, "ConfigValid", 0) != 1)
 		DBGLOG(INIT, INFO, "wifi config error %u\n", __LINE__);
 
 #endif
@@ -10103,54 +8048,6 @@ int32_t wlanHexToByte(int8_t *hex)
 	return (a << 4) | b;
 }
 
-int32_t wlanHexToArray(int8_t *hexString, int8_t *hexArray, uint8_t arrayLen)
-{
-		int8_t index = 0;
-		uint8_t converted = 0;
-		int strLen = strlen(hexString);
-		int8_t result;
-
-		for (index = strLen-1;
-		converted < min(arrayLen*2, strLen); index--) {
-			if ((strLen-converted) >= 2) {
-				index--;
-				result = wlanHexToByte(hexString+index);
-				converted += 2;
-			} else {
-				result = wlanHexToNum(*(hexString+index));
-				converted++;
-			}
-			if (result == -1)
-				return 0;
-			hexArray[(converted-1)/2] = result;
-		}
-		return converted;
-}
-
-int32_t wlanHexToArrayR(int8_t *hexString, int8_t *hexArray, uint8_t arrayLen)
-{
-	int8_t converted = 0;
-	int len = strlen(hexString)/2;
-	int8_t result;
-
-	len = arrayLen < len ? arrayLen : len;
-	if (*(hexString+1) == '\0') {
-		result = wlanHexToNum(*(hexString));
-		if (result != -1) {
-			hexArray[converted] = result;
-			converted++;
-		}
-	} else {
-		for (converted = 0; converted < len; converted++) {
-			result = wlanHexToByte(hexString + converted*2);
-			hexArray[converted] = result;
-		}
-	}
-	return converted;
-}
-
-
-
 int32_t wlanHwAddrToBin(int8_t *txt, uint8_t *addr)
 {
 	int32_t i;
@@ -10180,15 +8077,14 @@ u_int8_t wlanIsChipNoAck(IN struct ADAPTER *prAdapter)
 
 	fgIsNoAck = prAdapter->fgIsChipNoAck
 #if CFG_CHIP_RESET_SUPPORT
-		    || kalIsResetting()
+	    || kalIsResetting()
 #endif
-		    || fgIsBusAccessFailed;
+	    || fgIsBusAccessFailed;
 
 	return fgIsNoAck;
 }
 
-u_int8_t wlanIsChipRstRecEnabled(IN struct ADAPTER
-				 *prAdapter)
+u_int8_t wlanIsChipRstRecEnabled(IN struct ADAPTER *prAdapter)
 {
 	return prAdapter->rWifiVar.fgChipResetRecover;
 }
@@ -10228,12 +8124,10 @@ void wlanChipRstPreAct(IN struct ADAPTER *prAdapter)
 
 		if (prBssInfo->eNetworkType == NETWORK_TYPE_AIS) {
 
-			if (kalGetMediaStateIndicated(prGlueInfo,
-				i4BssIdx) ==
-			    MEDIA_STATE_CONNECTED)
+			if (prGlueInfo->eParamMediaStateIndicated ==
+			    PARAM_MEDIA_STATE_CONNECTED)
 				kalIndicateStatusAndComplete(prGlueInfo,
-					WLAN_STATUS_MEDIA_DISCONNECT, NULL, 0,
-					i4BssIdx);
+					WLAN_STATUS_MEDIA_DISCONNECT, NULL, 0);
 		} else if (prBssInfo->eNetworkType == NETWORK_TYPE_P2P) {
 			if (prBssInfo->eCurrentOPMode == OP_MODE_ACCESS_POINT) {
 				u4ClientCount = bssGetClientCount(prAdapter,
@@ -10245,8 +8139,6 @@ void wlanChipRstPreAct(IN struct ADAPTER *prAdapter)
 				LINK_FOR_EACH_ENTRY_SAFE(prCurrStaRec,
 				    prNextCurrStaRec, prClientList,
 				    rLinkEntry, struct STA_RECORD) {
-					if (!prCurrStaRec)
-						break;
 					kalP2PGOStationUpdate(
 					    prAdapter->prGlueInfo,
 					    (uint8_t) prBssInfo->u4PrivateData,
@@ -10258,11 +8150,16 @@ void wlanChipRstPreAct(IN struct ADAPTER *prAdapter)
 				   OP_MODE_INFRASTRUCTURE) {
 				if (prBssInfo->prStaRecOfAP == NULL)
 					continue;
+#if CFG_WPS_DISCONNECT || (KERNEL_VERSION(4, 4, 0) <= CFG80211_VERSION_CODE)
 				kalP2PGCIndicateConnectionStatus(prGlueInfo,
 					(uint8_t) prBssInfo->u4PrivateData,
-					NULL, NULL, 0,
-					REASON_CODE_DEAUTH_LEAVING_BSS,
-					WLAN_STATUS_MEDIA_DISCONNECT_LOCALLY);
+					NULL, NULL, 0, 0,
+					WLAN_STATUS_MEDIA_DISCONNECT);
+#else
+				kalP2PGCIndicateConnectionStatus(prGlueInfo,
+					(uint8_t) prBssInfo->u4PrivateData,
+					NULL, NULL, 0, 0);
+#endif
 				prBssInfo->prStaRecOfAP = NULL;
 
 			}
@@ -10356,20 +8253,20 @@ u_int8_t wlanTxLifetimeIsTargetMsdu(IN struct ADAPTER
 
 #if 0
 	switch (prMsduInfo->ucTID) {
-	/* BK */
+		/* BK */
 	case 1:
 	case 2:
 
-	/* BE */
+		/* BE */
 	case 0:
 	case 3:
 		fgResult = FALSE;
 		break;
-	/* VI */
+		/* VI */
 	case 4:
 	case 5:
 
-	/* VO */
+		/* VO */
 	case 6:
 	case 7:
 		fgResult = TRUE;
@@ -10386,9 +8283,6 @@ void wlanTxLifetimeTagPacket(IN struct ADAPTER *prAdapter,
 			     IN enum ENUM_TX_PROFILING_TAG eTag)
 {
 	struct PKT_PROFILE *prPktProfile = &prMsduInfo->rPktProfile;
-#if CFG_SUPPORT_TX_LATENCY_STATS
-	struct WIFI_VAR *prWifiVar = &prAdapter->rWifiVar;
-#endif
 
 	if (!wlanTxLifetimeIsProfilingEnabled(prAdapter))
 		return;
@@ -10412,62 +8306,28 @@ void wlanTxLifetimeTagPacket(IN struct ADAPTER *prAdapter,
 			/* Packet enqueue time */
 			prPktProfile->rEnqueueTimestamp = (OS_SYSTIME)
 							  kalGetTimeTick();
-#if CFG_SUPPORT_TX_LATENCY_STATS
-			prPktProfile->u8XmitArrival =
-				GLUE_GET_PKT_XTIME(prMsduInfo->prPacket);
-			prPktProfile->u8EnqTime = StatsEnvTimeGet();
-#endif
 		}
 		break;
 
 	case TX_PROF_TAG_DRV_DEQUE:
-		if (prPktProfile->fgIsValid) {
+		if (prPktProfile->fgIsValid)
 			prPktProfile->rDequeueTimestamp = (OS_SYSTIME)
 							  kalGetTimeTick();
-#if CFG_SUPPORT_TX_LATENCY_STATS
-			prPktProfile->u8DeqTime = StatsEnvTimeGet();
-#endif
-		}
 		break;
 
 	case TX_PROF_TAG_DRV_TX_DONE:
 		if (prPktProfile->fgIsValid) {
 			prPktProfile->rHifTxDoneTimestamp = (OS_SYSTIME)
 							    kalGetTimeTick();
-#if CFG_SUPPORT_TX_LATENCY_STATS
-			prPktProfile->u8HifTxTime = StatsEnvTimeGet();
-			if (prWifiVar->fgPacketLatencyLog)
-				DBGLOG(TX, INFO,
-					"Latency(us) HIF_D:%lu, DEQ_D:%lu, ENQ_D:%lu A:%llu BSSIDX:WIDX:PID[%u:%u:%u] IPID:0x%04x SeqNo:%d\n",
-					NSEC_TO_USEC((uint32_t)(
-					prPktProfile->u8HifTxTime -
-					prPktProfile->u8XmitArrival)),
-					NSEC_TO_USEC((uint32_t)(
-					prPktProfile->u8DeqTime -
-					prPktProfile->u8XmitArrival)),
-					NSEC_TO_USEC((uint32_t)(
-					prPktProfile->u8EnqTime -
-					prPktProfile->u8XmitArrival)),
-					prPktProfile->u8XmitArrival,
-					prMsduInfo->ucBssIndex,
-					prMsduInfo->ucWlanIndex,
-					prMsduInfo->ucPID,
-					GLUE_GET_PKT_IP_ID(
-					prMsduInfo->prPacket),
-					GLUE_GET_PKT_SEQ_NO(
-					prMsduInfo->prPacket));
-
-			halAddDriverLatencyCount(prAdapter,
-				((uint32_t)(prPktProfile->u8HifTxTime -
-				prPktProfile->u8XmitArrival)) /
-				USEC_PER_SEC);
-#endif
-
 #if CFG_ENABLE_PER_STA_STATISTICS
 			wlanTxLifetimeUpdateStaStats(prAdapter, prMsduInfo);
 #endif
 		}
 		break;
+
+	case TX_PROF_TAG_MAC_TX_DONE:
+		break;
+
 	default:
 		break;
 	}
@@ -10477,41 +8337,9 @@ void wlanTxProfilingTagPacket(IN struct ADAPTER *prAdapter,
 			      IN void *prPacket,
 			      IN enum ENUM_TX_PROFILING_TAG eTag)
 {
-	if (!prPacket)
-		return;
-
 #if CFG_MET_PACKET_TRACE_SUPPORT
 	kalMetTagPacket(prAdapter->prGlueInfo, prPacket, eTag);
 #endif
-
-	switch (eTag) {
-	case TX_PROF_TAG_OS_TO_DRV:
-		kalTraceEvent("Xmit ipid=0x%04x seq=%d",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		DBGLOG(TX, TEMP, "Xmit ipid=%d seq=%d\n",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		break;
-	case TX_PROF_TAG_DRV_ENQUE:
-		kalTraceEvent("Enq ipid=0x%04x seq=%d",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		DBGLOG(TX, TEMP, "Enq ipid=%d seq=%d\n",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		break;
-	case TX_PROF_TAG_DRV_FREE:
-		kalTraceEvent("Cmpl ipid=0x%04x seq=%d",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		DBGLOG(TX, TEMP, "Cmpl ipid=%d seq=%d\n",
-			GLUE_GET_PKT_IP_ID(prPacket),
-			GLUE_GET_PKT_SEQ_NO(prPacket));
-		break;
-	default:
-		break;
-	}
 }
 
 void wlanTxProfilingTagMsdu(IN struct ADAPTER *prAdapter,
@@ -10520,10 +8348,8 @@ void wlanTxProfilingTagMsdu(IN struct ADAPTER *prAdapter,
 {
 	wlanTxLifetimeTagPacket(prAdapter, prMsduInfo, eTag);
 
-	if (prMsduInfo->eSrc == TX_PACKET_OS) {
-		/* only profile packets from OS */
-		wlanTxProfilingTagPacket(prAdapter, prMsduInfo->prPacket, eTag);
-	}
+	wlanTxProfilingTagPacket(prAdapter, prMsduInfo->prPacket,
+				 eTag);
 }
 
 void wlanUpdateTxStatistics(IN struct ADAPTER *prAdapter,
@@ -10541,22 +8367,19 @@ void wlanUpdateTxStatistics(IN struct ADAPTER *prAdapter,
 	prStaRec = cnmGetStaRecByIndex(prAdapter,
 				       prMsduInfo->ucStaRecIndex);
 
-	if (eAci < WMM_AC_INDEX_NUM) {
-		if (prStaRec) {
-			if (fgTxDrop)
-				prStaRec->arLinkStatistics[eAci].u4TxDropMsdu++;
-			else
-				prStaRec->arLinkStatistics[eAci].u4TxMsdu++;
-		} else {
-			prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
+	if (prStaRec) {
+		if (fgTxDrop)
+			prStaRec->arLinkStatistics[eAci].u4TxDropMsdu++;
+		else
+			prStaRec->arLinkStatistics[eAci].u4TxMsdu++;
+	} else {
+		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 						  prMsduInfo->ucBssIndex);
 
-			if (fgTxDrop)
-				prBssInfo->arLinkStatistics[eAci].
-					u4TxDropMsdu++;
-			else
-				prBssInfo->arLinkStatistics[eAci].u4TxMsdu++;
-		}
+		if (fgTxDrop)
+			prBssInfo->arLinkStatistics[eAci].u4TxDropMsdu++;
+		else
+			prBssInfo->arLinkStatistics[eAci].u4TxMsdu++;
 	}
 
 	/* Trigger FW stats log every 20s */
@@ -10572,6 +8395,8 @@ void wlanUpdateTxStatistics(IN struct ADAPTER *prAdapter,
 			      MSEC_TO_SYSTIME(
 			      prAdapter->rWifiVar.u4StatsLogTimeout))) {
 
+		wlanTriggerStatsLog(prAdapter,
+				    prAdapter->rWifiVar.u4StatsLogDuration);
 		wlanDumpAllBssStatistics(prAdapter);
 
 		prQM->rLastTxPktDumpTime = rCurTime;
@@ -10588,17 +8413,30 @@ void wlanUpdateRxStatistics(IN struct ADAPTER *prAdapter,
 
 	prStaRec = cnmGetStaRecByIndex(prAdapter,
 				       prSwRfb->ucStaRecIdx);
-	if (prStaRec && eAci < WMM_AC_INDEX_NUM)
+	if (prStaRec)
 		prStaRec->arLinkStatistics[eAci].u4RxMsdu++;
 }
 
-static char *tx_status_text(uint8_t rTxDoneStatus)
+uint32_t wlanTriggerStatsLog(IN struct ADAPTER *prAdapter,
+			     IN uint32_t u4DurationInMs)
 {
-	switch (rTxDoneStatus) {
-	case TX_RESULT_SUCCESS: return "ACK";
-	case TX_RESULT_MPDU_ERROR: return "NO_ACK";
-	default: return "TX_FAIL";
-	}
+	struct CMD_STATS_LOG rStatsLogCmd;
+	uint32_t rResult;
+
+	if (prAdapter->fgIsEnableLpdvt)
+		return WLAN_STATUS_NOT_SUPPORTED;
+
+	kalMemZero(&rStatsLogCmd, sizeof(struct CMD_STATS_LOG));
+
+	rStatsLogCmd.u4DurationInMs = u4DurationInMs;
+
+	rResult = wlanSendSetQueryCmd(prAdapter, CMD_ID_STATS_LOG, TRUE, FALSE,
+				      FALSE, nicCmdEventSetCommon,
+				      nicOidCmdTimeoutCommon,
+				      sizeof(struct CMD_STATS_LOG),
+				      (uint8_t *) &rStatsLogCmd, NULL, 0);
+
+	return rResult;
 }
 
 uint32_t
@@ -10620,12 +8458,7 @@ wlanPktTxDone(IN struct ADAPTER *prAdapter,
 		(uint8_t *) DISP_STRING("ARP"),
 		(uint8_t *) DISP_STRING("ICMP"),
 		(uint8_t *) DISP_STRING("TDLS"),
-		(uint8_t *) DISP_STRING("DNS"),
-#if CFG_SUPPORT_TPENHANCE_MODE
-		(uint8_t *) DISP_STRING("ACK"),
-#endif /* CFG_SUPPORT_TPENHANCE_MODE */
-		(uint8_t *) DISP_STRING("ICMPV6"),
-		(uint8_t *) DISP_STRING("HOP_BY_HOP"),
+		(uint8_t *) DISP_STRING("DNS")
 	};
 	if (prMsduInfo->ucPktType >= ENUM_PKT_FLAG_NUM)
 		prMsduInfo->ucPktType = 0;
@@ -10664,52 +8497,64 @@ wlanPktTxDone(IN struct ADAPTER *prAdapter,
 		prMsduInfo->ucWlanIndex, prMsduInfo->ucPID, rTxDoneStatus,
 		prMsduInfo->ucTxSeqNum);
 
-	/* report EAPOL & DHCP packet only */
-	if (prMsduInfo->ucPktType == ENUM_PKT_1X ||
-		prMsduInfo->ucPktType == ENUM_PKT_DHCP) {
-		char log[256] = {0};
-		char buf[64] = {0};
-		struct BUFFERED_LOG_ENTRY *prLogEntry = NULL;
-
-		/* Check if any buffered log */
-		prLogEntry = kalGetBufferLog(prAdapter,
-			prMsduInfo->ucBssIndex, prMsduInfo->ucTxSeqNum);
-		if (prLogEntry) {
-			kalSprintf(buf, "%s", prLogEntry->aucLog);
-			kalRemoveBufferLog(prAdapter, prLogEntry);
-		} else
-			if (prMsduInfo->ucPktType == ENUM_PKT_1X)
-				kalSprintf(buf, "[EAP/EAPOL]");
-			else
-				kalSprintf(buf, "%s",
-					apucPktType[prMsduInfo->ucPktType]);
-
-		if (prMsduInfo->ucPktType == ENUM_PKT_1X)
-			kalSprintf(log,
-			"%s tx_status=%s sn=%d", buf,
-				tx_status_text(rTxDoneStatus),
-				prMsduInfo->u2HwSeqNum);
-		else
-			kalSprintf(log,
-			"%s tx_status=%s sn=%d", buf,
-				tx_status_text(rTxDoneStatus),
-				prMsduInfo->u2HwSeqNum);
-		kalReportWifiLog(prAdapter, prMsduInfo->ucBssIndex, log);
-	}
-
 	if (prMsduInfo->ucPktType == ENUM_PKT_1X)
 		p2pRoleFsmNotifyEapolTxStatus(prAdapter,
 				prMsduInfo->ucBssIndex,
 				prMsduInfo->eEapolKeyType,
 				rTxDoneStatus);
 
-#if CFG_SUPPORT_TDLS
-	if (prMsduInfo->ucPktType == ENUM_PKT_TDLS)
-		TdlsHandleTxDoneStatus(prAdapter, rTxDoneStatus);
-#endif /* CFG_SUPPORT_TDLS */
-
 	return WLAN_STATUS_SUCCESS;
 }
+
+#if CFG_ASSERT_DUMP
+void wlanCorDumpTimerReset(IN struct ADAPTER *prAdapter,
+			   u_int8_t fgIsResetN9)
+{
+
+	if (prAdapter->fgN9AssertDumpOngoing
+	    || prAdapter->fgCr4AssertDumpOngoing) {
+
+		if (fgIsResetN9) {
+			cnmTimerStopTimer(prAdapter,
+					  &prAdapter->rN9CorDumpTimer);
+			cnmTimerStartTimer(prAdapter,
+					   &prAdapter->rN9CorDumpTimer, 5000);
+		} else {
+			cnmTimerStopTimer(prAdapter,
+					  &prAdapter->rCr4CorDumpTimer);
+			cnmTimerStartTimer(prAdapter,
+					   &prAdapter->rCr4CorDumpTimer, 5000);
+		}
+	} else {
+		DBGLOG(INIT, INFO,
+		       "Cr4, N9 CorDump Is not ongoing, ignore timer reset\n");
+	}
+}
+
+void wlanN9CorDumpTimeOut(IN struct ADAPTER *prAdapter,
+			  IN unsigned long ulParamPtr)
+{
+
+	if (prAdapter->fgN9CorDumpFileOpend) {
+		DBGLOG(INIT, INFO, "\n[DUMP_N9]====N9 ASSERT_END====\n");
+		prAdapter->fgN9AssertDumpOngoing = FALSE;
+		kalCloseCorDumpFile(TRUE);
+		prAdapter->fgN9CorDumpFileOpend = FALSE;
+	}
+}
+
+void wlanCr4CorDumpTimeOut(IN struct ADAPTER *prAdapter,
+			   IN unsigned long ulParamPtr)
+{
+
+	if (prAdapter->fgCr4CorDumpFileOpend) {
+		DBGLOG(INIT, INFO, "\n[DUMP_Cr4]====Cr4 ASSERT_END====\n");
+		prAdapter->fgCr4AssertDumpOngoing = FALSE;
+		kalCloseCorDumpFile(FALSE);
+		prAdapter->fgCr4CorDumpFileOpend = FALSE;
+	}
+}
+#endif
 
 u_int8_t
 wlanGetWlanIdxByAddress(IN struct ADAPTER *prAdapter,
@@ -10837,85 +8682,7 @@ wlanGetStaIdxByWlanIdx(IN struct ADAPTER *prAdapter,
 	return WLAN_STATUS_FAILURE;
 }
 
-struct wiphy *wlanGetWiphy(void)
-{
-	if (gprWdev[0])
-		return gprWdev[0]->wiphy;
-
-	return NULL;
-}
-
-struct net_device *wlanGetNetDev(IN struct GLUE_INFO *prGlueInfo,
-	IN uint8_t ucBssIndex)
-{
-	if (!prGlueInfo)
-		return NULL;
-
-	/* AIS */
-	if (ucBssIndex < KAL_AIS_NUM && gprWdev[ucBssIndex])
-		return gprWdev[ucBssIndex]->netdev;
-
-	/* P2P */
-	if (ucBssIndex < BSS_DEFAULT_NUM) {
-		struct BSS_INFO *prBssInfo = (struct BSS_INFO *) NULL;
-		struct GL_P2P_INFO *prGlueP2pInfo =
-			(struct GL_P2P_INFO *) NULL;
-
-		prBssInfo =
-			GET_BSS_INFO_BY_INDEX(prGlueInfo->prAdapter,
-			ucBssIndex);
-
-		if (prBssInfo && IS_BSS_P2P(prBssInfo)) {
-			prGlueP2pInfo =
-				prGlueInfo->prP2PInfo[prBssInfo->u4PrivateData];
-
-			if (prGlueP2pInfo) {
-				if ((prGlueP2pInfo->aprRoleHandler != NULL) &&
-					(prGlueP2pInfo->aprRoleHandler !=
-						prGlueP2pInfo->prDevHandler))
-					return prGlueP2pInfo->aprRoleHandler;
-				else
-					return prGlueP2pInfo->prDevHandler;
-			}
-		}
-	}
-
-	return NULL;
-}
-
-uint8_t wlanGetBssIdx(struct net_device *ndev)
-{
-	if (ndev) {
-		struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate
-			= (struct NETDEV_PRIVATE_GLUE_INFO *)
-			netdev_priv(ndev);
-
-		DBGLOG(REQ, LOUD,
-			"ucBssIndex = %d, ndev(%p)\n",
-			prNetDevPrivate->ucBssIdx,
-			ndev);
-
-		return prNetDevPrivate->ucBssIdx;
-	}
-
-	DBGLOG(REQ, LOUD,
-		"ucBssIndex = 0xff, ndev(%p)\n",
-		ndev);
-
-	return 0xff;
-}
-
-u_int8_t wlanIsAisDev(struct net_device *prDev)
-{
-	uint32_t u4Idx = 0;
-
-	for (u4Idx = 0; u4Idx < KAL_AIS_NUM; u4Idx++)
-		if (prDev == gprWdev[u4Idx]->netdev)
-			return TRUE;
-
-	return FALSE;
-}
-
+#if CFG_AUTO_CHANNEL_SEL_SUPPORT
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief This routine is called to query LTE safe channels.
@@ -10934,45 +8701,35 @@ u_int8_t wlanIsAisDev(struct net_device *prDev)
  */
 /*----------------------------------------------------------------------------*/
 uint32_t
-wlanQueryLteSafeChannel(IN struct ADAPTER *prAdapter,
-		IN uint8_t ucRoleIndex)
+wlanoidQueryLteSafeChannel(IN struct ADAPTER *prAdapter,
+			   IN void *pvQueryBuffer, IN uint32_t u4QueryBufferLen,
+			   OUT uint32_t *pu4QueryInfoLen)
 {
 	uint32_t rResult = WLAN_STATUS_FAILURE;
 	struct CMD_GET_LTE_SAFE_CHN rQuery_LTE_SAFE_CHN;
-	struct PARAM_GET_CHN_INFO *prQueryLteChn;
-
-	DBGLOG(P2P, TRACE, "[ACS] Get safe LTE Channels\n");
 
 	do {
-		if (!prAdapter)
+		/* Sanity test */
+		if ((prAdapter == NULL) || (pu4QueryInfoLen == NULL))
 			break;
-
-		prQueryLteChn = kalMemAlloc(sizeof(struct PARAM_GET_CHN_INFO),
-				VIR_MEM_TYPE);
-		if (!prQueryLteChn)
+		if ((pvQueryBuffer == NULL) || (u4QueryBufferLen == 0))
 			break;
-
-		kalMemZero(prQueryLteChn, sizeof(struct PARAM_GET_CHN_INFO));
-		kalMemZero(&rQuery_LTE_SAFE_CHN,
-			sizeof(struct CMD_GET_LTE_SAFE_CHN));
-
-		prQueryLteChn->ucRoleIndex = ucRoleIndex;
 
 		/* Get LTE safe channel list */
-		wlanSendSetQueryCmd(prAdapter,
+		rResult = wlanSendSetQueryCmd(prAdapter,
 			CMD_ID_GET_LTE_CHN,
 			FALSE,
 			TRUE,
-			FALSE, /* Query ID */
+			TRUE, /* Query ID */
 			nicCmdEventQueryLteSafeChn, /* The handler to receive
 						     * firmware notification
 						     */
 			nicOidCmdTimeoutCommon,
 			sizeof(struct CMD_GET_LTE_SAFE_CHN),
 			(uint8_t *)&rQuery_LTE_SAFE_CHN,
-			prQueryLteChn,
-			0);
-		rResult = WLAN_STATUS_SUCCESS;
+			pvQueryBuffer,
+			u4QueryBufferLen);
+		DBGLOG(P2P, INFO, "[ACS] Get safe LTE Channels\n");
 	} while (FALSE);
 
 	return rResult;
@@ -10999,7 +8756,7 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 				   uint8_t ucCoveredRange)
 {
 	uint8_t ucIdx, ucStart, ucEnd;
-	u_int8_t bIsABand = FALSE;
+	u_int8_t bIs5GChl = ucCentralChannel > 14;
 	uint8_t ucLeftNeighborChannel, ucRightNeighborChannel,
 		ucLeftNeighborChannel2 = 0, ucRightNeighborChannel2 = 0,
 		ucLeftestCoveredChannel, ucRightestCoveredChannel;
@@ -11013,16 +8770,8 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 	ucLeftNeighborChannel = ucLeftestCoveredChannel ?
 				ucLeftestCoveredChannel - 1 : 0;
 
-	if (prBssDesc->eBand == BAND_5G
-#if (CFG_SUPPORT_WIFI_6G == 1)
-		|| prBssDesc->eBand == BAND_6G
-#endif
-	) {
-		bIsABand = TRUE;
-	}
-
 	/* align leftest covered ch and left neighbor ch to valid 5g ch */
-	if (bIsABand) {
+	if (bIs5GChl) {
 		ucLeftestCoveredChannel += 2;
 		ucLeftNeighborChannel -= 1;
 	} else {
@@ -11034,40 +8783,29 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 	}
 
 	/* handle corner cases of 5g ch*/
-	if (prBssDesc->eBand == BAND_5G &&
-			ucLeftestCoveredChannel > 14 &&
-			ucLeftestCoveredChannel <= 36) {
+	if (ucLeftestCoveredChannel > 14
+	    && ucLeftestCoveredChannel <= 36) {
 		ucLeftestCoveredChannel = 36;
 		ucLeftNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_5G &&
-			ucLeftestCoveredChannel > 64 &&
-			ucLeftestCoveredChannel <= 100) {
+	} else if (ucLeftestCoveredChannel > 64
+		   && ucLeftestCoveredChannel <= 100) {
 		ucLeftestCoveredChannel = 100;
 		ucLeftNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_5G &&
-			ucLeftestCoveredChannel > 144 &&
-			ucLeftestCoveredChannel <= 149) {
+	} else if (ucLeftestCoveredChannel > 140
+		   && ucLeftestCoveredChannel <= 149) {
 		ucLeftestCoveredChannel = 149;
 		ucLeftNeighborChannel = 0;
-	}
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	else if (prBssDesc->eBand == BAND_6G &&
-			ucLeftestCoveredChannel < 5) {
-		ucLeftestCoveredChannel = 5;
-		ucLeftNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_6G &&
-			ucLeftestCoveredChannel > 229) {
-		ucLeftestCoveredChannel = 229;
+	} else if (ucLeftestCoveredChannel > 173
+		   && ucLeftestCoveredChannel <= 184) {
+		ucLeftestCoveredChannel = 184;
 		ucLeftNeighborChannel = 0;
 	}
-#endif
 
 	/*
 	 * because ch 14 is 12MHz away to ch13, we must shift the leftest
 	 * covered ch and left neighbor ch when central ch is ch 14
 	 */
-	if (prBssDesc->eBand == BAND_2G4 &&
-		ucCentralChannel == 14) {
+	if (ucCentralChannel == 14) {
 		ucLeftestCoveredChannel = 13;
 		ucLeftNeighborChannel = 12;
 		ucLeftNeighborChannel2 = 11;
@@ -11078,7 +8816,7 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 	ucRightNeighborChannel = ucRightestCoveredChannel + 1;
 
 	/* align rightest covered ch and right neighbor ch to valid 5g ch */
-	if (bIsABand) {
+	if (bIs5GChl) {
 		ucRightestCoveredChannel -= 2;
 		ucRightNeighborChannel += 1;
 	} else {
@@ -11090,9 +8828,8 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 	}
 
 	/* handle corner cases */
-	if (prBssDesc->eBand == BAND_5G &&
-			ucRightestCoveredChannel >= 14 &&
-			ucRightestCoveredChannel < 36) {
+	if (ucRightestCoveredChannel >= 14
+	    && ucRightestCoveredChannel < 36) {
 		if (ucRightestCoveredChannel == 14) {
 			ucRightestCoveredChannel = 13;
 			ucRightNeighborChannel = 14;
@@ -11102,44 +8839,24 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 		}
 
 		ucRightNeighborChannel2 = 0;
-	} else if (prBssDesc->eBand == BAND_5G &&
-			ucRightestCoveredChannel >= 64 &&
-			ucRightestCoveredChannel < 100) {
+	} else if (ucRightestCoveredChannel >= 64
+		   && ucRightestCoveredChannel < 100) {
 		ucRightestCoveredChannel = 64;
 		ucRightNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_5G &&
-			ucRightestCoveredChannel >= 144 &&
-			ucRightestCoveredChannel < 149) {
-		ucRightestCoveredChannel = 144;
+	} else if (ucRightestCoveredChannel >= 140
+		   && ucRightestCoveredChannel < 149) {
+		ucRightestCoveredChannel = 140;
 		ucRightNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_5G &&
-			ucRightestCoveredChannel >= 165) {
-		ucRightestCoveredChannel = 165;
-		ucRightNeighborChannel = 0;
-	}
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	else if (prBssDesc->eBand == BAND_6G &&
-			ucRightestCoveredChannel < 5) {
-		ucRightestCoveredChannel = 5;
-		ucRightNeighborChannel = 0;
-	} else if (prBssDesc->eBand == BAND_6G &&
-			ucRightestCoveredChannel > 229) {
-		ucRightestCoveredChannel = 229;
+	} else if (ucRightestCoveredChannel >= 173
+		   && ucRightestCoveredChannel < 184) {
+		ucRightestCoveredChannel = 173;
 		ucRightNeighborChannel = 0;
 	}
-#endif
 
 	log_dbg(SCN, TEMP, "central ch %u\n", ucCentralChannel);
 
-	ucStart = wlanGetChannelIndex(prBssDesc->eBand,
-				ucLeftestCoveredChannel);
-	ucEnd = wlanGetChannelIndex(prBssDesc->eBand,
-				ucRightestCoveredChannel);
-	if (ucStart >= MAX_CHN_NUM || ucEnd >= MAX_CHN_NUM) {
-		DBGLOG(SCN, ERROR, "Invalid ch idx of start %u, or end %u\n",
-			ucStart, ucEnd);
-		return;
-	}
+	ucStart = wlanGetChannelIndex(ucLeftestCoveredChannel);
+	ucEnd = wlanGetChannelIndex(ucRightestCoveredChannel);
 
 	for (ucIdx = ucStart; ucIdx <= ucEnd; ucIdx++) {
 		prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
@@ -11150,62 +8867,44 @@ wlanAddDirtinessToAffectedChannels(struct ADAPTER *prAdapter,
 	}
 
 	if (ucLeftNeighborChannel != 0) {
-		ucIdx = wlanGetChannelIndex(prBssDesc->eBand,
-					ucLeftNeighborChannel);
-
-		if (ucIdx < MAX_CHN_NUM) {
-			prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
-				(u4Dirtiness >> 1);
-			log_dbg(SCN, TEMP,
-				"Add dirtiness %d, to neighbor ch %d\n",
-				u4Dirtiness >> 1,
-				prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
-		}
+		ucIdx = wlanGetChannelIndex(ucLeftNeighborChannel);
+		prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
+			(u4Dirtiness >> 1);
+		log_dbg(SCN, TEMP, "Add dirtiness %d, to neighbor ch %d\n",
+		       u4Dirtiness >> 1,
+		       prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
 	}
 
 	if (ucRightNeighborChannel != 0) {
-		ucIdx = wlanGetChannelIndex(prBssDesc->eBand,
-					ucRightNeighborChannel);
-		if (ucIdx < MAX_CHN_NUM) {
+		ucIdx = wlanGetChannelIndex(ucRightNeighborChannel);
+		prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
+			(u4Dirtiness >> 1);
+		log_dbg(SCN, TEMP, "Add dirtiness %d, to neighbor ch %d\n",
+		       u4Dirtiness >> 1,
+		       prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
+	}
+
+	if (!bIs5GChl) {
+		if (ucLeftNeighborChannel2 != 0) {
+			ucIdx = wlanGetChannelIndex(ucLeftNeighborChannel2);
 			prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
 				(u4Dirtiness >> 1);
 			log_dbg(SCN, TEMP,
-				"Add dirtiness %d, to neighbor ch %d\n",
-				u4Dirtiness >> 1,
-				prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
+			       "Add dirtiness %d, to neighbor ch %d\n",
+			       u4Dirtiness >> 1,
+			       prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
 		}
-	}
 
-	if (bIsABand)
-		return;
-
-	/* Only necesaary for 2.5G */
-	if (ucLeftNeighborChannel2 != 0) {
-		ucIdx = wlanGetChannelIndex(prBssDesc->eBand,
-					ucLeftNeighborChannel2);
-		if (ucIdx < MAX_CHN_NUM) {
+		if (ucRightNeighborChannel2 != 0) {
+			ucIdx = wlanGetChannelIndex(ucRightNeighborChannel2);
 			prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
 				(u4Dirtiness >> 1);
 			log_dbg(SCN, TEMP,
-				"Add dirtiness %d, to neighbor ch %d\n",
-				u4Dirtiness >> 1,
-				prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
+			       "Add dirtiness %d, to neighbor ch %d\n",
+			       u4Dirtiness >> 1,
+			       prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
 		}
 	}
-
-	if (ucRightNeighborChannel2 != 0) {
-		ucIdx = wlanGetChannelIndex(prBssDesc->eBand,
-					ucRightNeighborChannel2);
-		if (ucIdx < MAX_CHN_NUM) {
-			prGetChnLoad->rEachChnLoad[ucIdx].u4Dirtiness +=
-				(u4Dirtiness >> 1);
-			log_dbg(SCN, TEMP,
-				"Add dirtiness %d, to neighbor ch %d\n",
-				u4Dirtiness >> 1,
-				prGetChnLoad->rEachChnLoad[ucIdx].ucChannel);
-		}
-	}
-
 }
 
 /*----------------------------------------------------------------------------*/
@@ -11292,17 +8991,13 @@ wlanInitChnLoadInfoChannelList(IN struct ADAPTER *prAdapter)
 	struct PARAM_GET_CHN_INFO *prGetChnLoad = &
 			(prAdapter->rWifiVar.rChnLoadInfo);
 
-	for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ucIdx++) {
-		prGetChnLoad->rEachChnLoad[ucIdx].eBand =
-			wlanGetChannelBandFromIndex(ucIdx);
+	for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ucIdx++)
 		prGetChnLoad->rEachChnLoad[ucIdx].ucChannel =
 			wlanGetChannelNumFromIndex(ucIdx);
-	}
 }
 
 uint32_t
-wlanCalculateAllChannelDirtiness(IN struct ADAPTER
-				 *prAdapter)
+wlanCalculateAllChannelDirtiness(IN struct ADAPTER *prAdapter)
 {
 	uint32_t rResult = WLAN_STATUS_SUCCESS;
 	int32_t i4Rssi = 0;
@@ -11338,22 +9033,22 @@ wlanCalculateAllChannelDirtiness(IN struct ADAPTER
 }
 
 uint8_t
-wlanGetChannelIndex(IN enum ENUM_BAND eBand, IN uint8_t channel)
+wlanGetChannelIndex(IN uint8_t channel)
 {
-	uint8_t ucIdx = MAX_CHN_NUM - 1;
+	uint8_t ucIdx = 1;
 
-	if (eBand == BAND_2G4)
+	if (channel <= 14)
 		ucIdx = channel - 1;
-	else if (eBand == BAND_5G && channel >= 36 && channel <= 64)
+	else if (channel >= 36 && channel <= 64)
 		ucIdx = 14 + (channel - 36) / 4;
-	else if (eBand == BAND_5G && channel >= 100 && channel <= 144)
+	else if (channel >= 100 && channel <= 140)
 		ucIdx = 14 + 8 + (channel - 100) / 4;
-	else if (eBand == BAND_5G && channel >= 149 && channel <= 165)
-		ucIdx = 14 + 8 + 12 + (channel - 149) / 4;
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	else if (eBand == BAND_6G && channel >= 1 && channel <= 233)
-		ucIdx = 14 + 8 + 12 + 5 + (channel - 1) / 4;
-#endif
+	else if (channel >= 149 && channel <= 173)
+		ucIdx = 14 + 8 + 11 + (channel - 149) / 4;
+	else if (channel >= 184 && channel <= 216)
+		ucIdx = 14 + 8 + 11 + 7 + (channel - 184) / 4;
+	else
+		DBGLOG(SCN, ERROR, "Invalid ch %u\n", channel);
 
 	return ucIdx;
 }
@@ -11373,13 +9068,10 @@ wlanGetChannelNumFromIndex(IN uint8_t ucIdx)
 {
 	uint8_t ucChannel = 0;
 
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	if (ucIdx >= 39)
-		ucChannel = ((ucIdx - 39) << 2) + 1;
-	else
-#endif
-	if (ucIdx >= 34)
-		ucChannel = ((ucIdx - 34) << 2) + 149;
+	if (ucIdx >= 40)
+		ucChannel = ((ucIdx - 40) << 2) + 184;
+	else if (ucIdx >= 33)
+		ucChannel = ((ucIdx - 33) << 2) + 149;
 	else if (ucIdx >= 22)
 		ucChannel = ((ucIdx - 22) << 2) + 100;
 	else if (ucIdx >= 14)
@@ -11390,280 +9082,88 @@ wlanGetChannelNumFromIndex(IN uint8_t ucIdx)
 	return ucChannel;
 }
 
-enum ENUM_BAND
-wlanGetChannelBandFromIndex(IN uint8_t ucIdx)
-{
-	enum ENUM_BAND eBand = BAND_NULL;
-
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	if (ucIdx >= 39)
-		eBand = BAND_6G;
-	else
-#endif
-	if (ucIdx >= 14)
-		eBand = BAND_5G;
-	else
-		eBand = BAND_2G4;
-
-	return eBand;
-}
-
 void
-wlanSortChannel(IN struct ADAPTER *prAdapter,
-		IN enum ENUM_CHNL_SORT_POLICY ucSortType)
+wlanSortChannel(IN struct ADAPTER *prAdapter)
 {
 	struct PARAM_GET_CHN_INFO *prChnLoadInfo = &
 			(prAdapter->rWifiVar.rChnLoadInfo);
 	int8_t ucIdx = 0, ucRoot = 0, ucChild = 0;
-#if (CFG_SUPPORT_P2PGO_ACS == 1)
-	uint8_t i = 0, ucBandIdx = 0, ucNumOfChannel = 0, uc2gChNum = 0;
-	struct RF_CHANNEL_INFO aucChannelList[MAX_PER_BAND_CHN_NUM] = { { 0 } };
-#endif
 	struct PARAM_CHN_RANK_INFO rChnRankInfo;
+
 	/* prepare unsorted ch rank list */
-#if (CFG_SUPPORT_P2PGO_ACS == 1)
-	if (ucSortType == CHNL_SORT_POLICY_BY_CH_DOMAIN) {
-		for (ucBandIdx = BAND_2G4; ucBandIdx < BAND_NUM; ucBandIdx++) {
-			rlmDomainGetChnlList(prAdapter, ucBandIdx,
-				TRUE, MAX_PER_BAND_CHN_NUM,
-				&ucNumOfChannel, aucChannelList);
-
-			DBGLOG(SCN, TRACE, "[ACS]Band=%d, Channel Number=%d\n",
-				ucBandIdx,
-				ucNumOfChannel);
-
-			for (i = 0; i < ucNumOfChannel; i++) {
-				ucIdx = wlanGetChannelIndex(
-					aucChannelList[i].eBand,
-					aucChannelList[i].ucChannelNum);
-				prChnLoadInfo->
-					rChnRankList[uc2gChNum+i].eBand =
-					prChnLoadInfo->rEachChnLoad[ucIdx].
-						eBand;
-				prChnLoadInfo->
-					rChnRankList[uc2gChNum+i].ucChannel =
-					prChnLoadInfo->rEachChnLoad[ucIdx].
-						ucChannel;
-				prChnLoadInfo->
-					rChnRankList[uc2gChNum+i].u4Dirtiness =
-					prChnLoadInfo->rEachChnLoad[ucIdx].
-						u4Dirtiness;
-
-				DBGLOG(SCN, TRACE, "[ACS]Ch[%d],cIdx[%d]\n",
-					aucChannelList[i].ucChannelNum,
-					uc2gChNum+i);
-				DBGLOG(SCN, TRACE, "[ACS]ChR[%d],eCh[%d]\n",
-					prChnLoadInfo->
-						rChnRankList[uc2gChNum+i].
-						ucChannel,
-					prChnLoadInfo->rEachChnLoad[ucIdx].
-						ucChannel);
-			}
-			uc2gChNum = uc2gChNum + ucNumOfChannel;
-		}
-
-		/*Set the reset idx to invalid value*/
-		for (i = uc2gChNum; i < MAX_CHN_NUM; i++) {
-			prChnLoadInfo->rChnRankList[i].u4Dirtiness = 0xFFFFFFFF;
-			prChnLoadInfo->rChnRankList[i].ucChannel = 0xFF;
-
-			DBGLOG(SCN, TRACE, "uc2gChNum=%d,[ACS]Chn=%d,D=0x%x\n",
-				i,
-				prChnLoadInfo->rChnRankList[i].ucChannel,
-				prChnLoadInfo->rChnRankList[i].u4Dirtiness);
-		}
-	} else
-#endif
-	{
-		for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ++ucIdx) {
-			prChnLoadInfo->rChnRankList[ucIdx].eBand =
-				prChnLoadInfo->rEachChnLoad[ucIdx].eBand;
-			prChnLoadInfo->rChnRankList[ucIdx].ucChannel =
-				prChnLoadInfo->rEachChnLoad[ucIdx].ucChannel;
-			prChnLoadInfo->rChnRankList[ucIdx].u4Dirtiness =
-				prChnLoadInfo->rEachChnLoad[ucIdx].u4Dirtiness;
-
-		}
+	for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ++ucIdx) {
+		prChnLoadInfo->rChnRankList[ucIdx].ucChannel =
+			prChnLoadInfo->rEachChnLoad[ucIdx].ucChannel;
+		prChnLoadInfo->rChnRankList[ucIdx].u4Dirtiness =
+			prChnLoadInfo->rEachChnLoad[ucIdx].u4Dirtiness;
 	}
+
 	/* heapify ch rank list */
 	for (ucIdx = MAX_CHN_NUM / 2 - 1; ucIdx >= 0; --ucIdx) {
 		for (ucRoot = ucIdx; ucRoot * 2 + 1 < MAX_CHN_NUM;
-				ucRoot = ucChild) {
+		     ucRoot = ucChild) {
+
 			ucChild = ucRoot * 2 + 1;
-			/* Coverity check*/
-			if (ucChild < 0 || ucChild >= MAX_CHN_NUM ||
-			    ucRoot < 0 || ucRoot >= MAX_CHN_NUM)
-				break;
 			if (ucChild < MAX_CHN_NUM - 1 && prChnLoadInfo->
 			    rChnRankList[ucChild + 1].u4Dirtiness >
 			    prChnLoadInfo->rChnRankList[ucChild].u4Dirtiness)
 				ucChild += 1;
+
 			if (prChnLoadInfo->rChnRankList[ucChild].u4Dirtiness <=
 			    prChnLoadInfo->rChnRankList[ucRoot].u4Dirtiness)
 				break;
-			DBGLOG(SCN, TRACE, "[ACS]root Chn=%d,D=0x%x\n",
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].u4Dirtiness);
-			DBGLOG(SCN, TRACE, "[ACS]child Chn=%d,D=0x%x\n",
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].u4Dirtiness);
-			kalMemCopy(&rChnRankInfo,
-				&(prChnLoadInfo->rChnRankList[ucChild]),
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			kalMemCopy(&prChnLoadInfo->rChnRankList[ucChild],
-				&prChnLoadInfo->rChnRankList[ucRoot],
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			kalMemCopy(&prChnLoadInfo->rChnRankList[ucRoot],
-				&rChnRankInfo,
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			DBGLOG(SCN, TRACE,
-				"[ACS]After root uChn=%d,D=0x%x\n",
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].u4Dirtiness);
-			DBGLOG(SCN, TRACE,
-				"[ACS]AFter child Chn=%d,D=0x%x\n",
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].u4Dirtiness);
-			}
+
+			rChnRankInfo = prChnLoadInfo->rChnRankList[ucChild];
+			prChnLoadInfo->rChnRankList[ucChild] =
+				prChnLoadInfo->rChnRankList[ucRoot];
+			prChnLoadInfo->rChnRankList[ucRoot] = rChnRankInfo;
+		}
 	}
+
 	/* sort ch rank list */
 	for (ucIdx = MAX_CHN_NUM - 1; ucIdx > 0; ucIdx--) {
 		rChnRankInfo = prChnLoadInfo->rChnRankList[0];
 		prChnLoadInfo->rChnRankList[0] =
 			prChnLoadInfo->rChnRankList[ucIdx];
 		prChnLoadInfo->rChnRankList[ucIdx] = rChnRankInfo;
+
 		for (ucRoot = 0; ucRoot * 2 + 1 < ucIdx; ucRoot = ucChild) {
 			ucChild = ucRoot * 2 + 1;
-			/* Coverity check*/
-			if (ucChild < 0 || ucChild >= MAX_CHN_NUM ||
-			    ucRoot < 0 || ucRoot >= MAX_CHN_NUM)
-				break;
 			if (ucChild < ucIdx - 1 && prChnLoadInfo->
 			    rChnRankList[ucChild + 1].u4Dirtiness >
 			    prChnLoadInfo->rChnRankList[ucChild].u4Dirtiness)
 				ucChild += 1;
+
 			if (prChnLoadInfo->rChnRankList[ucChild].u4Dirtiness <=
 			    prChnLoadInfo->rChnRankList[ucRoot].u4Dirtiness)
 				break;
-			DBGLOG(SCN, TRACE,
-				"[ACS]root ChNum=%d D=0x%x",
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].u4Dirtiness);
-			DBGLOG(SCN, TRACE, "[ACS]child ChNum=%d D=0x%x\n",
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].u4Dirtiness);
-			kalMemCopy(&rChnRankInfo,
-				&(prChnLoadInfo->rChnRankList[ucChild]),
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			kalMemCopy(&prChnLoadInfo->rChnRankList[ucChild],
-				&prChnLoadInfo->rChnRankList[ucRoot],
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			kalMemCopy(&prChnLoadInfo->rChnRankList[ucRoot],
-				&rChnRankInfo,
-				sizeof(struct PARAM_CHN_RANK_INFO));
-			DBGLOG(SCN, TRACE,
-				"[ACS]New root ChNum=%d D=0x%x",
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucRoot].u4Dirtiness);
 
-			DBGLOG(SCN, TRACE,
-				"[ACS]New child ChNum=%d D=0x%x",
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].ucChannel,
-					   prChnLoadInfo->
-					   rChnRankList[ucChild].u4Dirtiness);
+			rChnRankInfo = prChnLoadInfo->rChnRankList[ucChild];
+			prChnLoadInfo->rChnRankList[ucChild] =
+				prChnLoadInfo->rChnRankList[ucRoot];
+			prChnLoadInfo->rChnRankList[ucRoot] = rChnRankInfo;
 		}
 	}
 
-	for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ++ucIdx) {
-		DBGLOG(SCN, TRACE, "[ACS]band=%d,channel=%d,dirtiness=0x%x\n",
-			prChnLoadInfo->rChnRankList[ucIdx].eBand,
-			prChnLoadInfo->rChnRankList[ucIdx].ucChannel,
-			prChnLoadInfo->rChnRankList[ucIdx].u4Dirtiness);
-	}
+	for (ucIdx = 0; ucIdx < MAX_CHN_NUM; ++ucIdx)
+		log_dbg(P2P, TEMP, "[ACS]channel=%d, dirtiness=%d\n",
+		       prChnLoadInfo->rChnRankList[ucIdx].ucChannel,
+		       prChnLoadInfo->rChnRankList[ucIdx].u4Dirtiness);
 
-}
-
-#if ((CFG_SISO_SW_DEVELOP == 1) || (CFG_SUPPORT_SPE_IDX_CONTROL == 1))
-uint8_t
-wlanGetAntPathType(IN struct ADAPTER *prAdapter,
-		   IN enum ENUM_WF_PATH_FAVOR_T eWfPathFavor)
-{
-	uint8_t ucFianlWfPathType = eWfPathFavor;
-#if (CFG_SUPPORT_SPE_IDX_CONTROL == 1)
-	uint8_t ucNss = prAdapter->rWifiVar.ucNSS;
-	uint8_t ucSpeIdxCtrl = prAdapter->rWifiVar.ucSpeIdxCtrl;
-
-	if (ucNss <= 2) {
-		if (ucSpeIdxCtrl == 0)
-			ucFianlWfPathType = ENUM_WF_0_ONE_STREAM_PATH_FAVOR;
-		else if (ucSpeIdxCtrl == 1)
-			ucFianlWfPathType = ENUM_WF_1_ONE_STREAM_PATH_FAVOR;
-		else if (ucSpeIdxCtrl == 2) {
-			if (ucNss > 1)
-				ucFianlWfPathType =
-					ENUM_WF_0_1_DUP_STREAM_PATH_FAVOR;
-			else
-				ucFianlWfPathType = ENUM_WF_NON_FAVOR;
-		} else
-			ucFianlWfPathType = ENUM_WF_NON_FAVOR;
-	}
-#endif
-	return ucFianlWfPathType;
-}
-
-uint8_t
-wlanAntPathFavorSelect(IN struct ADAPTER *prAdapter,
-		       IN enum ENUM_WF_PATH_FAVOR_T eWfPathFavor)
-{
-	uint8_t ucRetValSpeIdx = 0x18;
-#if (CFG_SUPPORT_SPE_IDX_CONTROL == 1)
-	uint8_t ucNss = prAdapter->rWifiVar.ucNSS;
-
-	if (ucNss <= 2) {
-		if ((eWfPathFavor == ENUM_WF_NON_FAVOR) ||
-			(eWfPathFavor == ENUM_WF_0_ONE_STREAM_PATH_FAVOR) ||
-			(eWfPathFavor == ENUM_WF_0_1_TWO_STREAM_PATH_FAVOR))
-			ucRetValSpeIdx = ANTENNA_WF0;
-		else if (eWfPathFavor == ENUM_WF_0_1_DUP_STREAM_PATH_FAVOR)
-			ucRetValSpeIdx = 0x18;
-		else if (eWfPathFavor == ENUM_WF_1_ONE_STREAM_PATH_FAVOR)
-			ucRetValSpeIdx = ANTENNA_WF1;
-		else
-			ucRetValSpeIdx = ANTENNA_WF0;
-	}
-#endif
-	return ucRetValSpeIdx;
 }
 #endif
 
 uint8_t
-wlanGetSpeIdx(IN struct ADAPTER *prAdapter,
-	      IN uint8_t ucBssIndex,
-	      IN enum ENUM_WF_PATH_FAVOR_T eWfPathFavor)
+wlanGetSpeIdx(IN struct ADAPTER *prAdapter, IN uint8_t ucBssIndex)
 {
 	uint8_t ucRetValSpeIdx = 0;
-#if ((CFG_SISO_SW_DEVELOP == 1) || (CFG_SUPPORT_SPE_IDX_CONTROL == 1))
+#if CFG_SISO_SW_DEVELOP
 	struct BSS_INFO *prBssInfo;
 	enum ENUM_BAND eBand = BAND_NULL;
 
 	if (ucBssIndex > prAdapter->ucHwBssIdNum) {
-		DBGLOG(SW4, INFO, "Invalid BssInfo index[%u], skip dump!\n",
-		       ucBssIndex);
+		DBGLOG(SW4, INFO,
+			"Invalid BssInfo index[%u], skip dump!\n", ucBssIndex);
 		return ucRetValSpeIdx;
 	}
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
@@ -11684,15 +9184,14 @@ wlanGetSpeIdx(IN struct ADAPTER *prAdapter,
 				else
 					ucRetValSpeIdx = ANTENNA_WF1;
 			} else {
-				if (IS_WIFI_SMART_GEAR_SUPPORT_WF0_SISO(
-				    prAdapter))
+				if (
+				IS_WIFI_SMART_GEAR_SUPPORT_WF0_SISO(prAdapter))
 					ucRetValSpeIdx = ANTENNA_WF0;
-				else if (IS_WIFI_SMART_GEAR_SUPPORT_WF1_SISO(
-				    prAdapter))
+				else if (
+				IS_WIFI_SMART_GEAR_SUPPORT_WF1_SISO(prAdapter))
 					ucRetValSpeIdx = ANTENNA_WF1;
 				else
-					ucRetValSpeIdx = wlanAntPathFavorSelect(
-						prAdapter, eWfPathFavor);
+					ucRetValSpeIdx = 0x18;
 			}
 		} else if (eBand == BAND_5G) {
 			if (IS_WIFI_5G_SISO(prAdapter)) {
@@ -11701,42 +9200,22 @@ wlanGetSpeIdx(IN struct ADAPTER *prAdapter,
 				else
 					ucRetValSpeIdx = ANTENNA_WF1;
 			} else {
-				if (IS_WIFI_SMART_GEAR_SUPPORT_WF0_SISO(
-				    prAdapter))
+				if (
+				IS_WIFI_SMART_GEAR_SUPPORT_WF0_SISO(prAdapter))
 					ucRetValSpeIdx = ANTENNA_WF0;
-				else if (IS_WIFI_SMART_GEAR_SUPPORT_WF1_SISO(
-				    prAdapter))
+				else if (
+				IS_WIFI_SMART_GEAR_SUPPORT_WF1_SISO(prAdapter))
 					ucRetValSpeIdx = ANTENNA_WF1;
 				else
-					ucRetValSpeIdx = wlanAntPathFavorSelect(
-						prAdapter, eWfPathFavor);
+					ucRetValSpeIdx = 0x18;
 			}
-#if (CFG_SUPPORT_WIFI_6G == 1)
-		} else if (eBand == BAND_6G) {
-			if (IS_WIFI_6G_SISO(prAdapter)) {
-				if (IS_WIFI_6G_WF0_SUPPORT(prAdapter))
-					ucRetValSpeIdx = ANTENNA_WF0;
-				else
-					ucRetValSpeIdx = ANTENNA_WF1;
-			} else {
-				if (IS_WIFI_SMART_GEAR_SUPPORT_WF0_SISO(
-				    prAdapter))
-					ucRetValSpeIdx = ANTENNA_WF0;
-				else if (IS_WIFI_SMART_GEAR_SUPPORT_WF1_SISO(
-				    prAdapter))
-					ucRetValSpeIdx = ANTENNA_WF1;
-				else
-					ucRetValSpeIdx = wlanAntPathFavorSelect(
-						prAdapter, eWfPathFavor);
-			}
-#endif
 		} else
-			ucRetValSpeIdx = wlanAntPathFavorSelect(prAdapter,
-				eWfPathFavor);
+			ucRetValSpeIdx = 0x18;
 	}
 	DBGLOG(INIT, INFO, "SpeIdx:%d,D:%d,G=%d,B=%d,Bss=%d\n",
-	       ucRetValSpeIdx, prAdapter->rWifiVar.fgDbDcModeEn,
-	       prBssInfo->fgIsGranted, eBand, ucBssIndex);
+				ucRetValSpeIdx,
+				prAdapter->rWifiVar.fgDbDcModeEn,
+				prBssInfo->fgIsGranted, eBand, ucBssIndex);
 #endif
 	return ucRetValSpeIdx;
 }
@@ -11745,72 +9224,11 @@ uint8_t
 wlanGetSupportNss(IN struct ADAPTER *prAdapter,
 		  IN uint8_t ucBssIndex)
 {
-	struct BSS_INFO *prBssInfo;
-	struct AIS_FSM_INFO *prAisFsmInfo;
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-	struct BSS_DESC *prBssDesc;
-#endif
-
 	uint8_t ucRetValNss = prAdapter->rWifiVar.ucNSS;
 #if CFG_SISO_SW_DEVELOP
+	struct BSS_INFO *prBssInfo;
 	enum ENUM_BAND eBand = BAND_NULL;
-#endif
-#if (CFG_SUPPORT_POWER_THROTTLING == 1 && CFG_SUPPORT_CNM_POWER_CTRL == 1)
-	if (prAdapter->fgPowerForceOneNss) {
-		DBGLOG(INIT, TRACE, "Force 1 Nss\n",
-		       ucBssIndex);
-		return 1;
-	}
-#endif
-	prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-	if (IS_BSS_APGO(prBssInfo)) {
-		if (p2pFuncIsAPMode(
-			prAdapter->rWifiVar.prP2PConnSettings
-			[prBssInfo->u4PrivateData])) {
-			if (prBssInfo->eBand == BAND_2G4)
-				ucRetValNss = prAdapter->rWifiVar.ucAp2gNSS;
-			else if (prBssInfo->eBand == BAND_5G)
-				ucRetValNss = prAdapter->rWifiVar.ucAp5gNSS;
-#if (CFG_SUPPORT_WIFI_6G == 1)
-			else if (prBssInfo->eBand == BAND_6G)
-				ucRetValNss = prAdapter->rWifiVar.ucAp6gNSS;
-#endif
-		} else {
-			if (prBssInfo->eBand == BAND_2G4)
-				ucRetValNss = prAdapter->rWifiVar.ucGo2gNSS;
-			else if (prBssInfo->eBand == BAND_5G)
-				ucRetValNss = prAdapter->rWifiVar.ucGo5gNSS;
-#if (CFG_SUPPORT_WIFI_6G == 1)
-			else if (prBssInfo->eBand == BAND_6G)
-				ucRetValNss = prAdapter->rWifiVar.ucGo6gNSS;
-#endif
-		}
-	}
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-	else if (IS_BSS_AIS(prBssInfo) && prAisFsmInfo != NULL) {
-		prBssDesc = prAisFsmInfo->prTargetBssDesc;
-		if (prBssDesc != NULL &&
-		    bssGetIotApAction(prAdapter,
-				      prBssDesc) == WLAN_IOT_AP_DBDC_1SS) {
-			DBGLOG(SW4, INFO, "Use 1x1 due to DBDC blocklist\n");
-			ucRetValNss = 1;
-		} else if (prAdapter->rWifiVar.fgSta1NSS) {
-			DBGLOG(SW4, INFO, "Use 1x1 due to FWK cmd\n");
-			ucRetValNss = 1;
-		}
-	}
-#endif
 
-	if (IS_BSS_P2P(prBssInfo) && p2pFuncIsDualAPMode(prAdapter)) {
-		DBGLOG(SW4, LOUD, "Use 1x1 due to dual ap mode\n");
-		ucRetValNss = 1;
-	}
-
-	if (ucRetValNss > prAdapter->rWifiVar.ucNSS)
-		ucRetValNss = prAdapter->rWifiVar.ucNSS;
-
-#if CFG_SISO_SW_DEVELOP
 	if (ucBssIndex > prAdapter->ucHwBssIdNum) {
 		DBGLOG(SW4, INFO, "Invalid BssInfo index[%u], skip dump!\n",
 		       ucBssIndex);
@@ -11830,14 +9248,9 @@ wlanGetSupportNss(IN struct ADAPTER *prAdapter,
 		ucRetValNss = 1;
 	else if ((eBand == BAND_5G) && IS_WIFI_5G_SISO(prAdapter))
 		ucRetValNss = 1;
-#if (CFG_SUPPORT_WIFI_6G == 1)
-	else if ((eBand == BAND_6G) && IS_WIFI_6G_SISO(prAdapter))
-		ucRetValNss = 1;
-#endif
-	DBGLOG(INIT, TRACE, "Nss=%d,G=%d,B=%d,Bss=%d\n",
+	DBGLOG(INIT, INFO, "Nss=%d,G=%d,B=%d,Bss=%d\n",
 	       ucRetValNss, prBssInfo->fgIsGranted, eBand, ucBssIndex);
 #endif
-
 	return ucRetValNss;
 }
 
@@ -11864,320 +9277,54 @@ wlanAdapterStartForLowLatency(IN struct ADAPTER *prAdapter)
 	/* Default enable scan */
 	prAdapter->fgEnCfg80211Scan = TRUE;
 
-	/* Default disable duplicate detect */
-	prAdapter->fgEnTxDupDetect = FALSE;
-	prAdapter->fgTxDupCertificate = FALSE;
-
 	return u4Status;
 }
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This is a private routine, which is used to initialize the variables
- *        for low latency mode.
- *
- * \param prAdapter      Pointer of Adapter Data Structure
- *
- * \retval WLAN_STATUS_SUCCESS: Success
- * \retval WLAN_STATUS_FAILURE: Failed
- */
-/*----------------------------------------------------------------------------*/
-uint32_t
-wlanProbeSuccessForLowLatency(IN struct ADAPTER *prAdapter)
-{
-	DBGLOG(INIT, INFO, "LowLatency(ProbeOn)\n");
-
-	/* Reset certificate flag and query capability from firmware */
-	prAdapter->fgTxDupCertificate = FALSE;
-
-	wlanSetLowLatencyCommand(prAdapter,
-			FALSE,
-			prAdapter->fgEnTxDupDetect,
-			TRUE);
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This is a private routine, which is used to initialize the variables
- *        for low latency mode.
- *
- * \param prAdapter      Pointer of Adapter Data Structure
- *
- * \retval WLAN_STATUS_SUCCESS: Success
- * \retval WLAN_STATUS_FAILURE: Failed
- */
-/*----------------------------------------------------------------------------*/
-uint32_t
-wlanConnectedForLowLatency(IN struct ADAPTER *prAdapter)
-{
-	uint32_t u4Events;
-
-	/* Query setting from wifi adaptor module */
-	u4Events = get_low_latency_mode();
-
-	/* Set low latency mode */
-	DBGLOG(AIS, INFO, "LowLatency(Connected) event:0x%x\n", u4Events);
-	wlanSetLowLatencyMode(prAdapter, u4Events);
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to set enable/disable low latency mode to FW
- *
- * \param[in]  prAdapter       A pointer to the Adapter structure.
- *
- * \retval WLAN_STATUS_SUCCESS
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanSetLowLatencyCommand(
-	IN struct ADAPTER *prAdapter,
-	IN u_int8_t fgEnLowLatencyMode,
-	IN u_int8_t fgEnTxDupDetect,
-	IN u_int8_t fgTxDupCertQuery)
-{
-	struct CMD_LOW_LATENCY_MODE_HEADER rModeHeader = {0};
-
-	rModeHeader.ucVersion = LOW_LATENCY_MODE_CMD_V2;
-	rModeHeader.ucType = 0;
-	rModeHeader.ucMagicCode = LOW_LATENCY_MODE_MAGIC_CODE;
-	rModeHeader.ucBufferLen = sizeof(struct LOW_LATENCY_MODE_SETTING);
-	rModeHeader.rSetting.fgEnable = fgEnLowLatencyMode;
-	rModeHeader.rSetting.fgTxDupDetect = fgEnTxDupDetect;
-#if CONFIG_MTK_MD_SUPPORT
-	rModeHeader.rSetting.fgTxDupCertQuery = fgTxDupCertQuery;
-#else
-	rModeHeader.rSetting.fgTxDupCertQuery = FALSE;
-#endif
-	DBGLOG(AIS, INFO,
-		"Send Dpp Cmd to FW:en=%d, dup_Det=%d, CertQuery=%d\n",
-		fgEnLowLatencyMode, fgEnTxDupDetect, fgTxDupCertQuery);
-
-	wlanSendSetQueryCmd(prAdapter,	/* prAdapter */
-			    CMD_ID_SET_LOW_LATENCY_MODE,	/* ucCID */
-			    TRUE,	/* fgSetQuery */
-			    FALSE,	/* fgNeedResp */
-			    FALSE,	/* fgIsOid */
-			    NULL,	/* pfCmdDoneHandler */
-			    NULL,	/* pfCmdTimeoutHandler */
-			    sizeof(struct CMD_LOW_LATENCY_MODE_HEADER),
-			    (uint8_t *)&rModeHeader,	/* pucInfoBuffer */
-			    NULL,	/* pvSetQueryBuffer */
-			    0	/* u4SetQueryBufferLen */
-		);
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to enable/disable low latency mode
- * \param[in]  prAdapter       A pointer to the Adapter structure.
- * \param[in]  pvSetBuffer     A pointer to the buffer that holds the
- *                             OID-specific data to be set.
- * \param[in]  u4SetBufferLen  The number of bytes the set buffer.
- * \param[out] pu4SetInfoLen   Points to the number of bytes it read or is
- *                             needed
- * \retval WLAN_STATUS_SUCCESS
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanSetLowLatencyMode(
-	IN struct ADAPTER *prAdapter,
-	IN uint32_t u4Events)
-{
-	u_int8_t fgEnMode = FALSE; /* Low Latency Mode */
-	u_int8_t fgEnScan = FALSE; /* Scan management */
-	u_int8_t fgEnPM = FALSE; /* Power management */
-	u_int8_t fgEnTxDupDetect = FALSE; /* Tx Dup Detect */
-	uint32_t u4PowerFlag;
-	struct PARAM_POWER_MODE_ rPowerMode;
-	struct WIFI_VAR *prWifiVar = NULL;
-	struct BSS_INFO *prAisBssInfo;
-	uint8_t ucBssIndex = AIS_DEFAULT_INDEX;
-
-	DEBUGFUNC("wlanSetLowLatencyMode");
-
-	ASSERT(prAdapter);
-
-	prAisBssInfo =
-		aisGetAisBssInfo(prAdapter, ucBssIndex);
-	if (!prAisBssInfo) {
-		DBGLOG(OID, ERROR, "prAisBssInfo = NULL\n");
-		return WLAN_STATUS_FAILURE;
-	}
-
-	/* Initialize */
-	prWifiVar = &prAdapter->rWifiVar;
-	DBGLOG(OID, INFO,
-		"LowLatency(gaming/DPP) event - gas:0x%x, net:0x%x, allowlist:0x%x, txdup:0x%x, scan=%u, reorder=%u, power=%u, cmd data=%u\n",
-		(u4Events & GED_EVENT_GAS),
-		(u4Events & GED_EVENT_NETWORK),
-		(u4Events & GED_EVENT_DOPT_WIFI_SCAN),
-		(u4Events & GED_EVENT_TX_DUP_DETECT),
-		(uint32_t)prWifiVar->ucLowLatencyModeScan,
-		(uint32_t)prWifiVar->ucLowLatencyModeReOrder,
-		(uint32_t)prWifiVar->ucLowLatencyModePower,
-		(uint32_t)prWifiVar->ucLowLatencyCmdData);
-
-	rPowerMode.ucBssIdx = prAisBssInfo->ucBssIndex;
-	u4PowerFlag = prAdapter->rWlanInfo.u4PowerSaveFlag[rPowerMode.ucBssIdx];
-
-	/* Enable/disable low latency mode decision:
-	 *
-	 * Enable if it's GAS and network event
-	 * and the Glue media state is connected.
-	 */
-	if ((u4Events & GED_EVENT_GAS) != 0
-		&& (u4Events & GED_EVENT_NETWORK) != 0
-		&& MEDIA_STATE_CONNECTED
-			== kalGetMediaStateIndicated(prAdapter->prGlueInfo,
-			prAisBssInfo->ucBssIndex))
-		fgEnMode = TRUE; /* It will enable low latency mode */
-
-
-	if (fgEnMode != prAdapter->fgEnLowLatencyMode) {
-		prAdapter->fgEnLowLatencyMode = fgEnMode;
-		if (!fgEnMode && (MEDIA_STATE_CONNECTED
-			== kalGetMediaStateIndicated(prAdapter->prGlueInfo,
-			prAisBssInfo->ucBssIndex)))
-			mscsDeactivate(prAdapter,
-				aisGetStaRecOfAP(prAdapter, AIS_DEFAULT_INDEX));
-	}
-
-	/* Enable/disable scan management decision:
-	 *
-	 * Enable if it will enable low latency mode.
-	 * Or, enable if it is a white list event.
-	 */
-	if (fgEnMode != TRUE || (u4Events & GED_EVENT_DOPT_WIFI_SCAN) != 0)
-		fgEnScan = TRUE; /* It will enable scan management */
-
-	/* Enable/disable power management decision:
-	 */
-	if (BIT(PS_CALLER_GPU) & u4PowerFlag)
-		fgEnPM = TRUE;
-	else
-		fgEnPM = FALSE;
-
-	/* Debug log for the actions */
-	if (fgEnMode != prAdapter->fgEnLowLatencyMode
-		|| fgEnScan != prAdapter->fgEnCfg80211Scan
-		|| fgEnPM != fgEnMode) {
-		DBGLOG(OID, INFO,
-			"LowLatency(gaming/DPP) change (m:%d,s:%d,PM:%d,F:0x%x)\n",
-			fgEnMode, fgEnScan, fgEnPM, u4PowerFlag);
-	}
-
-	/* Scan management:
-	 *
-	 * Disable/enable scan
-	 */
-	if ((prWifiVar->ucLowLatencyModeScan == FEATURE_ENABLED) &&
-	    (fgEnScan != prAdapter->fgEnCfg80211Scan))
-		prAdapter->fgEnCfg80211Scan = fgEnScan;
-
-	if ((prWifiVar->ucLowLatencyModeReOrder == FEATURE_ENABLED) &&
-	    (fgEnMode != prAdapter->fgEnLowLatencyMode)) {
-		/* Queue management:
-		 *
-		 * Change QM RX BA timeout if the gaming mode state changed
-		 */
-		if (fgEnMode) {
-			prAdapter->u4QmRxBaMissTimeout
-				= QM_RX_BA_ENTRY_MISS_TIMEOUT_MS_SHORT;
-		} else {
-			prAdapter->u4QmRxBaMissTimeout
-				= QM_RX_BA_ENTRY_MISS_TIMEOUT_MS;
-		}
-	}
-
-	/* Power management:
-	 *
-	 * Set power saving mode profile to FW
-	 *
-	 * Do if 1. the power saving caller including GPU
-	 * and 2. it will disable low latency mode.
-	 * Or, do if 1. the power saving caller is not including GPU
-	 * and 2. it will enable low latency mode.
-	 */
-	if ((prWifiVar->ucLowLatencyModePower == FEATURE_ENABLED) &&
-	    (fgEnPM != fgEnMode)) {
-		if (fgEnMode == TRUE)
-			rPowerMode.ePowerMode = Param_PowerModeCAM;
-		else
-			rPowerMode.ePowerMode = Param_PowerModeFast_PSP;
-
-		nicConfigPowerSaveProfile(prAdapter, rPowerMode.ucBssIdx,
-			rPowerMode.ePowerMode, FALSE, PS_CALLER_GPU);
-
-		#if CFG_SUPPORT_SMART_GEAR
-		wlandioSetSGStatus(prAdapter,
-			fgEnMode, 0x00, 0x00);
-		DBGLOG(OID, INFO,
-			"[SG] SmartGear (%d) for gaming mode\n",
-			fgEnMode);
-		#endif
-
-	}
-
-	DBGLOG(OID, INFO,
-		"LowLatency(gaming) fgEnMode=[%d]\n", fgEnMode);
-
-	/* Force RTS to protect game packet */
-	wlanSetForceRTS(prAdapter, fgEnMode);
-
-	/* Tx Duplicate Detect management:
-	 *
-	 * Disable/enable tx duplicate detect
-	 */
-	if ((u4Events & GED_EVENT_TX_DUP_DETECT) != 0)
-		fgEnTxDupDetect = TRUE;
-
-	DBGLOG(OID, INFO,
-		"EnTxDupDetect: Orig:[%d], New:[%d], CmdData:[%d], Cert:[%d]\n",
-		prAdapter->fgEnTxDupDetect,
-		fgEnTxDupDetect,
-		prAdapter->rWifiVar.ucLowLatencyCmdData,
-		prAdapter->fgTxDupCertificate);
-
-	if (prAdapter->fgEnTxDupDetect != fgEnTxDupDetect) {
-
-		prAdapter->fgEnTxDupDetect = fgEnTxDupDetect;
-
-#if CFG_TCP_IP_CHKSUM_OFFLOAD
-		if (prAdapter->fgIsSupportCsumOffload) {
-			if (prAdapter->fgEnTxDupDetect) {
-				/* Disable csum offload for command data */
-				prAdapter->prGlueInfo->
-					prDevHandler->features &=
-					~(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-			} else {
-				/* Enable csum offload for cut-through data */
-				prAdapter->prGlueInfo->
-					prDevHandler->features |=
-					(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-			}
-		}
-		DBGLOG(OID, INFO, "Checksum offload: [%llu]\n",
-			prAdapter->prGlueInfo->prDevHandler->features);
-#endif
-		/* Send command to firmware */
-		wlanSetLowLatencyCommand(prAdapter,
-				prAdapter->fgEnLowLatencyMode,
-				prAdapter->fgEnTxDupDetect,
-				FALSE);
-	}
-
-	return WLAN_STATUS_SUCCESS;
-}
-
 #endif /* CFG_SUPPORT_LOWLATENCY_MODE */
 
 #if CFG_SUPPORT_EASY_DEBUG
+/*
+ * This func is mainly from bionic's strtok.c
+ */
+static char *strtok_r(char *s, const char *delim, char **last)
+{
+	char *spanp;
+	int c, sc;
+	char *tok;
+
+	if (s == NULL) {
+		s = *last;
+		if (s == 0)
+			return 0;
+	}
+cont:
+	c = *s++;
+	for (spanp = (char *)delim; (sc = *spanp++) != 0;) {
+		if (c == sc)
+			goto cont;
+	}
+
+	if (c == 0) {		/* no non-delimiter characters */
+		*last = NULL;
+		return NULL;
+	}
+	tok = s - 1;
+
+	for (;;) {
+		c = *s++;
+		spanp = (char *)delim;
+		do {
+			sc = *spanp++;
+			if (sc == c) {
+				if (c == 0)
+					s = NULL;
+				else
+					s[-1] = 0;
+				*last = s;
+				return tok;
+			}
+		} while (sc != 0);
+	}
+}
 
 void wlanCfgFwSetParam(uint8_t *fwBuffer, char *cmdStr, char *value, int num,
 		       int type)
@@ -12248,7 +9395,7 @@ uint32_t wlanFwCfgParse(IN struct ADAPTER *prAdapter, uint8_t *pucConfigBuf)
 	while (1) {
 		char *keyStr = NULL;
 		char *valueStr = NULL;
-		char *cfgEntry = kalStrtokR(cfgItems, "\n\r", &saveptr1);
+		char *cfgEntry = strtok_r(cfgItems, "\n\r", &saveptr1);
 
 		if (!cfgEntry) {
 			if (cmdNum)
@@ -12263,8 +9410,8 @@ uint32_t wlanFwCfgParse(IN struct ADAPTER *prAdapter, uint8_t *pucConfigBuf)
 		}
 		cfgItems = NULL;
 
-		keyStr = kalStrtokR(cfgEntry, " \t", &saveptr2);
-		valueStr = kalStrtokR(NULL, "\0", &saveptr2);
+		keyStr = strtok_r(cfgEntry, " \t", &saveptr2);
+		valueStr = strtok_r(NULL, "\0", &saveptr2);
 
 		/* maybe a blank line, but with some tab or whitespace */
 		if (!keyStr)
@@ -12301,15 +9448,6 @@ uint32_t wlanFwCfgParse(IN struct ADAPTER *prAdapter, uint8_t *pucConfigBuf)
 }
 #endif /* CFG_SUPPORT_EASY_DEBUG */
 
-int32_t wlanGetFileContent(struct ADAPTER *prAdapter,
-	const uint8_t *pcFileName, uint8_t *pucBuf,
-	uint32_t u4MaxFileLen, uint32_t *pu4ReadFileLen)
-{
-	return kalRequestFirmware(pcFileName, pucBuf,
-			 u4MaxFileLen, pu4ReadFileLen,
-			 prAdapter->prGlueInfo->prDev);
-}
-
 void wlanReleasePendingCmdById(struct ADAPTER *prAdapter, uint8_t ucCid)
 {
 	struct QUE *prCmdQue;
@@ -12341,7 +9479,7 @@ void wlanReleasePendingCmdById(struct ADAPTER *prAdapter, uint8_t ucCid)
 			prCmdInfo->pfCmdTimeoutHandler(prAdapter, prCmdInfo);
 		} else if (prCmdInfo->fgIsOid) {
 			kalOidComplete(prAdapter->prGlueInfo,
-				       prCmdInfo, 0,
+				       prCmdInfo->fgSetQuery, 0,
 				       WLAN_STATUS_FAILURE);
 		}
 
@@ -12354,17 +9492,17 @@ void wlanReleasePendingCmdById(struct ADAPTER *prAdapter, uint8_t ucCid)
 }
 
 /* Translate Decimals string to Hex
-** The result will be put in a 2bytes variable.
-** Integer part will occupy the left most 3 bits, and decimal part is in the
-** left 13 bits
-** Integer part can be parsed by kstrtou16, decimal part should be translated by
-** mutiplying
-** 16 and then pick integer part.
-** For example
-*/
+ * The result will be put in a 2bytes variable.
+ * Integer part will occupy the left most 3 bits, and decimal part is in the
+ * left 13 bits
+ * Integer part can be parsed by kstrtou16, decimal part should be translated by
+ * mutiplying
+ * 16 and then pick integer part.
+ * For example
+ */
 uint32_t wlanDecimalStr2Hexadecimals(uint8_t *pucDecimalStr, uint16_t *pu2Out)
 {
-	uint8_t aucDecimalStr[32] = {0};
+	uint8_t aucDecimalStr[32] = {0,};
 	uint8_t *pucDecimalPart = NULL;
 	uint8_t *tmp = NULL;
 	uint32_t u4Result = 0;
@@ -12380,7 +9518,6 @@ uint32_t wlanDecimalStr2Hexadecimals(uint8_t *pucDecimalStr, uint16_t *pu2Out)
 	while (*pucDecimalStr == '0')
 		pucDecimalStr++;
 	kalStrnCpy(aucDecimalStr, pucDecimalStr, sizeof(aucDecimalStr) - 1);
-	aucDecimalStr[31] = 0;
 	pucDecimalPart = strchr(aucDecimalStr, '.');
 	if (!pucDecimalPart) {
 		DBGLOG(INIT, INFO, "No decimal part, ori str %s\n",
@@ -12410,7 +9547,7 @@ uint32_t wlanDecimalStr2Hexadecimals(uint8_t *pucDecimalStr, uint16_t *pu2Out)
 	while (*pucDecimalPart == '0')
 		pucDecimalPart++;
 
-	u4Ret = kalkStrtou32(pucDecimalPart, 0, &u4Remain);
+	u4Ret = kstrtou32(pucDecimalPart, 0, &u4Remain);
 	if (u4Ret) {
 		DBGLOG(INIT, ERROR, "Parse decimal str %s error, degree %u\n",
 			   pucDecimalPart, u4Degree);
@@ -12424,16 +9561,16 @@ uint32_t wlanDecimalStr2Hexadecimals(uint8_t *pucDecimalStr, uint16_t *pu2Out)
 		ucAccuracy--;
 	} while (u4Remain && ucAccuracy > 0);
 	/* Each Hex Decimal byte was left shift more than 3 bits, so need
-	** right shift 3 bits at last
-	** For example, mmmnnnnnnnnnnnnn.
-	** mmm is integer part, n represents decimals part.
-	** the left most 4 n are shift 9 bits. But in for loop, we shift 12 bits
-	**/
+	 * right shift 3 bits at last
+	 * For example, mmmnnnnnnnnnnnnn.
+	 * mmm is integer part, n represents decimals part.
+	 * the left most 4 n are shift 9 bits. But in for loop, we shift 12 bits
+	 */
 	u4Result >>= 3;
 	u4Remain = 0;
 
 integer_part:
-	u4Ret = kalkStrtou32(aucDecimalStr, 0, &u4Remain);
+	u4Ret = kstrtou32(aucDecimalStr, 0, &u4Remain);
 	u4Result |= u4Remain << 13;
 
 	if (u4Ret)
@@ -12446,1440 +9583,3 @@ integer_part:
 	return u4Ret;
 }
 
-uint64_t wlanGetSupportedFeatureSet(IN struct GLUE_INFO *prGlueInfo)
-{
-	uint64_t u8FeatureSet = WIFI_HAL_FEATURE_SET;
-	struct REG_INFO *prRegInfo;
-
-	prRegInfo = &(prGlueInfo->rRegInfo);
-	if ((prRegInfo != NULL) && (prRegInfo->ucSupport5GBand))
-		u8FeatureSet |= WIFI_FEATURE_INFRA_5G;
-
-#if CFG_SUPPORT_LLS
-	if (!kalIsHalted() && prGlueInfo->prAdapter &&
-		prGlueInfo->prAdapter->rWifiVar.fgStatsLlsEn &&
-		prGlueInfo->prAdapter->pucLinkStatsSrcBufferAddr)
-		u8FeatureSet |= WIFI_FEATURE_LINK_LAYER_STATS;
-#endif
-
-	return u8FeatureSet;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
-* @brief This function is a wrapper to send power-saving mode command
-*        when AIS enter wow, and send WOW command
-*        Also let GC/GO/AP enter deactivate state to enter TOP sleep
-*
-* @param prGlueInfo                     Pointer of prGlueInfo Data Structure
-*
-* @return VOID
-*/
-/*----------------------------------------------------------------------------*/
-void wlanSuspendPmHandle(struct GLUE_INFO *prGlueInfo)
-{
-#if CFG_WOW_SUPPORT
-	/* 1) wifi cfg "Wow" is true              */
-    /* 2) wow is enable                       */
-    /* 3) WIfI connected => execute WOW flow  */
-	if (prGlueInfo->prAdapter->rWifiVar.ucWow &&
-		prGlueInfo->prAdapter->rWowCtrl.fgWowEnable) {
-		if (kalGetMediaStateIndicated(prGlueInfo,
-			AIS_DEFAULT_INDEX) ==
-			MEDIA_STATE_CONNECTED) {
-			DBGLOG(HAL, EVENT, "enter WOW flow\n");
-			kalWowProcess(prGlueInfo, TRUE);
-		}
-
-		/* else: do nothing, and FW enter LMAC sleep */
-	}
-#endif
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
-* @brief This function is to restore power-saving mode command when leave wow
-*        But ignore GC/GO/AP role
-*
-* @param prGlueInfo                     Pointer of prGlueInfo Data Structure
-*
-* @return VOID
-*/
-/*----------------------------------------------------------------------------*/
-void wlanResumePmHandle(struct GLUE_INFO *prGlueInfo)
-{
-#if CFG_WOW_SUPPORT
-	if (prGlueInfo->prAdapter->rWifiVar.ucWow) {
-		DBGLOG(HAL, EVENT, "leave WOW flow\n");
-		kalWowProcess(prGlueInfo, FALSE);
-	}
-#endif
-}
-
-static uint32_t wlanHwRateOfdmNum(uint16_t ofdm_idx)
-{
-	switch (ofdm_idx) {
-	case 11: /* 6M */
-		return g_rOfdmDataRateMappingTable.rate[0];
-	case 15: /* 9M */
-		return g_rOfdmDataRateMappingTable.rate[1];
-	case 10: /* 12M */
-		return g_rOfdmDataRateMappingTable.rate[2];
-	case 14: /* 18M */
-		return g_rOfdmDataRateMappingTable.rate[3];
-	case 9: /* 24M */
-		return g_rOfdmDataRateMappingTable.rate[4];
-	case 13: /* 36M */
-		return g_rOfdmDataRateMappingTable.rate[5];
-	case 8: /* 48M */
-		return g_rOfdmDataRateMappingTable.rate[6];
-	case 12: /* 54M */
-		return g_rOfdmDataRateMappingTable.rate[7];
-	default:
-		return 0;
-	}
-}
-
-int wlanQueryRateByTable(uint32_t txmode, uint32_t rate,
-			uint32_t frmode, uint32_t sgi, uint32_t nsts,
-			uint32_t *pu4CurRate, uint32_t *pu4MaxRate)
-{
-	uint32_t u4CurRate = 0, u4MaxRate = 0;
-	uint8_t ucMaxSize = 0;
-
-	if (txmode == TX_RATE_MODE_CCK) { /* 11B */
-		ucMaxSize = ARRAY_SIZE(g_rCckDataRateMappingTable.rate);
-		/* short preamble */
-		if ((rate >= 5) && (rate <= 7))
-			rate -= 4;
-		if (rate >= ucMaxSize) {
-			DBGLOG(SW4, ERROR, "rate error for CCK: %u\n", rate);
-			return -1;
-		}
-		u4CurRate = g_rCckDataRateMappingTable.rate[rate];
-		u4MaxRate = g_rCckDataRateMappingTable
-			.rate[MCS_IDX_MAX_RATE_CCK];
-	} else if (txmode == TX_RATE_MODE_OFDM) { /* 11G */
-		u4CurRate = wlanHwRateOfdmNum(rate);
-		if (u4CurRate == 0) {
-			DBGLOG(SW4, ERROR, "rate error for OFDM\n");
-			return -1;
-		}
-		u4MaxRate = g_rOfdmDataRateMappingTable
-			.rate[MCS_IDX_MAX_RATE_OFDM];
-	} else if ((txmode == TX_RATE_MODE_HTMIX) ||
-		   (txmode == TX_RATE_MODE_HTGF)) { /* 11N */
-		if ((nsts == 0) || (nsts >= 4)) {
-			DBGLOG(SW4, ERROR, "nsts error: %u\n", nsts);
-			return -1;
-		}
-
-		ucMaxSize = 8;
-		if (rate > 23) {
-			DBGLOG(SW4, ERROR, "rate error for 11N: %u\n",
-			       rate);
-			return -1;
-		}
-		rate %= ucMaxSize;
-
-		if (frmode > 1) {
-			DBGLOG(SW4, ERROR,
-			       "frmode error for 11N: %u\n",
-			       frmode);
-			return -1;
-		}
-		u4CurRate = g_rDataRateMappingTable.nsts[nsts - 1].bw[frmode]
-				.sgi[sgi].rate[rate];
-		u4MaxRate = g_rDataRateMappingTable.nsts[nsts - 1].bw[frmode]
-				.sgi[sgi].rate[MCS_IDX_MAX_RATE_HT];
-	} else if (txmode == TX_RATE_MODE_VHT) { /* 11AC */
-		if ((nsts == 0) || (nsts >= 4)) {
-			DBGLOG(SW4, ERROR, "nsts error: %u\n", nsts);
-			return -1;
-		}
-
-		if (frmode > 3) {
-			DBGLOG(SW4, ERROR,
-			       "frmode error for 11AC: %u\n",
-			       frmode);
-			return -1;
-		}
-
-		ucMaxSize = ARRAY_SIZE(g_rDataRateMappingTable.nsts[nsts - 1]
-				.bw[frmode].sgi[sgi].rate);
-		if (rate >= ucMaxSize) {
-			DBGLOG(SW4, ERROR, "rate error for 11AC: %u\n",
-			       rate);
-			return -1;
-		}
-
-		u4CurRate = g_rDataRateMappingTable.nsts[nsts - 1]
-				.bw[frmode].sgi[sgi].rate[rate];
-		u4MaxRate = g_rDataRateMappingTable.nsts[nsts - 1].bw[frmode]
-				.sgi[sgi].rate[MCS_IDX_MAX_RATE_VHT];
-	} else if ((txmode == TX_RATE_MODE_HE_SU) ||
-		(txmode == TX_RATE_MODE_HE_ER)) { /* AX */
-		uint8_t dcm = 0, ru106 = 0;
-
-		if ((nsts == 0) || (nsts >= 5)) {
-			DBGLOG(SW4, ERROR, "nsts error: %u\n", nsts);
-			return -1;
-		}
-		if (frmode > 3) {
-			DBGLOG(SW4, ERROR,
-			       "frmode error for 11AX: %u\n",
-			       frmode);
-			return -1;
-		}
-
-		/* bit 4: dcm, bit 5: RU106 */
-		dcm = rate & BIT(4);
-		ru106 = rate & BIT(5);
-		rate = rate & BITS(0, 3);
-
-		ucMaxSize = ARRAY_SIZE(g_rAxDataRateMappingTable.nsts[nsts - 1]
-				.bw[frmode].gi[sgi].rate);
-		if (rate >= ucMaxSize) {
-			DBGLOG(SW4, ERROR, "rate error for 11AX: %u\n",
-			       rate);
-			return -1;
-		}
-
-		u4CurRate = g_rAxDataRateMappingTable.nsts[nsts - 1]
-				.bw[frmode].gi[sgi].rate[rate];
-		u4MaxRate = g_rAxDataRateMappingTable.nsts[nsts - 1]
-				.bw[frmode].gi[sgi].rate[MCS_IDX_MAX_RATE_HE];
-
-		if (dcm != 0 || ru106 != 0) {
-			u4CurRate = u4CurRate >> 1;
-			u4MaxRate = u4MaxRate >> 1;
-		}
-	} else {
-		DBGLOG(SW4, ERROR,
-			"Unknown rate for [%d,%d,%d,%d,%d]\n",
-			txmode, nsts, frmode, sgi, rate);
-		return -1;
-	}
-
-
-	if (pu4CurRate)
-		*pu4CurRate = u4CurRate;
-	if (pu4MaxRate)
-		*pu4MaxRate = u4MaxRate;
-	return 0;
-}
-
-#if defined(CFG_REPORT_MAX_TX_RATE) && (CFG_REPORT_MAX_TX_RATE == 1)
-int wlanGetMaxTxRate(IN struct ADAPTER *prAdapter,
-		 IN void *prBssPtr, IN struct STA_RECORD *prStaRec,
-		 OUT uint32_t *pu4CurRate, OUT uint32_t *pu4MaxRate)
-{
-	struct BSS_INFO *prBssInfo;
-	uint8_t ucPhyType, ucTxMode = 0, ucMcsIdx = 0, ucSgi = 0;
-	uint8_t ucBw = 0, ucAPBwPermitted = 0, ucNss = 0, ucApNss = 0;
-	uint8_t ucOffset = (MAX_BW_80MHZ - CW_80MHZ);
-	struct BSS_DESC *prBssDesc = NULL;
-
-	*pu4CurRate = 0;
-	*pu4MaxRate = 0;
-	prBssInfo = (struct BSS_INFO *) prBssPtr;
-
-	/* get tx mode and MCS index */
-	ucPhyType = prBssInfo->ucPhyTypeSet;
-
-	DBGLOG(SW4, TRACE,
-		   "ucPhyType: 0x%x\n",
-		   ucPhyType);
-
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (ucPhyType & PHY_TYPE_SET_802_11BE)
-		ucTxMode = TX_RATE_MODE_EHT;
-	else
-#endif
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (ucPhyType & PHY_TYPE_SET_802_11AX)
-		ucTxMode = TX_RATE_MODE_HE_SU;
-	else
-#endif
-	if (ucPhyType & PHY_TYPE_SET_802_11AC)
-		ucTxMode = TX_RATE_MODE_VHT;
-	else if (ucPhyType & PHY_TYPE_SET_802_11N)
-		ucTxMode = TX_RATE_MODE_HTMIX;
-	else if (ucPhyType & PHY_TYPE_SET_802_11G) {
-		ucTxMode = TX_RATE_MODE_OFDM;
-		ucMcsIdx = 12;
-	} else if (ucPhyType & PHY_TYPE_SET_802_11A) {
-		ucTxMode = TX_RATE_MODE_OFDM;
-		ucMcsIdx = 12;
-	} else if (ucPhyType & PHY_TYPE_SET_802_11B)
-		ucTxMode = TX_RATE_MODE_CCK;
-	else {
-		DBGLOG(SW4, ERROR,
-		       "unknown wifi type, prBssInfo->ucPhyTypeSet: %u\n",
-		       ucPhyType);
-		goto errhandle;
-	}
-
-	/* get bandwidth */
-	ucBw = cnmGetBssMaxBw(prAdapter, prBssInfo->ucBssIndex);
-	prBssDesc = aisGetTargetBssDesc(prAdapter, prBssInfo->ucBssIndex);
-	if (prBssDesc) {
-		ucAPBwPermitted = MAX_BW_160MHZ;
-		if (prBssDesc->eChannelWidth == CW_20_40MHZ) {
-			if ((prBssDesc->eSco == CHNL_EXT_SCA)
-			     || (prBssDesc->eSco == CHNL_EXT_SCB))
-				ucAPBwPermitted = MAX_BW_40MHZ;
-			else
-				ucAPBwPermitted = MAX_BW_20MHZ;
-		} else {
-			ucAPBwPermitted = prBssDesc->eChannelWidth + ucOffset;
-		}
-		if ((ucAPBwPermitted < MAX_BW_20MHZ) ||
-		    (ucAPBwPermitted > MAX_BW_80_80_MHZ)) {
-			DBGLOG(SW4, ERROR,
-			       "unknown band width: %u\n", ucAPBwPermitted);
-			goto errhandle;
-		} else if (ucAPBwPermitted == MAX_BW_80_80_MHZ)
-			ucAPBwPermitted = MAX_BW_160MHZ;
-	} else {
-		DBGLOG(SW4, ERROR, "prBssDesc is null\n");
-		goto errhandle;
-	}
-	if (ucAPBwPermitted < ucBw)
-		ucBw = ucAPBwPermitted;
-
-	/* get Short GI Tx capability */
-	if ((prStaRec->u2HtCapInfo & HT_CAP_INFO_SHORT_GI_20M) ==
-	    HT_CAP_INFO_SHORT_GI_20M) {
-		DBGLOG(RLM, TRACE, "HT_CAP_INFO_SHORT_GI_20M\n");
-		ucSgi = 1;
-	}
-	if ((prStaRec->u2HtCapInfo & HT_CAP_INFO_SHORT_GI_40M) ==
-	    HT_CAP_INFO_SHORT_GI_40M) {
-		DBGLOG(RLM, TRACE, "HT_CAP_INFO_SHORT_GI_40M\n");
-		ucSgi = 1;
-	}
-#if CFG_SUPPORT_802_11AC
-	if ((prStaRec->u4VhtCapInfo & VHT_CAP_INFO_SHORT_GI_80) ==
-	    VHT_CAP_INFO_SHORT_GI_80) {
-		DBGLOG(RLM, TRACE, "VHT_CAP_INFO_SHORT_GI_80\n");
-		ucSgi = 1;
-	}
-	if ((prStaRec->u4VhtCapInfo & VHT_CAP_INFO_SHORT_GI_160_80P80) ==
-	    VHT_CAP_INFO_SHORT_GI_160_80P80) {
-		DBGLOG(RLM, TRACE, "VHT_CAP_INFO_SHORT_GI_160_80P80\n");
-		ucSgi = 1;
-	}
-#endif
-
-	if (ucTxMode == TX_RATE_MODE_HE_SU) {
-		DBGLOG(SW4, TRACE, "TX_RATE_MODE_HE_SU\n");
-		ucSgi = 0;
-	}
-
-	/* get antenna number */
-	ucNss = wlanGetSupportNss(prAdapter, prBssInfo->ucBssIndex);
-	if (prBssDesc) {
-		ucApNss = bssGetRxNss(prAdapter, prBssDesc);
-		if (ucApNss > 0 && ucApNss < ucNss)
-			ucNss = ucApNss;
-	}
-	if ((ucNss < 1) || (ucNss > 3)) {
-		DBGLOG(RLM, ERROR, "error ucNss: %u\n", ucNss);
-		goto errhandle;
-	}
-
-	DBGLOG(SW4, TRACE,
-	       "txmode=[%u], mcs idx=[%u], bandwidth=[%u], sgi=[%u], nsts=[%u]\n",
-	       ucTxMode, ucMcsIdx, ucBw, ucSgi, ucNss
-	);
-
-	if (wlanQueryRateByTable(ucTxMode, ucMcsIdx, ucBw, ucSgi,
-				ucNss, pu4CurRate, pu4MaxRate) < 0)
-		goto errhandle;
-
-	DBGLOG(SW4, TRACE,
-	       "*pu4CurRate=[%u], *pu4MaxRate=[%u]\n",
-	       *pu4CurRate, *pu4MaxRate);
-
-	return 0;
-
-errhandle:
-	DBGLOG(SW4, ERROR,
-	       "txmode=[%u], mcs idx=[%u], bandwidth=[%u], sgi=[%u], nsts=[%u]\n",
-	       ucTxMode, ucMcsIdx, ucBw, ucSgi, ucNss);
-	return -1;
-}
-#endif /* CFG_REPORT_MAX_TX_RATE */
-
-#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
-int wlanGetRxRate(IN struct GLUE_INFO *prGlueInfo, IN uint8_t ucBssIdx,
-		OUT uint32_t *pu4CurRate, OUT uint32_t *pu4MaxRate,
-		OUT struct RateInfo *prRateInfo)
-{
-	struct ADAPTER *prAdapter;
-	uint32_t rxmode = 0, rate = 0, frmode = 0, sgi = 0, nss = 0;
-	int rv;
-	struct CHIP_DBG_OPS *prChipDbg;
-
-	if (pu4CurRate)
-		*pu4CurRate = 0;
-	if (pu4MaxRate)
-		*pu4MaxRate = 0;
-	if (prRateInfo)
-		*prRateInfo = (const struct RateInfo){0};
-	prAdapter = prGlueInfo->prAdapter;
-
-	if (!IS_BSS_INDEX_AIS(prAdapter, ucBssIdx))
-		return -1;
-
-	prChipDbg = prAdapter->chip_info->prDebugOps;
-	if (prChipDbg && prChipDbg->get_rx_rate_info) {
-		rv = prChipDbg->get_rx_rate_info(
-				prAdapter,
-				ucBssIdx,
-				&rate,
-				&nss,
-				&rxmode,
-				&frmode,
-				&sgi);
-
-		if (rv < 0)
-			goto errhandle;
-	}
-
-	if (prRateInfo) {
-		prRateInfo->u4Mode = rxmode;
-		prRateInfo->u4Nss = nss;
-		prRateInfo->u4Bw = frmode;
-		prRateInfo->u4Gi = sgi;
-		prRateInfo->u4Rate = rate;
-	}
-
-	rv = wlanQueryRateByTable(rxmode, rate, frmode, sgi, nss,
-				 pu4CurRate, pu4MaxRate);
-	if (rv < 0)
-		goto errhandle;
-
-	return 0;
-
-errhandle:
-	DBGLOG(SW4, TRACE,
-		"rxmode=[%u], rate=[%u], frmode=[%u], sgi=[%u], nss=[%u]\n",
-		rxmode, rate, frmode, sgi, nss
-	);
-	return -1;
-}
-
-uint32_t wlanLinkQualityMonitor(struct GLUE_INFO *prGlueInfo, bool bFgIsOid)
-{
-	struct ADAPTER *prAdapter;
-	struct WIFI_LINK_QUALITY_INFO *prLinkQualityInfo = NULL;
-	struct PARAM_GET_STA_STATISTICS *prQueryStaStatistics;
-	struct PARAM_802_11_STATISTICS_STRUCT *prStat;
-	uint32_t u4BufLen = 0;
-	uint8_t arBssid[PARAM_MAC_ADDR_LEN];
-	uint32_t u4Status = WLAN_STATUS_FAILURE;
-	uint8_t ucBssIndex = AIS_DEFAULT_INDEX;
-
-	if (kalGetMediaStateIndicated(prGlueInfo,
-		ucBssIndex) !=
-	    MEDIA_STATE_CONNECTED) {
-		/* not connected */
-		DBGLOG(SW4, ERROR, "not yet connected\n");
-		return u4Status;
-	}
-
-	prAdapter = prGlueInfo->prAdapter;
-	if (prAdapter == NULL) {
-		DBGLOG(SW4, ERROR, "prAdapter is null\n");
-		return u4Status;
-	}
-
-	/* Completely record the Link quality and store the current time */
-	prAdapter->u4LastLinkQuality = kalGetTimeTick();
-	DBGLOG(NIC, TRACE, "LastLinkQuality:%u\n",
-			prAdapter->u4LastLinkQuality);
-
-	kalMemZero(arBssid, MAC_ADDR_LEN);
-	SET_IOCTL_BSSIDX(prGlueInfo->prAdapter, ucBssIndex);
-	wlanQueryInformation(prAdapter, wlanoidQueryBssid,
-			     &arBssid[0], sizeof(arBssid), &u4BufLen);
-
-	/* send cmd to firmware */
-	prQueryStaStatistics = &(prAdapter->rQueryStaStatistics);
-	prStat = &(prAdapter->rStat);
-	kalMemZero(prStat, sizeof(struct PARAM_802_11_STATISTICS_STRUCT));
-	COPY_MAC_ADDR(prQueryStaStatistics->aucMacAddr, arBssid);
-	prQueryStaStatistics->ucReadClear = TRUE;
-	DBGLOG(REQ, TRACE, "Call prQueryStaStatistics=%p, u4BufLen=%p",
-			prQueryStaStatistics, &prAdapter->u4BufLen);
-	u4Status = wlanQueryStaStatistics(prAdapter,
-				prQueryStaStatistics,
-				sizeof(struct PARAM_GET_STA_STATISTICS),
-				&(prAdapter->u4BufLen),
-				FALSE);
-	DBGLOG(REQ, TRACE, "u4Status=%u, prQueryStaStatistics=%p, u4BufLen=%p",
-			u4Status, prQueryStaStatistics, &prAdapter->u4BufLen);
-
-	u4Status = wlanQueryStatistics(prAdapter,
-				prStat,
-				sizeof(struct PARAM_802_11_STATISTICS_STRUCT),
-				&(prAdapter->u4BufLen),
-				FALSE);
-
-	if (bFgIsOid == FALSE)
-		u4Status = WLAN_STATUS_SUCCESS;
-
-	if ((bFgIsOid == TRUE) || (prAdapter->u4LastLinkQuality <= 0))
-		return u4Status;
-
-	prLinkQualityInfo = &(prAdapter->rLinkQualityInfo);
-
-#if CFG_SUPPORT_DATA_STALL
-	wlanCustomMonitorFunction(prAdapter, prLinkQualityInfo, ucBssIndex);
-#endif
-
-	DBGLOG(SW4, INFO,
-	       "Link Quality: Tx(rate:%u, total:%lu, retry:%lu, fail:%lu, RTS fail:%lu, ACK fail:%lu), Rx(rate:%u, total:%lu, dup:%u, error:%lu), PER(%u), Congestion(idle slot:%lu, diff:%lu, AwakeDur:%u)\n",
-	       prLinkQualityInfo->u4CurTxRate, /* current tx link speed */
-	       prLinkQualityInfo->u8TxTotalCount, /* tx total packages */
-	       prLinkQualityInfo->u8TxRetryCount, /* tx retry count */
-	       prLinkQualityInfo->u8TxFailCount, /* tx fail count */
-	       prLinkQualityInfo->u8TxRtsFailCount, /* tx RTS fail count */
-	       prLinkQualityInfo->u8TxAckFailCount, /* tx ACK fail count */
-	       prLinkQualityInfo->u4CurRxRate, /* current rx link speed */
-	       prLinkQualityInfo->u8RxTotalCount, /* rx total packages */
-	       prLinkQualityInfo->u4RxDupCount, /* rx duplicate package count */
-	       prLinkQualityInfo->u8RxErrCount, /* rx fcs fail count */
-	       prLinkQualityInfo->u4CurTxPer, /* current Tx PER */
-	       /* congestion stats */
-	       prLinkQualityInfo->u8IdleSlotCount, /* idle slot */
-	       prLinkQualityInfo->u8DiffIdleSlotCount, /* idle slot diff */
-	       prLinkQualityInfo->u4HwMacAwakeDuration
-	);
-
-	return u4Status;
-}
-
-void wlanFinishCollectingLinkQuality(struct GLUE_INFO *prGlueInfo)
-{
-	struct ADAPTER *prAdapter;
-	struct WIFI_LINK_QUALITY_INFO *prLinkQualityInfo = NULL;
-	uint32_t u4CurRxRate, u4MaxRxRate;
-	uint64_t u8TxFailCntDif, u8TxTotalCntDif;
-
-	prAdapter = prGlueInfo->prAdapter;
-	if (prAdapter == NULL) {
-		DBGLOG(SW4, ERROR, "prAdapter is null\n");
-		return;
-	}
-
-	/* prepare to set/get statistics from BSSInfo's rLinkQualityInfo */
-	prLinkQualityInfo = &(prAdapter->rLinkQualityInfo);
-
-	/* Calculate current tx PER */
-	u8TxTotalCntDif = (prLinkQualityInfo->u8TxTotalCount >
-			   prLinkQualityInfo->u8LastTxTotalCount) ?
-			  (prLinkQualityInfo->u8TxTotalCount -
-			   prLinkQualityInfo->u8LastTxTotalCount) : 0;
-	u8TxFailCntDif = (prLinkQualityInfo->u8TxFailCount >
-			  prLinkQualityInfo->u8LastTxFailCount) ?
-			 (prLinkQualityInfo->u8TxFailCount -
-			  prLinkQualityInfo->u8LastTxFailCount) : 0;
-	if (u8TxTotalCntDif >= u8TxFailCntDif)
-		prLinkQualityInfo->u4CurTxPer = (u8TxTotalCntDif == 0) ? 0 :
-			((uint32_t)(u8TxFailCntDif * 100) /
-				(uint32_t)u8TxTotalCntDif);
-	else
-		prLinkQualityInfo->u4CurTxPer = 0;
-
-	/* Calculate idle slot diff */
-	if (prLinkQualityInfo->u8IdleSlotCount <
-			prLinkQualityInfo->u8LastIdleSlotCount) {
-		prLinkQualityInfo->u8DiffIdleSlotCount = 0;
-		DBGLOG(NIC, WARN, "idle slot is error\n");
-	} else
-		prLinkQualityInfo->u8DiffIdleSlotCount =
-			prLinkQualityInfo->u8IdleSlotCount -
-			prLinkQualityInfo->u8LastIdleSlotCount;
-
-	/* get current rx rate */
-	if (wlanGetRxRate(prGlueInfo, AIS_DEFAULT_INDEX,
-			&u4CurRxRate, &u4MaxRxRate, NULL) < 0)
-		prLinkQualityInfo->u4CurRxRate = 0;
-	else
-		prLinkQualityInfo->u4CurRxRate = u4CurRxRate;
-
-	prLinkQualityInfo->u8LastTxTotalCount =
-					prLinkQualityInfo->u8TxTotalCount;
-	prLinkQualityInfo->u8LastTxFailCount =
-					prLinkQualityInfo->u8TxFailCount;
-	prLinkQualityInfo->u8LastIdleSlotCount =
-					prLinkQualityInfo->u8IdleSlotCount;
-}
-#endif /* CFG_SUPPORT_LINK_QUALITY_MONITOR */
-
-#if CFG_SUPPORT_DATA_STALL
-void wlanCustomMonitorFunction(struct ADAPTER *prAdapter,
-	 struct WIFI_LINK_QUALITY_INFO *prLinkQualityInfo, uint8_t ucBssIdx)
-{
-	uint64_t u8TxTotalCntDif;
-
-	u8TxTotalCntDif = (prLinkQualityInfo->u8TxTotalCount >
-			   prLinkQualityInfo->u8LastTxTotalCount) ?
-			  (prLinkQualityInfo->u8TxTotalCount -
-			   prLinkQualityInfo->u8LastTxTotalCount) : 0;
-
-	/* Add custom monitor here */
-	if (u8TxTotalCntDif >= prAdapter->rWifiVar.u4TrafficThreshold) {
-		if (prLinkQualityInfo->u4CurTxRate <
-			prAdapter->rWifiVar.u4TxLowRateThreshole)
-			KAL_REPORT_ERROR_EVENT(prAdapter,
-				EVENT_TX_LOW_RATE,
-				(uint16_t)sizeof(uint32_t),
-				ucBssIdx,
-				FALSE);
-		else if (prLinkQualityInfo->u4CurRxRate <
-			prAdapter->rWifiVar.u4RxLowRateThreshole)
-			KAL_REPORT_ERROR_EVENT(prAdapter,
-				EVENT_RX_LOW_RATE,
-				(uint16_t)sizeof(uint32_t),
-				ucBssIdx,
-				FALSE);
-		else if (prLinkQualityInfo->u4CurTxPer >
-			prAdapter->rWifiVar.u4PerHighThreshole)
-			KAL_REPORT_ERROR_EVENT(prAdapter,
-				EVENT_PER_HIGH,
-				(uint16_t)sizeof(uint32_t),
-				ucBssIdx,
-				FALSE);
-	}
-}
-#endif
-
-uint8_t wlanCheckExtCapBit(struct STA_RECORD *prStaRec, uint8_t *pucIE,
-		uint8_t ucTargetBit)
-{
-	uint8_t *pucIeExtCap;
-	uint8_t ucTargetByteIndex = (ucTargetBit >> 3);
-	uint8_t ucTargetBitInByte = ucTargetBit % 8;
-
-	if ((prStaRec == NULL) || (pucIE == NULL))
-		return FALSE;
-
-	if (IE_ID(pucIE) != ELEM_ID_EXTENDED_CAP)
-		return FALSE;
-
-	if (IE_LEN(pucIE) < (ucTargetByteIndex + 1))
-		return FALSE;
-
-	/* parse */
-	pucIeExtCap = pucIE + 2;
-	/* shift to the byte we care about */
-	pucIeExtCap += ucTargetByteIndex;
-
-	if ((*pucIeExtCap) & BIT(ucTargetBitInByte))
-		return TRUE;
-
-	return FALSE;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief This routine is called to set enable/disable force RTS mode to FW
- *
- * \param[in]  prAdapter       A pointer to the Adapter structure.
- *
- * \retval WLAN_STATUS_SUCCESS
- */
-/*----------------------------------------------------------------------------*/
-uint32_t wlanSetForceRTS(
-	IN struct ADAPTER *prAdapter,
-	IN u_int8_t fgEnForceRTS)
-{
-	struct CMD_SET_FORCE_RTS rForceRts = {0};
-
-	rForceRts.ucForceRtsEn = fgEnForceRTS;
-	rForceRts.ucRtsPktNum = 0;
-	DBGLOG(REQ, INFO, "fgEnForceRTS = %d\n",
-			fgEnForceRTS);
-	wlanSendSetQueryCmd(prAdapter,	/* prAdapter */
-			    CMD_ID_SET_FORCE_RTS,	/* ucCID */
-			    TRUE,	/* fgSetQuery */
-			    FALSE,	/* fgNeedResp */
-			    FALSE,	/* fgIsOid */
-			    NULL,	/* pfCmdDoneHandler */
-			    NULL,	/* pfCmdTimeoutHandler */
-			    sizeof(struct CMD_SET_FORCE_RTS),
-			    (uint8_t *)&rForceRts,	/* pucInfoBuffer */
-			    NULL,	/* pvSetQueryBuffer */
-			    0	/* u4SetQueryBufferLen */
-	);
-
-	return WLAN_STATUS_SUCCESS;
-}
-
-void
-wlanLoadDefaultCustomerSetting(IN struct ADAPTER *
-	prAdapter)
-{
-
-	uint8_t ucItemNum, i;
-
-	/* default setting*/
-	ucItemNum = (sizeof(g_rDefaulteSetting) / sizeof(
-		struct PARAM_CUSTOM_KEY_CFG_STRUCT));
-
-	DBGLOG(INIT, STATE, "Default firmware setting %d item\n",
-			ucItemNum);
-
-
-	for (i = 0; i < ucItemNum; i++) {
-		wlanCfgSet(prAdapter,
-			g_rDefaulteSetting[i].aucKey,
-			g_rDefaulteSetting[i].aucValue,
-			g_rDefaulteSetting[i].u4Flag);
-		DBGLOG(INIT, TRACE, "%s with %s\n",
-			g_rDefaulteSetting[i].aucKey,
-			g_rDefaulteSetting[i].aucValue);
-	}
-
-
-#if 1
-	/*If need to re-parsing , included wlanInitFeatureOption*/
-	wlanInitFeatureOption(prAdapter);
-#endif
-}
-/*wlan on*/
-void
-wlanResoreEmCfgSetting(IN struct ADAPTER *
-	prAdapter)
-{
-	uint32_t i;
-
-	for (i = 0; i < WLAN_CFG_ENTRY_NUM_MAX; i++) {
-
-		if (g_rEmCfgBk[i].aucKey[0] == '\0')
-			continue;
-
-		wlanCfgSet(prAdapter, g_rEmCfgBk[i].aucKey,
-			g_rEmCfgBk[i].aucValue, WLAN_CFG_EM);
-
-		DBGLOG(INIT, STATE,
-			   "cfg restore:(%s,%s) op:%d\n",
-			   g_rEmCfgBk[i].aucKey,
-			   g_rEmCfgBk[i].aucValue,
-			   g_rEmCfgBk[i].u4Flag);
-
-	}
-
-}
-
-/*wlan off*/
-void
-wlanBackupEmCfgSetting(IN struct ADAPTER *
-	prAdapter)
-{
-	uint32_t i;
-	struct WLAN_CFG_ENTRY *prWlanCfgEntry = NULL;
-
-	kalMemZero(&g_rEmCfgBk, sizeof(g_rEmCfgBk));
-
-	for (i = 0; i < WLAN_CFG_ENTRY_NUM_MAX; i++) {
-		prWlanCfgEntry =
-			wlanCfgGetEntryByIndex(prAdapter, i, WLAN_CFG_EM);
-
-		if ((!prWlanCfgEntry) || (prWlanCfgEntry->aucKey[0] == '\0'))
-			break;
-
-
-		kalStrnCpy(g_rEmCfgBk[i].aucKey, prWlanCfgEntry->aucKey,
-			WLAN_CFG_KEY_LEN_MAX - 1);
-		prWlanCfgEntry->aucKey[WLAN_CFG_KEY_LEN_MAX - 1] = '\0';
-
-		kalStrnCpy(g_rEmCfgBk[i].aucValue, prWlanCfgEntry->aucValue,
-			WLAN_CFG_VALUE_LEN_MAX - 1);
-		prWlanCfgEntry->aucValue[WLAN_CFG_VALUE_LEN_MAX - 1] = '\0';
-
-
-		g_rEmCfgBk[i].u4Flag = WLAN_CFG_EM;
-
-		DBGLOG(INIT, STATE,
-			   "cfg backup:(%s,%s) op:%d\n",
-			   g_rEmCfgBk[i].aucKey,
-			   g_rEmCfgBk[i].aucValue,
-			   g_rEmCfgBk[i].u4Flag);
-
-	}
-
-
-}
-
-void
-wlanCleanAllEmCfgSetting(IN struct ADAPTER *
-	prAdapter)
-{
-	uint32_t i;
-	struct WLAN_CFG_ENTRY *prWlanCfgEntry = NULL;
-
-	for (i = 0; i < WLAN_CFG_ENTRY_NUM_MAX; i++) {
-		prWlanCfgEntry =
-			wlanCfgGetEntryByIndex(prAdapter, i, WLAN_CFG_EM);
-
-		if ((!prWlanCfgEntry) || (prWlanCfgEntry->aucKey[0] == '\0'))
-			break;
-
-		DBGLOG(INIT, STATE,
-			   "cfg clean:(%s,%s) op:%d\n",
-			   prWlanCfgEntry->aucKey,
-			   prWlanCfgEntry->aucValue,
-			   prWlanCfgEntry->u4Flags);
-
-		kalMemZero(prWlanCfgEntry, sizeof(struct WLAN_CFG_ENTRY));
-
-	}
-}
-
-u_int8_t wlanWfdEnabled(struct ADAPTER *prAdapter)
-{
-#if CFG_SUPPORT_WFD
-	if (prAdapter)
-		return prAdapter->rWifiVar.rWfdConfigureSettings.ucWfdEnable;
-#endif
-	return FALSE;
-}
-
-int wlanChipConfig(struct ADAPTER *prAdapter,
-	char *pcCommand, int i4TotalLen)
-{
-	return wlanChipConfigWithType(prAdapter, pcCommand,
-				i4TotalLen, CHIP_CONFIG_TYPE_ASCII);
-}
-
-int wlanChipConfigWithType(struct ADAPTER *prAdapter,
-	char *pcCommand, int i4TotalLen, uint8_t type)
-{
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
-	int32_t i4BytesWritten = 0;
-	uint32_t u4BufLen = 0;
-	uint32_t u2MsgSize = 0;
-	uint32_t u4CmdLen = 0;
-	struct PARAM_CUSTOM_CHIP_CONFIG_STRUCT rChipConfigInfo = {0};
-
-	if (prAdapter == NULL) {
-		DBGLOG(REQ, ERROR, "prAdapter null");
-		return -1;
-	}
-	DBGLOG(REQ, LOUD, "command is %s\n", pcCommand);
-
-	u4CmdLen = kalStrnLen(pcCommand, i4TotalLen);
-
-	rChipConfigInfo.ucType = type;
-	rChipConfigInfo.u2MsgSize = u4CmdLen;
-	kalStrnCpy(rChipConfigInfo.aucCmd, pcCommand,
-		   CHIP_CONFIG_RESP_SIZE - 1);
-	rChipConfigInfo.aucCmd[CHIP_CONFIG_RESP_SIZE - 1] = '\0';
-	rStatus = kalIoctl(prAdapter->prGlueInfo, wlanoidQueryChipConfig,
-		&rChipConfigInfo, sizeof(rChipConfigInfo),
-		TRUE, TRUE, TRUE, &u4BufLen);
-
-	if (rStatus != WLAN_STATUS_SUCCESS) {
-		DBGLOG(REQ, ERROR, "%s: kalIoctl ret=%d\n", __func__,
-		       rStatus);
-		return -1;
-	}
-	rChipConfigInfo.aucCmd[CHIP_CONFIG_RESP_SIZE - 1] = '\0';
-
-	/* Check respType */
-	u2MsgSize = rChipConfigInfo.u2MsgSize;
-	DBGLOG(REQ, INFO, "%s: RespTyep  %u\n", __func__,
-	       rChipConfigInfo.ucRespType);
-	DBGLOG(REQ, INFO, "%s: u2MsgSize %u\n", __func__,
-	       rChipConfigInfo.u2MsgSize);
-
-	if (rChipConfigInfo.ucRespType != type) {
-		DBGLOG(REQ, WARN, "not match type");
-		return -1;
-	}
-	if (u2MsgSize > sizeof(rChipConfigInfo.aucCmd)) {
-		DBGLOG(REQ, INFO, "%s: u2MsgSize error ret=%u\n",
-		       __func__, rChipConfigInfo.u2MsgSize);
-		return -1;
-	}
-	i4BytesWritten = snprintf(pcCommand, i4TotalLen, "%s",
-		     rChipConfigInfo.aucCmd);
-	return i4BytesWritten;
-}
-
-uint32_t wlanSetRxBaSize(IN struct GLUE_INFO *prGlueInfo,
-	int8_t i4Type, uint16_t u2BaSize)
-{
-	struct ADAPTER *prAdapter;
-	uint32_t i;
-	struct STA_RECORD *prStaRec;
-	struct CMD_ADDBA_REJECT rAddbaReject;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
-	uint32_t u4BufLen = 0;
-
-	prAdapter = prGlueInfo->prAdapter;
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (i4Type == WLAN_TYPE_EHT)
-		prAdapter->rWifiVar.u2RxEhtBaSize = u2BaSize;
-	else
-#endif
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (i4Type == WLAN_TYPE_HE)
-		prAdapter->rWifiVar.u2RxHeBaSize = u2BaSize;
-	else
-#endif
-	{
-		prAdapter->rWifiVar.ucRxHtBaSize = (uint8_t) u2BaSize;
-		prAdapter->rWifiVar.ucRxVhtBaSize = (uint8_t) u2BaSize;
-	}
-
-	for (i = 0; i < CFG_STA_REC_NUM; i++) {
-		prStaRec = &prAdapter->arStaRec[i];
-		if (prStaRec->fgIsInUse)
-			cnmStaSendUpdateCmd(prAdapter, prStaRec, NULL, FALSE);
-	}
-
-	rAddbaReject.fgEnable = FALSE;
-	rAddbaReject.fgApply = TRUE;
-
-	rStatus = kalIoctl(prGlueInfo,
-		wlanoidSetAddbaReject, &rAddbaReject,
-		sizeof(struct CMD_ADDBA_REJECT),
-		FALSE, FALSE, TRUE, &u4BufLen);
-
-	DBGLOG(OID, INFO, "%s i4Type:%d BaSize:%d\n",
-		__func__, i4Type, u2BaSize);
-
-	return rStatus;
-}
-
-uint32_t wlanSetTxBaSize(IN struct GLUE_INFO *prGlueInfo,
-	int8_t i4Type, uint16_t u2BaSize)
-{
-	struct ADAPTER *prAdapter;
-	uint32_t i;
-	struct STA_RECORD *prStaRec;
-	struct CMD_TX_AMPDU rTxAmpdu;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
-	uint32_t u4BufLen = 0;
-
-	prAdapter = prGlueInfo->prAdapter;
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (i4Type == WLAN_TYPE_EHT)
-		prAdapter->rWifiVar.u2TxEhtBaSize = u2BaSize;
-	else
-#endif
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (i4Type == WLAN_TYPE_HE)
-		prAdapter->rWifiVar.u2TxHeBaSize = u2BaSize;
-	else
-#endif
-		prAdapter->rWifiVar.ucTxBaSize = (uint8_t) u2BaSize;
-
-	for (i = 0; i < CFG_STA_REC_NUM; i++) {
-		prStaRec = &prAdapter->arStaRec[i];
-		if (prStaRec->fgIsInUse)
-			cnmStaSendUpdateCmd(prAdapter, prStaRec, NULL, FALSE);
-	}
-
-	rTxAmpdu.fgEnable = TRUE;
-	rTxAmpdu.fgApply = TRUE;
-
-	rStatus = kalIoctl(prGlueInfo,
-		wlanoidSetTxAmpdu, &rTxAmpdu, sizeof(struct CMD_TX_AMPDU),
-		FALSE, FALSE, TRUE, &u4BufLen);
-
-	DBGLOG(OID, INFO, "%s i4Type:%d BaSize:%d\n",
-		__func__, i4Type, u2BaSize);
-
-	return rStatus;
-}
-
-void
-wlanGetTRXInfo(IN struct ADAPTER *prAdapter,
-	OUT struct TRX_INFO *prTRxInfo)
-{
-	char arQueryMib[64] = "getMibCount";
-	char arQueryTRx[64] = "getTxRxCount";
-	uint8_t *pucItem = NULL;
-	uint8_t *pucSavedPtr = NULL;
-	uint32_t u4temp = 0;
-	uint32_t index = 0;
-
-	wlanChipConfig(prAdapter, &arQueryMib[0], sizeof(arQueryMib));
-	DBGLOG(REQ, INFO, "Mib:%s\n", arQueryMib);
-	pucItem = (uint8_t *)kalStrtokR(&arQueryMib[0], " ", &pucSavedPtr);
-	while (pucItem) {
-		kalkStrtou32(pucItem, 0, &u4temp);
-		*(((uint32_t *)prTRxInfo) + index) = u4temp;
-		pucItem =
-			(uint8_t *)kalStrtokR(NULL, " ", &pucSavedPtr);
-		index++;
-	}
-	DBGLOG(REQ, INFO, "TxFail:%d %d, RxFail:%d %d, Retry: %d %d\n",
-		prTRxInfo->u4TxFail[0], prTRxInfo->u4TxFail[1],
-		prTRxInfo->u4RxFail[0], prTRxInfo->u4RxFail[1],
-		prTRxInfo->u4TxHwRetry[0], prTRxInfo->u4TxHwRetry[1]);
-
-	pucItem = NULL;
-	pucSavedPtr = NULL;
-	u4temp = 0;
-	index = 0;
-	wlanChipConfig(prAdapter, &arQueryTRx[0], sizeof(arQueryTRx));
-	DBGLOG(REQ, INFO, "TRX:%s\n", arQueryTRx);
-	pucItem = (uint8_t *)kalStrtokR(&arQueryTRx[0], " ", &pucSavedPtr);
-	while (pucItem) {
-		kalkStrtou32(pucItem, 0, &u4temp);
-		if (index % 2 == 0)
-			prTRxInfo->u4TxOk[index / 2] = u4temp;
-		else
-			prTRxInfo->u4RxOk[index / 2] = u4temp;
-		pucItem =
-			(uint8_t *)kalStrtokR(NULL, " ", &pucSavedPtr);
-		index++;
-	}
-	DBGLOG(REQ, INFO, "TxOk:%d %d %d %d, RxOk:%d %d %d %d\n",
-		prTRxInfo->u4TxOk[0], prTRxInfo->u4TxOk[1],
-		prTRxInfo->u4TxOk[2], prTRxInfo->u4TxOk[3],
-		prTRxInfo->u4RxOk[0], prTRxInfo->u4RxOk[1],
-		prTRxInfo->u4RxOk[2], prTRxInfo->u4RxOk[3]);
-}
-
-#if CFG_SUPPORT_TPENHANCE_MODE
-inline uint64_t wlanTpeTimeUs(void)
-{
-	struct timespec64 _now;
-
-	ktime_get_ts64(&_now);
-
-	return (uint64_t)((int)_now.tv_sec * 1000000 +
-			(int)NSEC_TO_USEC(_now.tv_nsec));
-}
-
-void wlanTpeUpdate(struct GLUE_INFO *prGlueInfo, struct QUE *prSrcQue,
-		uint8_t ucPktJump)
-{
-	int addPktCnt = 0;
-	uint8_t *pucIpHeader = NULL;
-	uint8_t *pucPktHeadBuf = NULL;
-	uint8_t ucHitPkt;
-	uint16_t *pu2DPort, *pu2SPort;
-	uint32_t *pu4Ip;
-	uint32_t u4Cnt, u4Cnt2, u4PktMax;
-	struct QUE rTempQue;
-	struct QUE *prTempQue = &rTempQue;
-	struct QUE_ENTRY *prQueueEntry = NULL;
-	struct sk_buff *prSkb;
-	struct TPENHANCE_PKT_MAP auPktMap[TPENHANCE_SESSION_MAP_LEN];
-	struct TPENHANCE_PKT_MAP *prPktMap;
-
-	ASSERT(prGlueInfo);
-
-	if (!prSrcQue || QUEUE_IS_EMPTY(prSrcQue)) {
-		DBGLOG(QM, TRACE, "Nothing to handle\n");
-		return;
-	}
-
-	/* Resource init */
-	QUEUE_INITIALIZE(prTempQue);
-	kalMemZero(auPktMap, sizeof(auPktMap));
-	u4PktMax = prSrcQue->u4NumElem;
-
-	/* Queue revert */
-	while (QUEUE_IS_NOT_EMPTY(prSrcQue)) {
-		QUEUE_REMOVE_HEAD(prSrcQue, prQueueEntry,
-			  struct QUE_ENTRY *);
-		QUEUE_INSERT_HEAD(prTempQue, prQueueEntry);
-	}
-	QUEUE_MOVE_ALL(prSrcQue, prTempQue);
-
-	/* Loop all pkts in waiting-Q */
-	for (u4Cnt = 0; u4Cnt < u4PktMax; u4Cnt++) {
-		QUEUE_REMOVE_HEAD(prSrcQue, prQueueEntry,
-			  struct QUE_ENTRY *);
-		if (!prQueueEntry)
-			break;
-		prSkb = (struct sk_buff *)
-					  GLUE_GET_PKT_DESCRIPTOR(
-					  prQueueEntry);
-		pucPktHeadBuf = prSkb->data;
-		pucIpHeader = &pucPktHeadBuf[ETHER_HEADER_LEN];
-		pu4Ip = (uint32_t *)(pucIpHeader + IPV4_HDR_IP_SRC_ADDR_OFFSET);
-		pu2SPort = (uint16_t *)(pucIpHeader + IPV4_HDR_LEN);
-		pu2DPort = (uint16_t *)(pucIpHeader +
-					IPV4_HDR_LEN + 2);
-		/* Check if having this session ack already */
-		ucHitPkt = FALSE;
-		for (u4Cnt2 = 0; u4Cnt2 < ARRAY_SIZE(auPktMap);
-			u4Cnt2++) {
-			if (u4PktMax < TPENHANCE_PKT_LATCH_MIN)
-				break;
-
-			prPktMap = &auPktMap[u4Cnt2];
-
-			if (prPktMap->au2SPort == 0) {
-				/*
-				 * This is a new session.
-				 * Create a new record and keep this ack.
-				 */
-				prPktMap->au2SPort = *pu2SPort;
-				prPktMap->au2DPort = *pu2DPort;
-				prPktMap->au4Ip = *pu4Ip;
-				prPktMap->au2Hit++;
-				break;
-			}
-
-			if (prPktMap->au2SPort == *pu2SPort
-				&& prPktMap->au2DPort == *pu2DPort
-				&& prPktMap->au4Ip == *pu4Ip) {
-				/* A duplicated session found */
-				if (ucPktJump == prPktMap->au2Hit) {
-					/*
-					 * reset hit counter &&
-					 * keep this ack
-					 */
-					prPktMap->au2Hit = 0;
-				} else {
-					prPktMap->au2Hit++;
-					ucHitPkt = TRUE;
-				}
-				break;
-			}
-		}
-
-		if (ucHitPkt)
-			dev_kfree_skb(prSkb);
-		else {
-			uint8_t ucBssIndex =
-				GLUE_GET_PKT_BSS_IDX(prSkb);
-			uint16_t u2QueueIdx =
-				skb_get_queue_mapping(prSkb);
-
-			GLUE_INC_REF_CNT(
-			prGlueInfo->ai4TxPendingFrameNumPerQueue
-			[ucBssIndex][u2QueueIdx]);
-
-			GLUE_INC_REF_CNT(
-			prGlueInfo->i4TxPendingFrameNum);
-			QUEUE_INSERT_TAIL(prSrcQue, prQueueEntry);
-			addPktCnt++;
-		}
-	}
-
-	/* Queue revert */
-	while (QUEUE_IS_NOT_EMPTY(prSrcQue)) {
-		QUEUE_REMOVE_HEAD(prSrcQue, prQueueEntry,
-				struct QUE_ENTRY *);
-		QUEUE_INSERT_HEAD(prTempQue, prQueueEntry);
-	}
-	QUEUE_MOVE_ALL(prSrcQue, prTempQue);
-
-
-	if (addPktCnt != prSrcQue->u4NumElem)
-		DBGLOG(QM, ERROR, "mismatch : %d != %d\n",
-			addPktCnt, prSrcQue->u4NumElem);
-}
-
-void wlanTpeFlush(struct GLUE_INFO *prGlueInfo)
-{
-	struct QUE rTempQue;
-	struct QUE *prTempQue = &rTempQue;
-	struct QUE *prTpeAckQueue;
-	struct QUE *prTxQueue;
-
-	GLUE_SPIN_LOCK_DECLARATION();
-
-	ASSERT(prGlueInfo);
-
-	prTpeAckQueue = &prGlueInfo->rTpeAckQueue;
-	prTxQueue = &prGlueInfo->rTxQueue;
-
-	if (QUEUE_IS_EMPTY(prTpeAckQueue))
-		return;
-
-	QUEUE_INITIALIZE(prTempQue);
-
-	/* Ack-Q clean first */
-	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TXACK_QUE);
-	QUEUE_CONCATENATE_QUEUES(prTempQue, prTpeAckQueue);
-	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TXACK_QUE);
-
-	wlanTpeUpdate(prGlueInfo, prTempQue,
-		prGlueInfo->prAdapter->rWifiVar.ucTpEnhancePktNum);
-
-	prGlueInfo->u8TpeTimestamp = wlanTpeTimeUs();
-
-	/* Append to Tx-Q */
-	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TX_QUE);
-	QUEUE_CONCATENATE_QUEUES(prTxQueue, prTempQue);
-	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TX_QUE);
-}
-
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-void wlanTpeTimeoutHandler(struct timer_list *timer)
-#else
-void wlanTpeTimeoutHandler(unsigned long ulData)
-#endif
-{
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-	struct GLUE_INFO *prGlueInfo = from_timer(prGlueInfo, timer, rTpeTimer);
-#else
-	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)ulData;
-#endif
-
-	ASSERT(prGlueInfo);
-
-	if (QUEUE_IS_NOT_EMPTY(&prGlueInfo->rTpeAckQueue)) {
-		/* There are some pkts in ack-Q */
-		/* de-Q all pkts right now */
-		wlanTpeFlush(prGlueInfo);
-		kalSetEvent(prGlueInfo); /* Wakeup TX */
-	}
-}
-
-void wlanTpeInit(struct GLUE_INFO *prGlueInfo)
-{
-	struct QUE *prTpeAckQueue;
-	struct ADAPTER *prAdapter;
-
-	if (prGlueInfo == NULL) {
-		DBGLOG(INIT, ERROR, "prGlueInfo is NULL\n");
-		return;
-	}
-
-	prAdapter = prGlueInfo->prAdapter;
-
-	if (!prAdapter->rWifiVar.ucTpEnhanceEnable)
-		return;
-
-	prTpeAckQueue = &prGlueInfo->rTpeAckQueue;
-	QUEUE_INITIALIZE(prTpeAckQueue);
-	prGlueInfo->u4TpeMaxPktNum = TPENHANCE_PKT_KEEP_MAX;
-	prGlueInfo->u4TpeTimeout =
-		prAdapter->rWifiVar.u4TpEnhanceInterval; /* us */
-
-	DBGLOG(HAL, STATE,
-		"InitTpEnhance. PktNum:%d. Interval = %d. RSSI = %d\n",
-		prAdapter->rWifiVar.ucTpEnhancePktNum,
-		prAdapter->rWifiVar.u4TpEnhanceInterval,
-		prAdapter->rWifiVar.cTpEnhanceRSSI);
-
-#if KERNEL_VERSION(4, 15, 0) <= LINUX_VERSION_CODE
-	timer_setup(&prGlueInfo->rTpeTimer, wlanTpeTimeoutHandler, 0);
-#else
-	init_timer(&prGlueInfo->rTpeTimer);
-	prGlueInfo->rTpeTimer.function = wlanTpeTimeoutHandler;
-	prGlueInfo->rTpeTimer.data = ((unsigned long) prGlueInfo);
-#endif
-	prGlueInfo->rTpeTimer.expires = jiffies - 10;
-	add_timer(&prGlueInfo->rTpeTimer);
-}
-
-void wlanTpeUninit(struct GLUE_INFO *prGlueInfo)
-{
-	struct ADAPTER *prAdapter = NULL;
-
-	if (prGlueInfo == NULL) {
-		DBGLOG(INIT, ERROR, "prGlueInfo is NULL\n");
-		return;
-	}
-
-	prAdapter = prGlueInfo->prAdapter;
-	if (!prAdapter->rWifiVar.ucTpEnhanceEnable)
-		return;
-
-	del_timer_sync(&(prGlueInfo->rTpeTimer));
-}
-
-int wlanTpeProcess(struct GLUE_INFO *prGlueInfo,
-			struct sk_buff *prSkb,
-			struct net_device *prDev)
-{
-	struct QUE_ENTRY *prQueueEntry = NULL;
-	struct ADAPTER *prAdapter;
-	struct QUE *prTpeAckQueue;
-	struct WIFI_VAR *prWifiVar;
-	uint64_t u8Nowus;
-	uint8_t ucBssIndex = AIS_DEFAULT_INDEX;
-	int8_t cRssi;
-	struct PERF_MONITOR *prPerMonitor =
-		&prGlueInfo->prAdapter->rPerMonitor;
-
-	ASSERT(prGlueInfo);
-
-	prAdapter = prGlueInfo->prAdapter;
-	ASSERT(prAdapter);
-
-	prWifiVar = &prAdapter->rWifiVar;
-
-	if (!prWifiVar->ucTpEnhanceEnable)
-		return WLAN_STATUS_PENDING;
-
-	prTpeAckQueue = &prGlueInfo->rTpeAckQueue;
-
-	/* ranged from (-128 ~ 30) in unit of dBm */
-	ucBssIndex = GET_IOCTL_BSSIDX(prAdapter);
-	cRssi = prAdapter->rLinkQuality.rLq[ucBssIndex].cRssi;
-
-	u8Nowus = wlanTpeTimeUs();
-
-	if (cRssi < prWifiVar->cTpEnhanceRSSI)
-		goto TpeEndFlush;
-	else if (!GLUE_TEST_PKT_FLAG(prSkb, ENUM_PKT_TCP_ACK))
-		goto TpeEndFlush;
-	else if (KAL_TEST_BIT(PERF_MON_RUNNING_BIT,
-		prPerMonitor->ulPerfMonFlag)) {
-		uint16_t u2TputMbps = 0;
-
-		struct NETDEV_PRIVATE_GLUE_INFO *prNetDevPrivate =
-			(struct NETDEV_PRIVATE_GLUE_INFO *) NULL;
-		uint8_t ucBssIndex;
-
-		ASSERT(prSkb);
-		ASSERT(prDev);
-		ASSERT(prGlueInfo);
-
-		prNetDevPrivate = (struct NETDEV_PRIVATE_GLUE_INFO *)
-				  netdev_priv(prDev);
-		ucBssIndex = prNetDevPrivate->ucBssIdx;
-
-		u2TputMbps = prPerMonitor->ulRxTp[ucBssIndex] >> 17;
-
-		if (u2TputMbps < prWifiVar->u4TpEnhanceThreshold)
-			goto TpeEndFlush;
-	}
-
-	/* more space to Q-in? */
-	if (prTpeAckQueue->u4NumElem < prGlueInfo->u4TpeMaxPktNum) {
-		/* Q-ing status */
-		GLUE_SPIN_LOCK_DECLARATION();
-		GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TXACK_QUE);
-
-		/* Save timestamp for first pkt in Q */
-		if (QUEUE_IS_EMPTY(prTpeAckQueue))
-			prGlueInfo->u8TpeTimestamp = u8Nowus;
-
-		prQueueEntry = (struct QUE_ENTRY *)
-				GLUE_GET_PKT_QUEUE_ENTRY(prSkb);
-
-		QUEUE_INSERT_TAIL(prTpeAckQueue, prQueueEntry);
-		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_TXACK_QUE);
-
-		/* Update NetDev statisitcs */
-		prDev->stats.tx_bytes += prSkb->len;
-		prDev->stats.tx_packets++;
-
-		if (u8Nowus >= prGlueInfo->u8TpeTimestamp +
-			prGlueInfo->u4TpeTimeout) {
-			/* Timeout already, flush out directly. */
-			if (timer_pending(&prGlueInfo->rTpeTimer))
-				del_timer(&prGlueInfo->rTpeTimer);
-			wlanTpeFlush(prGlueInfo);
-			kalSetEvent(prGlueInfo);
-		} else {
-			/* Setup a timer for next flushing */
-			if (!timer_pending(&prGlueInfo->rTpeTimer))
-				mod_timer(&prGlueInfo->rTpeTimer,
-					jiffies + usecs_to_jiffies(
-					prGlueInfo->u4TpeTimeout * 2));
-		}
-		return WLAN_STATUS_SUCCESS;
-	} else if (QUEUE_IS_NOT_EMPTY(prTpeAckQueue)) {
-		/* cannot Q, try to flush out */
-		/* Flush ack-Q */
-		wlanTpeFlush(prGlueInfo);
-	}
-
-TpeEndFlush:
-	/* Addtional check if Tpe-Q should be flushed! */
-	if (QUEUE_IS_NOT_EMPTY(prTpeAckQueue)
-		&&
-		(prTpeAckQueue->u4NumElem >= prGlueInfo->u4TpeMaxPktNum
-		|| u8Nowus >= prGlueInfo->u8TpeTimestamp +
-			prGlueInfo->u4TpeTimeout)) {
-		wlanTpeFlush(prGlueInfo);
-	}
-	return WLAN_STATUS_PENDING;
-}
-#endif /* CFG_SUPPORT_TPENHANCE_MODE */
-
-void wlanSetConnsysFwLog(IN struct ADAPTER *prAdapter)
-{
-	int32_t u4LogLevel = ENUM_WIFI_LOG_LEVEL_DEFAULT;
-
-	/* Enable FW log */
-	wlanDbgGetGlobalLogLevel(
-		ENUM_WIFI_LOG_MODULE_FW, &u4LogLevel);
-	if (u4LogLevel > ENUM_WIFI_LOG_LEVEL_DEFAULT)
-		wlanDbgSetLogLevel(prAdapter,
-			ENUM_WIFI_LOG_LEVEL_VERSION_V1,
-			ENUM_WIFI_LOG_MODULE_FW,
-			u4LogLevel, TRUE);
-
-}
-
-uint32_t wlanSendFwLogControlCmd(IN struct ADAPTER *prAdapter,
-				uint8_t ucCID,
-				PFN_CMD_DONE_HANDLER pfCmdDoneHandler,
-				PFN_CMD_TIMEOUT_HANDLER pfCmdTimeoutHandler,
-				uint32_t u4SetQueryInfoLen,
-				int8_t *pucInfoBuffer)
-{
-	uint32_t status = WLAN_STATUS_SUCCESS;
-	struct GLUE_INFO *prGlueInfo;
-	struct CMD_INFO *prCmdInfo;
-	struct mt66xx_chip_info *prChipInfo;
-	uint8_t *pucCmfBuf;
-	uint16_t cmd_size;
-
-	ASSERT(prAdapter);
-
-	prGlueInfo = prAdapter->prGlueInfo;
-	prChipInfo = prAdapter->chip_info;
-	cmd_size = prChipInfo->u2CmdTxHdrSize + u4SetQueryInfoLen;
-	prCmdInfo = cmdBufAllocateCmdInfo(prAdapter, cmd_size);
-	if (!prCmdInfo) {
-		DBGLOG(INIT, ERROR, "Allocate CMD_INFO_T FAILED ID[0x%x]\n",
-			ucCID);
-		return WLAN_STATUS_FAILURE;
-	}
-
-	/* Setup common CMD Info Packet */
-	prCmdInfo->eCmdType = COMMAND_TYPE_GENERAL_IOCTL;
-	prCmdInfo->u2InfoBufLen = cmd_size;
-	prCmdInfo->pfCmdDoneHandler = pfCmdDoneHandler;
-	prCmdInfo->pfCmdTimeoutHandler = pfCmdTimeoutHandler;
-	prCmdInfo->ucCID = ucCID;
-	prCmdInfo->fgSetQuery = TRUE;
-	prCmdInfo->fgNeedResp = FALSE;
-	prCmdInfo->fgIsOid = FALSE;
-	prCmdInfo->u4SetInfoLen = u4SetQueryInfoLen;
-
-	NIC_FILL_CMD_TX_HDR(prAdapter,
-		prCmdInfo->pucInfoBuffer,
-		prCmdInfo->u2InfoBufLen,
-		prCmdInfo->ucCID,
-		CMD_PACKET_TYPE_ID,
-		&prCmdInfo->ucCmdSeqNum,
-		prCmdInfo->fgSetQuery, &pucCmfBuf, FALSE, 0, S2D_INDEX_CMD_H2N);
-	if (u4SetQueryInfoLen > 0 && pucInfoBuffer != NULL)
-		kalMemCopy(pucCmfBuf, pucInfoBuffer,
-			   u4SetQueryInfoLen);
-
-	if (wlanSendCommand(prAdapter,
-			prCmdInfo) != WLAN_STATUS_SUCCESS) {
-		DBGLOG(INIT, ERROR,
-			"Fail to transmit commandID[0x%x]\n",
-			ucCID);
-		status = WLAN_STATUS_FAILURE;
-	}
-
-	cmdBufFreeCmdInfo(prAdapter, prCmdInfo);
-
-	return status;
-}

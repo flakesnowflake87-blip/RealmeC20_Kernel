@@ -21,7 +21,6 @@
 
 unsigned int gComboChipId = -1;
 struct sdio_func *g_func;
-unsigned int gDrvRegistered;
 
 MTK_WCN_HIF_SDIO_CHIP_INFO gChipInfoArray[] = {
 	/* MT6620 *//* Not an SDIO standard class device */
@@ -225,25 +224,18 @@ static void sdio_detect_remove(struct sdio_func *func)
 
 int sdio_detect_init(void)
 {
-	int ret = 0;
+	int ret = -1;
 	/* register to mmc driver */
-	if (gDrvRegistered == 0) {
-		ret = sdio_register_driver(&mtk_sdio_client_drv);
-		if (ret == 0)
-			gDrvRegistered = 1;
-	}
+	ret = sdio_register_driver(&mtk_sdio_client_drv);
 	WMT_DETECT_PR_INFO("sdio_register_driver() ret=%d\n", ret);
-	return ret;
+	return 0;
 }
 
 int sdio_detect_exit(void)
 {
 	g_func = NULL;
-	/* unregister to mmc driver */
-	if (gDrvRegistered == 1) {
-		sdio_unregister_driver(&mtk_sdio_client_drv);
-		gDrvRegistered = 0;
-	}
+	/* register to mmc driver */
+	sdio_unregister_driver(&mtk_sdio_client_drv);
 	WMT_DETECT_PR_INFO("sdio_unregister_driver\n");
 	return 0;
 }

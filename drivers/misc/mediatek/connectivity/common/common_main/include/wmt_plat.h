@@ -47,7 +47,7 @@
 #define WMT_PLAT_LOG_WARN                 1
 #define WMT_PLAT_LOG_ERR                  0
 
-extern INT32 wmtPlatLogLvl;
+extern UINT32 wmtPlatLogLvl;
 
 #define WMT_PLAT_PR_LOUD(fmt, arg...) \
 do { \
@@ -220,60 +220,18 @@ typedef enum _ENUM_CHIP_DUMP_STATE_T {
 	STP_CHIP_DUMP_MAX
 } ENUM_CHIP_DUMP_STATE, *P_ENUM_CHIP_DUMP_STATE_T;
 
-typedef enum {
-	WMT_SLEEP_COUNT_TOP = 0,
-	WMT_SLEEP_COUNT_MCU = 1,
-	WMT_SLEEP_COUNT_BT = 2,
-	WMT_SLEEP_COUNT_WF = 3,
-	WMT_SLEEP_COUNT_GPS = 4,
-	WMT_SLEEP_COUNT_MAX
-} WMT_SLEEP_COUNT_TYPE;
-
-typedef enum {
-	WMT_ERRCODE_SUCCESS = 0,
-	WMT_ERRCODE_ALREADY_ON,
-	WMT_ERRCODE_ALREADY_OFF,
-	WMT_ERRCODE_READYTO_OFF,
-	WMT_ERRCODE_EMI_NOT_READY,
-	WMT_ERRCODE_GPIO_CTRL_FAIL,
-	WMT_ERRCODE_POLL_CHIPID_FAIL,
-	WMT_ERRCODE_POLL_NOT_GOTO_IDLE,
-	WMT_ERRCODE_NO_HIF_INFO,
-	WMT_ERRCODE_SDIO_SLOT_SDIO2_FAIL,
-	WMT_ERRCODE_SDIO_FUNC_STP_FAIL,
-	WMT_ERRCODE_OPEN_STP_FAIL,
-	WMT_ERRCODE_UART_BAUDRATE_FAIL,
-	WMT_ERRCODE_STP_CONFIG_FAIL,
-	WMT_ERRCODE_HW_CHECK_FAIL,
-	WMT_ERRCODE_VER_CHECK_FAIL,
-	WMT_ERRCODE_CHIPID_NOT_SUPPORT,
-	WMT_ERRCODE_NULL_FUNC_POINTER,
-	WMT_ERRCODE_PATCH_INFO_FAIL,
-	WMT_ERRCODE_PATCH_DWN_FAIL,
-	WMT_ERRCODE_ADIE_NOT_EXIST,
-	WMT_ERRCODE_INIT_TABLE_FAIL,
-	WMT_ERRCODE_INIT_DLM_TABLE_FAIL,
-	WMT_ERRCODE_INIT_MCUCLK_TABLE_FAIL,
-	WMT_ERRCODE_INIT_RESET_CMD_FAIL,
-	WMT_ERRCODE_INIT_COCLOCK_TYPE_FAIL,
-	WMT_ERRCODE_INIT_MERGE_PCM_TABLE_FAIL,
-	WMT_ERRCODE_INIT_FM_MODE_FAIL,
-	WMT_ERRCODE_INIT_SET_REGISTER_FAIL,
-	WMT_ERRCODE_INIT_SET_COREDUMP_FAIL,
-	WMT_ERRCODE_INIT_WIFI_CONFIG_FAIL,
-	WMT_ERRCODE_INIT_WIFI_ANT_SWAP_FAIL,
-	WMT_ERRCODE_INIT_EPA_FAIL,
-	WMT_ERRCODE_INIT_EPA_ELNA_FAIL,
-	WMT_ERRCODE_INIT_EPA_ELNA_INVERT_CR_FAIL,
-	WMT_ERRCODE_INIT_COEX_FAIL,
-	WMT_ERRCODE_CALIBRATION_FAIL,
-	WMT_ERRCODE_READ_ADIE_TX_CMD_FAIL,
-	WMT_ERRCODE_READ_ADIE_RX_EVT_FAIL,
-	WMT_ERRCODE_READ_PMIC_CHIPID_FAIL,
-	WMT_ERRCODE_SET_STP_DBG_INFO_FAIL,
-	/* return error code for WMT */
-	WMT_ERRCODE_MAX
-} WMT_ERRCODE_TYPE;
+#define CONSYS_BUS_CLK_STATUS_OFFSET	0x00000100
+#define CONSYS_CPU_CLK_STATUS_OFFSET	0x0000010c
+#define CONSYS_DBG_CR1_OFFSET		0x00000408
+#define CONSYS_DBG_CR2_OFFSET		0x0000040c
+typedef enum _ENUM_CONNSYS_DEBUG_CR {
+	CONNSYS_CPU_CLK = 0,
+	CONNSYS_BUS_CLK = 1,
+	CONNSYS_DEBUG_CR1 = 2,
+	CONNSYS_DEBUG_CR2 = 3,
+	CONNSYS_EMI_REMAP = 4,
+	CONNSYS_CR_MAX
+} ENUM_CONNSYS_DEBUG_CR, *P_ENUM_CONNSYS_DEBUG_CR;
 
 typedef struct _EMI_CTRL_STATE_OFFSET_ {
 	UINT32 emi_apmem_ctrl_state;
@@ -291,7 +249,6 @@ typedef struct _EMI_CTRL_STATE_OFFSET_ {
 	UINT32 emi_apmem_ctrl_host_outband_assert_w1;
 	UINT32 emi_apmem_ctrl_chip_page_dump_num;
 	UINT32 emi_apmem_ctrl_assert_flag;
-	UINT32 emi_apmem_ctrl_chip_check_sleep;
 } EMI_CTRL_STATE_OFFSET, *P_EMI_CTRL_STATE_OFFSET;
 
 typedef struct _BGF_IRQ_BALANCE_ {
@@ -313,12 +270,6 @@ typedef struct _CONSYS_EMI_ADDR_INFO_ {
 	UINT32 emi_met_size;
 	UINT32 emi_met_data_offset;
 	UINT32 emi_core_dump_offset;
-	UINT32 emi_direct_path_ap_phy_addr;
-	UINT32 emi_direct_path_size;
-	UINT32 emi_ram_bt_buildtime_offset;
-	UINT32 emi_ram_wifi_buildtime_offset;
-	UINT32 emi_ram_mcu_buildtime_offset;
-	UINT32 emi_patch_mcu_buildtime_offset;
 } CONSYS_EMI_ADDR_INFO, *P_CONSYS_EMI_ADDR_INFO;
 
 typedef struct _GPIO_TDM_REQ_INFO_ {
@@ -327,30 +278,10 @@ typedef struct _GPIO_TDM_REQ_INFO_ {
 	UINT32 cr_address;
 } GPIO_TDM_REQ_INFO, *P_GPIO_TDM_REQ_INFO;
 
-struct consys_sw_state {
-	UINT16 clock_hif_ctrl;
-	UINT16 clock_umac_ctrl;
-	UINT32 resource_disable_sleep;
-	UINT32 clock_mcu;
-	UINT32 info_time;
-	UINT8 is_gating;
-	UINT8 sub_system;
-};
-
-typedef struct consys_state {
-	UINT32 lp[2];
-	UINT32 gating[2];
-	UINT64 sleep_counter[WMT_SLEEP_COUNT_MAX];
-	UINT64 sleep_timer[WMT_SLEEP_COUNT_MAX];
-	struct consys_sw_state sw_state;
-} CONSYS_STATE, *P_CONSYS_STATE;
-
-
 typedef VOID(*irq_cb) (VOID);
 typedef INT32(*device_audio_if_cb) (enum CMB_STUB_AIF_X aif, MTK_WCN_BOOL share);
 typedef VOID(*func_ctrl_cb) (UINT32 on, UINT32 type);
 typedef long (*thermal_query_ctrl_cb) (VOID);
-typedef INT32(*trigger_assert_cb) (UINT32 type, UINT32 reason);
 typedef INT32(*deep_idle_ctrl_cb) (UINT32);
 
 /*******************************************************************************
@@ -362,7 +293,7 @@ typedef INT32(*deep_idle_ctrl_cb) (UINT32);
 *                            P U B L I C   D A T A
 ********************************************************************************
 */
-extern INT32 gWmtDbgLvl;
+extern UINT32 gWmtDbgLvl;
 extern struct device *wmt_dev;
 #ifdef CFG_WMT_READ_EFUSE_VCN33
 extern INT32 wmt_set_pmic_voltage(UINT32 level);
@@ -401,7 +332,6 @@ VOID wmt_plat_irq_cb_reg(irq_cb bgf_irq_cb);
 VOID wmt_plat_aif_cb_reg(device_audio_if_cb aif_ctrl_cb);
 VOID wmt_plat_func_ctrl_cb_reg(func_ctrl_cb subsys_func_ctrl);
 VOID wmt_plat_thermal_ctrl_cb_reg(thermal_query_ctrl_cb thermal_query_ctrl);
-VOID wmt_plat_trigger_assert_cb_reg(trigger_assert_cb trigger_assert);
 VOID wmt_plat_deep_idle_ctrl_cb_reg(deep_idle_ctrl_cb deep_idle_ctrl);
 
 INT32 wmt_plat_soc_paldo_ctrl(ENUM_PALDO_TYPE ePt, ENUM_PALDO_OP ePo);
@@ -422,14 +352,12 @@ INT32 wmt_plat_update_host_sync_num(VOID);
 INT32 wmt_plat_get_dump_info(UINT32 offset);
 INT32 wmt_plat_write_emi_l(UINT32 offset, UINT32 value);
 UINT32 wmt_plat_get_soc_chipid(VOID);
-INT32 wmt_plat_get_adie_chipid(VOID);
 UINT32 wmt_plat_soc_co_clock_flag_get(VOID);
 INT32 wmt_plat_set_dbg_mode(UINT32 flag);
 INT32 wmt_plat_set_dynamic_dumpmem(PUINT32 buf);
 #if CFG_WMT_LTE_COEX_HANDLING
 INT32 wmt_plat_get_tdm_antsel_index(VOID);
 #endif
-INT32 wmt_plat_consys_hw_init(VOID);
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

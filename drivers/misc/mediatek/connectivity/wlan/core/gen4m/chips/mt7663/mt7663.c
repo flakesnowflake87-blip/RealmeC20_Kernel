@@ -92,12 +92,6 @@
  *******************************************************************************
  */
 
-#if defined(_HIF_PCIE)
-static void mt7663InitPcieInt(struct GLUE_INFO *prGlueInfo)
-{
-	HAL_MCR_WR(prGlueInfo->prAdapter, MT_PCIE_IRQ_ENABLE, 1);
-}
-#endif /* _HIF_PCIE */
 
 /*******************************************************************************
  *                            P U B L I C   D A T A
@@ -106,7 +100,6 @@ static void mt7663InitPcieInt(struct GLUE_INFO *prGlueInfo)
 struct ECO_INFO mt7663_eco_table[] = {
 	/* HW version,  ROM version,    Factory version */
 	{0x00, 0x00, 0x0A, 0x01},	/* E1 */
-	{0x10, 0x01, 0x0A, 0x02},	/* E2 */
 	{0x00, 0x00, 0x00, 0x00}	/* End of table */
 };
 
@@ -159,45 +152,25 @@ struct PCIE_CHIP_CR_MAPPING mt7663_bus2chip_cr_mapping[] = {
 struct BUS_INFO mt7663_bus_info = {
 #if defined(_HIF_PCIE)
 	.top_cfg_base = MT7663_TOP_CFG_BASE,
-	.host_tx_ring_base = MT_TX_RING_BASE,
-	.host_tx_ring_ext_ctrl_base = MT_TX_RING_BASE_EXT,
-	.host_tx_ring_cidx_addr = MT_TX_RING_CIDX,
-	.host_tx_ring_didx_addr = MT_TX_RING_DIDX,
-	.host_tx_ring_cnt_addr = MT_TX_RING_CNT,
-
-	.host_rx_ring_base = MT_RX_RING_BASE,
-	.host_rx_ring_ext_ctrl_base = MT_RX_RING_BASE_EXT,
-	.host_rx_ring_cidx_addr = MT_RX_RING_CIDX,
-	.host_rx_ring_didx_addr = MT_RX_RING_DIDX,
-	.host_rx_ring_cnt_addr = MT_RX_RING_CNT,
 	.bus2chip = mt7663_bus2chip_cr_mapping,
 	.tx_ring_fwdl_idx = 3,
 	.tx_ring_cmd_idx = 15,
-	.tx_ring0_data_idx = 0,
-	.tx_ring1_data_idx = 0,
-	.fw_own_clear_addr = WPDMA_INT_STA,
-	.fw_own_clear_bit = WPDMA_FW_CLR_OWN_INT,
-	.max_static_map_addr = 0x00040000,
+	.tx_ring_data_idx = 0,
 	.fgCheckDriverOwnInt = FALSE,
+	.fgInitPCIeInt = TRUE,
 	.u4DmaMask = 36,
 
 	.pdmaSetup = asicPdmaConfig,
-	.updateTxRingMaxQuota = NULL,
 	.enableInterrupt = asicEnableInterrupt,
 	.disableInterrupt = asicDisableInterrupt,
 	.lowPowerOwnRead = asicLowPowerOwnRead,
 	.lowPowerOwnSet = asicLowPowerOwnSet,
-	.lowPowerOwnClear = asicLowPowerOwnClearPCIe,
+	.lowPowerOwnClear = asicLowPowerOwnClear,
 	.wakeUpWiFi = asicWakeUpWiFi,
 	.isValidRegAccess = NULL,
 	.getMailboxStatus = asicGetMailboxStatus,
 	.setDummyReg = asicSetDummyReg,
 	.checkDummyReg = asicCheckDummyReg,
-	.tx_ring_ext_ctrl = asicPdmaTxRingExtCtrl,
-	.rx_ring_ext_ctrl = asicPdmaRxRingExtCtrl,
-	.hifRst = NULL,
-	.initPcieInt = mt7663InitPcieInt,
-	.DmaShdlInit = asicPcieDmaShdlInit,
 #endif /* _HIF_PCIE */
 #if defined(_HIF_USB)
 	.u4UdmaWlCfg_0_Addr = CONNAC_UDMA_WLCFG_0,
@@ -208,13 +181,8 @@ struct BUS_INFO mt7663_bus_info = {
 		UDMA_WLCFG_0_RX_MPSZ_PAD0(1) |
 		UDMA_WLCFG_0_1US_TIMER_EN(1)),
 	.u4UdmaTxTimeout = UDMA_TX_TIMEOUT_LIMIT,
-	.u4device_vender_request_in = DEVICE_VENDOR_REQUEST_IN,
-	.u4device_vender_request_out = DEVICE_VENDOR_REQUEST_OUT,
 	.asicUsbSuspend = asicUsbSuspend,
-	.asicUsbResume = NULL,
 	.asicUsbEventEpDetected = asicUsbEventEpDetected,
-	.asicUsbRxByteCount = NULL,
-	.DmaShdlInit = asicUsbDmaShdlInit,
 #endif /* _HIF_USB */
 #if defined(_HIF_SDIO)
 	.halTxGetFreeResource = halTxGetFreeResource_v1,
@@ -228,19 +196,14 @@ struct FWDL_OPS_T mt7663_fw_dl_ops = {
 	.constructFirmwarePrio = NULL,
 	.downloadPatch = wlanDownloadPatch,
 	.downloadFirmware = wlanConnacFormatDownload,
-	.downloadByDynMemMap = NULL,
 	.getFwInfo = wlanGetConnacFwInfo,
 	.getFwDlInfo = asicGetFwDlInfo,
-	.phyAction = NULL,
 };
 
 struct TX_DESC_OPS_T mt7663TxDescOps = {
 	.fillNicAppend = fillNicTxDescAppend,
 	.fillHifAppend = fillTxDescAppendByHostV2,
 	.fillTxByteCount = fillTxDescTxByteCount,
-};
-
-struct RX_DESC_OPS_T mt7663RxDescOps = {
 };
 
 #if CFG_SUPPORT_QA_TOOL
@@ -255,20 +218,17 @@ struct ATE_OPS_T mt7663AteOps = {
 struct CHIP_DBG_OPS mt7663_debug_ops = {
 #if defined(_HIF_PCIE) || defined(_HIF_AXI)
 	.showPdmaInfo = halShowPdmaInfo,
-	.showCsrInfo = halShowHostCsrInfo,
-#else
-	.showPdmaInfo = NULL,
-	.showCsrInfo = NULL,
-#endif
 	.showPseInfo = halShowPseInfo,
 	.showPleInfo = halShowPleInfo,
-	.showTxdInfo = halShowTxdInfo,
+	.showCsrInfo = halShowHostCsrInfo,
 	.showDmaschInfo = halShowDmaschInfo,
-	.dumpMacInfo = haldumpMacInfo,
-	.dumpTxdInfo = halDumpTxdInfo,
-	.showWtblInfo = NULL,
-	.showHifInfo = NULL,
-	.printHifDbgInfo = halPrintHifDbgInfo,
+#else
+	.showPdmaInfo = NULL,
+	.showPseInfo = NULL,
+	.showPleInfo = NULL,
+	.showCsrInfo = NULL,
+	.showDmaschInfo = NULL,
+#endif
 };
 
 /* Litien code refine to support multi chip */
@@ -276,7 +236,6 @@ struct mt66xx_chip_info mt66xx_chip_info_mt7663 = {
 	.bus_info = &mt7663_bus_info,
 	.fw_dl_ops = &mt7663_fw_dl_ops,
 	.prTxDescOps = &mt7663TxDescOps,
-	.prRxDescOps = &mt7663RxDescOps,
 #if CFG_SUPPORT_QA_TOOL
 	.prAteOps = &mt7663AteOps,
 #endif
@@ -291,28 +250,21 @@ struct mt66xx_chip_info mt66xx_chip_info_mt7663 = {
 	.is_support_cr4 = FALSE,
 	.txd_append_size = MT7663_TX_DESC_APPEND_LENGTH,
 	.rxd_size = MT7663_RX_DESC_LENGTH,
-	.init_evt_rxd_size = MT7663_RX_DESC_LENGTH,
-	.pse_header_length = NIC_TX_PSE_HEADER_LENGTH,
 	.init_event_size = MT7663_RX_INIT_EVENT_LENGTH,
 	.event_hdr_size = MT7663_RX_EVENT_HDR_LENGTH,
 	.eco_info = mt7663_eco_table,
 	.isNicCapV1 = FALSE,
 	.is_support_efuse = TRUE,
 
+	.u4ChipIpVersion = 0,
+	.u4ChipIPConfig = 0,
 	.asicCapInit = asicCapInit,
 	.asicEnableFWDownload = asicEnableFWDownload,
 	.asicGetChipID = NULL,
 	.downloadBufferBin = wlanConnacDownloadBufferBin,
 	.is_support_hw_amsdu = TRUE,
 	.ucMaxSwAmsduNum = 0,
-	.workAround = 0,
-	.prTxPwrLimitFile = "TxPwrLimit_MT76x3.dat",
-	.ucTxPwrLimitBatchSize = 16,
-
-	.top_hcr = TOP_HCR,
-	.top_hvr = TOP_HVR,
-	.top_fvr = TOP_FVR,
-	.ucMaxSwapAntenna = 0,
+	.workAround = BIT(WORKAROUND_MT7663_BRINGUP_20171205),
 };
 
 struct mt66xx_hif_driver_data mt66xx_driver_data_mt7663 = {

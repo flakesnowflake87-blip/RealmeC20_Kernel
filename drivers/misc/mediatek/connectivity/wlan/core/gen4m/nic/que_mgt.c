@@ -69,7 +69,7 @@
  */
 #include "precomp.h"
 #include "queue.h"
-#include "mddp.h"
+
 /*******************************************************************************
  *                              C O N S T A N T S
  *******************************************************************************
@@ -146,36 +146,19 @@ const uint8_t aucWmmAC2TcResourceSet2[WMM_AC_INDEX_NUM] = {
 static uint16_t arpMoniter;
 static uint8_t apIp[4];
 static uint8_t gatewayIp[4];
-static uint32_t last_rx_packets, latest_rx_packets;
 #endif
 /*******************************************************************************
  *                                 M A C R O S
  *******************************************************************************
  */
-#ifdef CFG_SUPPORT_LINK_QUALITY_MONITOR
-#define LINK_QUALITY_COUNT_DUP(prAdapter, prSwRfb) \
-do { \
-	struct BSS_INFO *prBssInfo = NULL; \
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, \
-		AIS_DEFAULT_INDEX); \
-	if (prBssInfo && prBssInfo->prStaRecOfAP) \
-		if (prBssInfo->prStaRecOfAP->ucWlanIndex == \
-		    prSwRfb->ucWlanIdx) \
-			prAdapter->rLinkQualityInfo.u4RxDupCount++; \
-} while (0)
-#else
-#define LINK_QUALITY_COUNT_DUP
-#endif /* CFG_SUPPORT_LINK_QUALITY_MONITOR */
 
 #if CFG_RX_REORDERING_ENABLED
 #define qmHandleRxPackets_AOSP_1 \
 do { \
-	DBGLOG(RX, TEMP, "qmHandleRxPackets_AOSP_1 %p\n", prCurrSwRfb); \
 	/* ToDo[6630]: duplicate removal */ \
 	if (!fgIsBMC && nicRxIsDuplicateFrame(prCurrSwRfb) == TRUE) { \
-		DBGLOG(RX, TEMP, "Duplicated packet is detected\n"); \
+		DBGLOG(QM, TRACE, "Duplicated packet is detected\n"); \
 		RX_INC_CNT(&prAdapter->rRxCtrl, RX_DUPICATE_DROP_COUNT); \
-		LINK_QUALITY_COUNT_DUP(prAdapter, prCurrSwRfb); \
 		prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL; \
 	} \
 	/* ToDo[6630]: defragmentation */ \
@@ -184,13 +167,13 @@ do { \
 			prCurrSwRfb, prReturnedQue); \
 		if (prCurrSwRfb) { \
 			prRxStatus = prCurrSwRfb->prRxStatus; \
-			DBGLOG(RX, TEMP, \
+			DBGLOG(QM, TRACE, \
 				"defragmentation RxStatus=%p\n", prRxStatus); \
 		} \
 	} \
 	if (prCurrSwRfb) { \
 		fgMicErr = FALSE; \
-		if (prCurrSwRfb->ucSecMode == \
+		if (HAL_RX_STATUS_GET_SEC_MODE(prRxStatus) == \
 			CIPHER_SUITE_TKIP_WO_MIC) { \
 			if (prCurrSwRfb->prStaRec) { \
 				uint8_t ucBssIndex; \
@@ -201,12 +184,11 @@ do { \
 				ASSERT(ucBssIndex < prAdapter->ucHwBssIdNum); \
 				prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, \
 					ucBssIndex); \
-				ASSERT(prBssInfo); \
-				if (prBssInfo->eCurrentOPMode == \
+				if (prBssInfo && prBssInfo->eCurrentOPMode == \
 					OP_MODE_INFRASTRUCTURE) \
 					pucMicKey = \
-					&(aisGetAisSpecBssInfo(prAdapter, \
-					ucBssIndex)->aucRxMicKey[0]); \
+					&(prAdapter->rWifiVar.\
+					rAisSpecificBssInfo.aucRxMicKey[0]); \
 				else { \
 					ASSERT(FALSE); \
 				} \
@@ -224,8 +206,8 @@ do { \
 			if (fgMicErr) { \
 				/* bypass tkip frag */ \
 				if (!prCurrSwRfb->fgFragFrame) { \
-					log_dbg(RX, ERROR, \
-					"Mark NULL for TKIP Mic Error\n"); \
+				log_dbg(RX, ERROR, \
+				"Mark NULL the Packet for TKIP Mic Error\n"); \
 					RX_INC_CNT(&prAdapter->rRxCtrl, \
 					RX_MIC_ERROR_DROP_COUNT); \
 					prCurrSwRfb->eDst = \
@@ -238,26 +220,6 @@ do { \
 	} \
 } while (0)
 #endif
-
-#define RX_DIRECT_REORDER_LOCK(pad, dbg) \
-do { \
-	struct GLUE_INFO *_glue = pad->prGlueInfo; \
-	if (!HAL_IS_RX_DIRECT(pad) || !_glue) \
-		break; \
-	if (dbg) \
-		DBGLOG(QM, EVENT, "RX_DIRECT_REORDER_LOCK %d\n", __LINE__); \
-	spin_lock_bh(&_glue->rSpinLock[SPIN_LOCK_RX_DIRECT_REORDER]);\
-} while (0)
-
-#define RX_DIRECT_REORDER_UNLOCK(pad, dbg) \
-do { \
-	struct GLUE_INFO *_glue = pad->prGlueInfo; \
-	if (!HAL_IS_RX_DIRECT(pad) || !_glue) \
-		break; \
-	if (dbg) \
-		DBGLOG(QM, EVENT, "RX_DIRECT_REORDER_UNLOCK %u\n", __LINE__); \
-	spin_unlock_bh(&_glue->rSpinLock[SPIN_LOCK_RX_DIRECT_REORDER]); \
-} while (0)
 
 /*******************************************************************************
  *                   F U N C T I O N   D E C L A R A T I O N S
@@ -303,8 +265,6 @@ void qmInit(IN struct ADAPTER *prAdapter,
 		QUEUE_INITIALIZE(&(prQM->arRxBaTable[u4Idx].rReOrderQue));
 		prQM->arRxBaTable[u4Idx].u2WinStart = 0xFFFF;
 		prQM->arRxBaTable[u4Idx].u2WinEnd = 0xFFFF;
-		prQM->arRxBaTable[u4Idx].u2BarSSN = 0;
-		prQM->arRxBaTable[u4Idx].u2LastRcvdSN = 0;
 
 		prQM->arRxBaTable[u4Idx].fgIsWaitingForPktWithSsn = FALSE;
 		prQM->arRxBaTable[u4Idx].fgHasBubble = FALSE;
@@ -422,7 +382,6 @@ void qmInit(IN struct ADAPTER *prAdapter,
 		prQM->au4HeadStaRecIndex[u4Idx] = 0;
 	}
 
-	prQM->u4HeadBssInfoIndex = 0;
 	prQM->u4GlobalResourceUsedCount = 0;
 #endif
 
@@ -588,14 +547,6 @@ void qmActivateStaRec(IN struct ADAPTER *prAdapter,
 		(prStaRec->aprRxReorderParamRefTbl)[i] = NULL;
 #endif
 
-#if CFG_MTK_MDDP_SUPPORT
-	if (mddpIsSupportMcifWifi())
-		mddpNotifyDrvTxd(prAdapter, prStaRec, TRUE);
-#endif
-
-	LINK_INITIALIZE(&prStaRec->rMscsMonitorList);
-	LINK_INITIALIZE(&prStaRec->rMscsTcpMonitorList);
-
 	DBGLOG(QM, INFO, "QM: +STA[%d]\n", prStaRec->ucIndex);
 }
 
@@ -616,12 +567,6 @@ void qmDeactivateStaRec(IN struct ADAPTER *prAdapter,
 
 	if (!prStaRec)
 		return;
-
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-	/* clear fragment cache when reconnect, reassoc, disconnect */
-	nicRxClearFrag(prAdapter, prStaRec);
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
 	/* 4 <1> Flush TX queues */
 	if (HAL_IS_TX_DIRECT(prAdapter)) {
 		nicTxDirectClearStaPsQ(prAdapter, prStaRec->ucIndex);
@@ -647,7 +592,6 @@ void qmDeactivateStaRec(IN struct ADAPTER *prAdapter,
 	prStaRec->fgIsValid = FALSE;
 	prStaRec->fgIsInPS = FALSE;
 	prStaRec->fgIsTxKeyReady = FALSE;
-	prStaRec->fgIsMscsSupported = FALSE;
 
 	/* Reset buffer count  */
 	prStaRec->ucFreeQuota = 0;
@@ -657,12 +601,6 @@ void qmDeactivateStaRec(IN struct ADAPTER *prAdapter,
 	nicTxFreeDescTemplate(prAdapter, prStaRec);
 
 	qmUpdateStaRec(prAdapter, prStaRec);
-
-#if CFG_MTK_MDDP_SUPPORT
-	if (mddpIsSupportMcifWifi())
-		mddpNotifyDrvTxd(prAdapter, prStaRec, FALSE);
-#endif
-	mscsDeactivate(prAdapter, prStaRec);
 
 	DBGLOG(QM, INFO, "QM: -STA[%u]\n", prStaRec->ucIndex);
 }
@@ -832,7 +770,6 @@ struct SW_RFB *qmFlushRxQueues(IN struct ADAPTER *prAdapter)
 
 	DBGLOG(QM, TRACE, "QM: Enter qmFlushRxQueues()\n");
 
-	RX_DIRECT_REORDER_LOCK(prAdapter, 0);
 	for (i = 0; i < CFG_NUM_OF_RX_BA_AGREEMENTS; i++) {
 		if (QUEUE_IS_NOT_EMPTY(&
 			(prQM->arRxBaTable[i].rReOrderQue))) {
@@ -863,16 +800,11 @@ struct SW_RFB *qmFlushRxQueues(IN struct ADAPTER *prAdapter)
 			}
 
 			QUEUE_INITIALIZE(&(prQM->arRxBaTable[i].rReOrderQue));
-			if (QM_RX_GET_NEXT_SW_RFB(prSwRfbListTail)) {
-				DBGLOG(QM, ERROR,
-					"QM: non-null tail->next at arRxBaTable[%u]\n",
-					i);
-			}
+
 		} else {
 			continue;
 		}
 	}
-	RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
 
 	if (prSwRfbListTail) {
 		/* Terminate the MSDU_INFO list with a NULL pointer */
@@ -921,7 +853,7 @@ struct SW_RFB *qmFlushStaRxQueue(IN struct ADAPTER *prAdapter,
 	 * prCurrSwRfb->eDst equals RX_PKT_DESTINATION_HOST
 	 */
 	if (prReorderQueParm) {
-		RX_DIRECT_REORDER_LOCK(prAdapter, 0);
+
 		if (QUEUE_IS_NOT_EMPTY(&(prReorderQueParm->rReOrderQue))) {
 
 			prSwRfbListHead = (struct SW_RFB *)
@@ -932,17 +864,11 @@ struct SW_RFB *qmFlushStaRxQueue(IN struct ADAPTER *prAdapter,
 					&(prReorderQueParm->rReOrderQue));
 
 			QUEUE_INITIALIZE(&(prReorderQueParm->rReOrderQue));
+
 		}
-		RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
 	}
 
 	if (prSwRfbListTail) {
-		if (QM_RX_GET_NEXT_SW_RFB(prSwRfbListTail)) {
-			DBGLOG(QM, ERROR,
-				"QM: non-empty tail->next at STA %u TID %u\n",
-				u4StaRecIdx, u4Tid);
-		}
-
 		/* Terminate the MSDU_INFO list with a NULL pointer */
 		QM_TX_SET_NEXT_SW_RFB(prSwRfbListTail, NULL);
 	}
@@ -957,7 +883,8 @@ struct QUE *qmDetermineStaTxQueue(IN struct ADAPTER *prAdapter,
 	struct STA_RECORD *prStaRec;
 	enum ENUM_WMM_ACI eAci = WMM_AC_BE_INDEX;
 	u_int8_t fgCheckACMAgain;
-	uint8_t ucTC = 0, ucQueIdx = TX_QUEUE_INDEX_AC0;
+	uint8_t ucTC = TC1_INDEX;
+	uint8_t ucQueIdx = TX_QUEUE_INDEX_AC1;
 	struct BSS_INFO *prBssInfo;
 	/* BEtoBK, na, VItoBE, VOtoVI */
 	uint8_t aucNextUP[WMM_AC_INDEX_NUM] = {1, 1, 0, 4};
@@ -984,11 +911,10 @@ struct QUE *qmDetermineStaTxQueue(IN struct ADAPTER *prAdapter,
 		if (prStaRec->fgIsQoS) {
 			if (prMsduInfo->ucUserPriority < TX_DESC_TID_NUM) {
 				eAci = aucTid2ACI[prMsduInfo->ucUserPriority];
-				if (eAci < WMM_AC_INDEX_NUM) {
-					ucQueIdx = aucACI2TxQIdx[eAci];
-					ucTC = arNetwork2TcResource[
-						prMsduInfo->ucBssIndex][eAci];
-				}
+				ucQueIdx = aucACI2TxQIdx[eAci];
+				ucTC =
+					arNetwork2TcResource[
+					prMsduInfo->ucBssIndex][eAci];
 			} else {
 				ucQueIdx = TX_QUEUE_INDEX_AC1;
 				ucTC = TC1_INDEX;
@@ -997,8 +923,7 @@ struct QUE *qmDetermineStaTxQueue(IN struct ADAPTER *prAdapter,
 					"Packet TID is not in [0~7]\n");
 				ASSERT(0);
 			}
-			if (eAci < WMM_AC_INDEX_NUM &&
-				(prBssInfo->arACQueParms[eAci].ucIsACMSet) &&
+			if ((prBssInfo->arACQueParms[eAci].ucIsACMSet) &&
 			    !(ucActiveTs & BIT(eAci)) &&
 			    (eAci != WMM_AC_BK_INDEX)) {
 				DBGLOG(WMM, TRACE,
@@ -1016,7 +941,7 @@ struct QUE *qmDetermineStaTxQueue(IN struct ADAPTER *prAdapter,
 
 		if (prAdapter->rWifiVar.ucTcRestrict < TC_NUM) {
 			ucTC = prAdapter->rWifiVar.ucTcRestrict;
-			ucQueIdx = ucTC;
+			ucQueIdx = prAdapter->rWifiVar.ucTcRestrict;
 		}
 
 	} while (fgCheckACMAgain);
@@ -1032,8 +957,7 @@ struct QUE *qmDetermineStaTxQueue(IN struct ADAPTER *prAdapter,
 		prTxQue = prStaRec->aprTargetQueue[ucQueIdx];
 	} else if (secIsProtectedBss(prAdapter, prBssInfo) &&
 		prMsduInfo->fgIs802_1x &&
-		prMsduInfo->fgIs802_1x_NonProtected &&
-		!prAdapter->fgIsPostponeTxEAPOLM3) {
+		prMsduInfo->fgIs802_1x_NonProtected) {
 		/* protected BSS without key set */
 		/* Tx pairwise EAPOL 1x packet (non-protected frame) */
 		prTxQue = &prStaRec->arTxQueue[ucQueIdx];
@@ -1089,33 +1013,31 @@ void qmSetStaRecTxAllowed(IN struct ADAPTER *prAdapter,
 	uint8_t ucIdx;
 	struct QUE *prSrcQ, *prDstQ;
 
-	DBGLOG(QM, INFO, "Set Sta[%u] TxAllowed from [%u] to [%u] %s TxQ\n",
-		prStaRec->ucIndex,
-		prStaRec->fgIsTxAllowed,
-		fgIsTxAllowed,
-		fgIsTxAllowed ? "normal" : "pending");
-
-	/* Update Tx queue when allowed state change*/
-	if (prStaRec->fgIsTxAllowed != fgIsTxAllowed) {
-		for (ucIdx = 0; ucIdx < NUM_OF_PER_STA_TX_QUEUES; ucIdx++) {
-			if (fgIsTxAllowed) {
-				prSrcQ = &prStaRec->arPendingTxQueue[ucIdx];
-				prDstQ = &prStaRec->arTxQueue[ucIdx];
-			} else {
-				prSrcQ = &prStaRec->arTxQueue[ucIdx];
-				prDstQ = &prStaRec->arPendingTxQueue[ucIdx];
-			}
-
-			QUEUE_CONCATENATE_QUEUES_HEAD(prDstQ, prSrcQ);
-			prStaRec->aprTargetQueue[ucIdx] = prDstQ;
+	/* Update Tx queue */
+	for (ucIdx = 0; ucIdx < NUM_OF_PER_STA_TX_QUEUES; ucIdx++) {
+		if (fgIsTxAllowed) {
+			prSrcQ = &prStaRec->arPendingTxQueue[ucIdx];
+			prDstQ = &prStaRec->arTxQueue[ucIdx];
+		} else {
+			prSrcQ = &prStaRec->arTxQueue[ucIdx];
+			prDstQ = &prStaRec->arPendingTxQueue[ucIdx];
 		}
 
+		QUEUE_CONCATENATE_QUEUES_HEAD(prDstQ, prSrcQ);
+		prStaRec->aprTargetQueue[ucIdx] = prDstQ;
+	}
+
+	if (prStaRec->fgIsTxAllowed != fgIsTxAllowed) {
 		if (fgIsTxAllowed)
 			prAdapter->rQM.u4TxAllowedStaCount++;
 		else
 			prAdapter->rQM.u4TxAllowedStaCount--;
 	}
 	prStaRec->fgIsTxAllowed = fgIsTxAllowed;
+
+	DBGLOG(QM, INFO, "Set Sta[%u] TxAllowed[%u] %s TxQ\n",
+		prStaRec->ucIndex, fgIsTxAllowed,
+		fgIsTxAllowed ? "normal" : "pending");
 }
 
 /*----------------------------------------------------------------------------*/
@@ -1136,7 +1058,6 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 
 	struct QUE *prTxQue;
 	struct QUE rNotEnqueuedQue;
-	struct STA_RECORD *prStaRec;
 	uint8_t ucTC;
 	struct TX_CTRL *prTxCtrl = &prAdapter->rTxCtrl;
 	struct QUE_MGT *prQM = &prAdapter->rQM;
@@ -1152,6 +1073,7 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 	prCurrentMsduInfo = NULL;
 	QUEUE_INITIALIZE(&rNotEnqueuedQue);
 	prNextMsduInfo = prMsduInfoListHead;
+	ucActivedTspec = wmmHasActiveTspec(&prAdapter->rWifiVar.rWmmInfo);
 
 	do {
 		prCurrentMsduInfo = prNextMsduInfo;
@@ -1218,10 +1140,6 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 				break;
 
 			default:
-				ucActivedTspec = wmmHasActiveTspec(
-					aisGetWMMInfo(prAdapter,
-					prCurrentMsduInfo->ucBssIndex));
-
 				prTxQue = qmDetermineStaTxQueue(
 					prAdapter, prCurrentMsduInfo,
 					ucActivedTspec, &ucTC);
@@ -1234,14 +1152,8 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 					QM_DBG_CNT_INC(prQM, QM_DBG_CNT_24);
 				}
 #if ARP_MONITER_ENABLE
-				prStaRec =
-					QM_GET_STA_REC_PTR_FROM_INDEX(prAdapter,
-						prCurrentMsduInfo->
-						ucStaRecIndex);
-				if (prStaRec && IS_STA_IN_AIS(prStaRec) &&
-					prCurrentMsduInfo->eSrc == TX_PACKET_OS)
-					qmDetectArpNoResponse(prAdapter,
-						prCurrentMsduInfo);
+				qmDetectArpNoResponse(prAdapter,
+						      prCurrentMsduInfo);
 #endif
 				break;	/*default */
 			}	/* switch (prCurrentMsduInfo->ucStaRecIndex) */
@@ -1322,12 +1234,9 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 		}
 #if QM_TC_RESOURCE_EMPTY_COUNTER
 		if (prCurrentMsduInfo->u4PageCount >
-			prTxCtrl->rTc.au4FreePageCount[ucTC]) {
-			if (prCurrentMsduInfo->ucBssIndex < MAX_BSSID_NUM
-				&& ucTC < TC_NUM)
-				prQM->au4QmTcResourceEmptyCounter[
-				prCurrentMsduInfo->ucBssIndex][ucTC]++;
-		}
+			prTxCtrl->rTc.au4FreePageCount[ucTC])
+			prQM->au4QmTcResourceEmptyCounter[
+			prCurrentMsduInfo->ucBssIndex][ucTC]++;
 #endif
 
 #if QM_FAST_TC_RESOURCE_CTRL && QM_ADAPTIVE_TC_RESOURCE_CTRL
@@ -1374,6 +1283,8 @@ struct MSDU_INFO *qmEnqueueTxPackets(IN struct ADAPTER *prAdapter,
 void qmDetermineStaRecIndex(IN struct ADAPTER *prAdapter,
 	IN struct MSDU_INFO *prMsduInfo)
 {
+	uint32_t i;
+
 	struct STA_RECORD *prTempStaRec;
 	struct BSS_INFO *prBssInfo;
 
@@ -1381,11 +1292,6 @@ void qmDetermineStaRecIndex(IN struct ADAPTER *prAdapter,
 	prTempStaRec = NULL;
 
 	ASSERT(prMsduInfo);
-
-	if (prBssInfo == NULL) {
-		DBGLOG(QM, INFO, "TX with prBssInfo = NULL\n");
-		return;
-	}
 
 	DBGLOG(QM, LOUD,
 		"Msdu BSS Idx[%u] OpMode[%u] StaRecOfApExist[%u]\n",
@@ -1395,9 +1301,6 @@ void qmDetermineStaRecIndex(IN struct ADAPTER *prAdapter,
 	switch (prBssInfo->eCurrentOPMode) {
 	case OP_MODE_IBSS:
 	case OP_MODE_ACCESS_POINT:
-#ifdef CFG_SUPPORT_NAN
-	case OP_MODE_NAN:
-#endif
 		/* 4 <1> DA = BMCAST */
 		if (IS_BMCAST_MAC_ADDR(prMsduInfo->aucEthDestAddr)) {
 			prMsduInfo->ucStaRecIndex = STA_REC_INDEX_BMCAST;
@@ -1457,14 +1360,18 @@ void qmDetermineStaRecIndex(IN struct ADAPTER *prAdapter,
 	/* 4 <3> Not BMCAST, No AP --> Compare DA
 	 * (i.e., to see whether this is a unicast frame to a client)
 	 */
-	prTempStaRec = cnmGetStaRecByAddress(prAdapter,
-			prMsduInfo->ucBssIndex,
-			prMsduInfo->aucEthDestAddr);
-	if (prTempStaRec) {
-		prMsduInfo->ucStaRecIndex = prTempStaRec->ucIndex;
-		DBGLOG(QM, LOUD, "TX with STA[%u]\n",
-			prTempStaRec->ucIndex);
-		return;
+	for (i = 0; i < CFG_STA_REC_NUM; i++) {
+		prTempStaRec = &(prAdapter->arStaRec[i]);
+		if (prTempStaRec->fgIsInUse) {
+			if (EQUAL_MAC_ADDR(prTempStaRec->aucMacAddr,
+				prMsduInfo->aucEthDestAddr)) {
+				prMsduInfo->ucStaRecIndex =
+					prTempStaRec->ucIndex;
+				DBGLOG(QM, LOUD, "TX with STA[%u]\n",
+					prTempStaRec->ucIndex);
+				return;
+			}
+		}
 	}
 
 	/* 4 <4> No STA found, Not BMCAST --> Indicate NOT_FOUND to FW */
@@ -1490,21 +1397,6 @@ struct QUE *qmDequeueStaTxPackets(IN struct ADAPTER *prAdapter)
 
 	return NULL;
 }
-#if CFG_SUPPORT_NAN
-void
-qmUpdateFreeNANQouta(struct ADAPTER *prAdapter,
-		     struct EVENT_UPDATE_NAN_TX_STATUS *prTxStatus) {
-	struct EVENT_UPDATE_NAN_TX_STATUS *prUpdateTxStatus;
-	uint8_t ucStaIndex = 0;
-	struct STA_RECORD *prStaRec; /* The current focused STA */
-
-	prUpdateTxStatus = prTxStatus;
-
-	prStaRec = &prAdapter->arStaRec[ucStaIndex];
-
-	kalSetEvent(prAdapter->prGlueInfo);
-}
-#endif
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -1521,7 +1413,6 @@ uint32_t
 qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 	OUT struct QUE *prQue, IN uint8_t ucTC,
 	IN uint32_t u4CurrentQuota,
-	IN uint32_t *prPleCurrentQuota,
 	IN uint32_t u4TotalQuota)
 {
 	uint32_t ucLoop;		/* Loop for */
@@ -1544,16 +1435,12 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 	uint32_t u4MaxForwardFrameCountLimit;
 	uint32_t u4AvaliableResource;	/* The TX resource amount */
 	uint32_t u4MaxResourceLimit;
+	uint32_t u4AvailableResourcePLE;
 
 	u_int8_t fgEndThisRound;
 	struct QUE_MGT *prQM = &prAdapter->rQM;
 
 	uint8_t *pucPsStaFreeQuota;
-#if CFG_SUPPORT_NAN
-#if CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL
-	unsigned char fgIsNanStaRec;
-#endif
-#endif
 #if CFG_SUPPORT_SOFT_ACM
 	uint8_t ucAc;
 	u_int8_t fgAcmFlowCtrl = FALSE;
@@ -1569,7 +1456,9 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 		return u4CurrentQuota;
 	}
 	/* Check PLE resource */
-	if (!(*prPleCurrentQuota))
+	u4AvailableResourcePLE = nicTxResourceGetPleFreeCount(
+		prAdapter, ucTC);
+	if (!u4AvailableResourcePLE)
 		return u4CurrentQuota;
 	/* 4 <1> Assign init value */
 	u4AvaliableResource = u4CurrentQuota;
@@ -1633,28 +1522,16 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 				}
 			}
 
-#if CFG_SUPPORT_NAN
-#if CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL
-			fgIsNanStaRec = FALSE;
-			if (prBssInfo && prBssInfo->eNetworkType ==
-				NETWORK_TYPE_NAN) {
-				fgIsNanStaRec = TRUE;
-				DBGLOG(NAN, TEMP, "NAN STA:%d, TC:%d\n",
-				       prStaRec->ucIndex, ucTC);
-			}
-#endif
-#endif
-
 			/* fgIsInPS */
 			/* Absent BSS handling */
-			if (prBssInfo && prBssInfo->fgIsNetAbsent) {
+			if (prBssInfo->fgIsNetAbsent) {
 				if (u4MaxForwardFrameCountLimit >
 					prBssInfo->ucBssFreeQuota)
 					u4MaxForwardFrameCountLimit =
 						prBssInfo->ucBssFreeQuota;
 			}
 #if CFG_SUPPORT_DBDC
-			if (prBssInfo && prAdapter->rWifiVar.fgDbDcModeEn)
+			if (prAdapter->rWifiVar.fgDbDcModeEn)
 				u4MaxResourceLimit =
 					gmGetDequeueQuota(prAdapter,
 						prStaRec, prBssInfo,
@@ -1669,12 +1546,9 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 				/* Quick check remain medium time and pending
 				** packets
 				*/
-				if (prBssInfo) {
-					if (QUEUE_IS_EMPTY(prCurrQueue) ||
-						!wmmAcmCanDequeue(prAdapter,
-						ucAc, 0, prBssInfo->ucBssIndex))
-						goto skip_dequeue;
-				}
+				if (QUEUE_IS_EMPTY(prCurrQueue) ||
+				    !wmmAcmCanDequeue(prAdapter, ucAc, 0))
+					goto skip_dequeue;
 				fgAcmFlowCtrl = TRUE;
 			} else
 				fgAcmFlowCtrl = FALSE;
@@ -1704,7 +1578,7 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 						ucAlwaysResetUsedRes & BIT(0)))
 						fgEndThisRound = TRUE;
 					break;
-				} else if ((*prPleCurrentQuota) <
+				} else if (u4AvailableResourcePLE <
 					   NIX_TX_PLE_PAGE_CNT_PER_FRAME) {
 					if (!(prAdapter->rWifiVar.
 						ucAlwaysResetUsedRes & BIT(0)))
@@ -1719,43 +1593,8 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 						"sta_rec is not valid\n");
 					break;
 				}
-
-#if CFG_SUPPORT_NAN
-#if CFG_SUPPORT_NAN_ADVANCE_DATA_CONTROL
-				if (fgIsNanStaRec == TRUE) {
-					OS_SYSTIME rCurrentTime;
-					unsigned char fgExpired;
-
-					rCurrentTime = kalGetTimeTick();
-					fgExpired = CHECK_FOR_EXPIRATION(
-						rCurrentTime,
-						prStaRec->rNanExpiredSendTime);
-
-					/* avoid to flood the kernel log,
-					 * only the 1st expiry event logged
-					 */
-					if (fgExpired &&
-					    !prStaRec->fgNanSendTimeExpired)
-						DBGLOG(NAN, TEMP,
-						       "[NAN Pkt Tx Expired] Sta:%u, Exp:%u, Now:%u\n",
-						       prStaRec->ucIndex,
-						       prStaRec->
-							rNanExpiredSendTime,
-						       rCurrentTime);
-
-					if (fgExpired) {
-						prStaRec->fgNanSendTimeExpired =
-							TRUE;
-						break;
-					}
-
-					prStaRec->fgNanSendTimeExpired = FALSE;
-				}
-#endif
-#endif
-
 #if CFG_SUPPORT_SOFT_ACM
-				if (prBssInfo && fgAcmFlowCtrl) {
+				if (fgAcmFlowCtrl) {
 					uint32_t u4PktTxTime = 0;
 
 					u4PktTxTime = wmmCalculatePktUsedTime(
@@ -1763,8 +1602,7 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 						prDequeuedPkt->u2FrameLength -
 							ETH_HLEN);
 					if (!wmmAcmCanDequeue(prAdapter, ucAc,
-						u4PktTxTime,
-						prBssInfo->ucBssIndex))
+							      u4PktTxTime))
 						break;
 				}
 #endif
@@ -1779,10 +1617,8 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 						PS_FORWARDING_MORE_DATA_ENABLED;
 				}
 				/* to record WMM Set */
-				if (prBssInfo) {
-					prDequeuedPkt->ucWmmQueSet =
-						prBssInfo->ucWmmQueSet;
-				}
+				prDequeuedPkt->ucWmmQueSet =
+					prBssInfo->ucWmmQueSet;
 				QUEUE_INSERT_TAIL(prQue,
 					(struct QUE_ENTRY *)
 					prDequeuedPkt);
@@ -1794,7 +1630,7 @@ qmDequeueTxPacketsFromPerStaQueues(IN struct ADAPTER *prAdapter,
 				u4CurStaUsedResource +=
 					prDequeuedPkt->u4PageCount;
 				u4CurStaForwardFrameCount++;
-				(*prPleCurrentQuota) -=
+				u4AvailableResourcePLE -=
 					NIX_TX_PLE_PAGE_CNT_PER_FRAME;
 			}
 #if CFG_SUPPORT_SOFT_ACM
@@ -1810,7 +1646,7 @@ skip_dequeue:
 					(*pucPsStaFreeQuota) = 0;
 			}
 
-			if (prBssInfo && prBssInfo->fgIsNetAbsent) {
+			if (prBssInfo->fgIsNetAbsent) {
 				if (prBssInfo->ucBssFreeQuota >=
 					u4CurStaForwardFrameCount)
 					prBssInfo->ucBssFreeQuota -=
@@ -1866,7 +1702,6 @@ void
 qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER *prAdapter,
 	OUT struct QUE *prQue, IN uint8_t ucTC,
 	IN uint32_t u4CurrentQuota,
-	IN uint32_t *prPleCurrentQuota,
 	IN uint32_t u4TotalQuota)
 {
 	uint32_t u4AvaliableResource, u4LeftResource;
@@ -1876,6 +1711,7 @@ qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER *prAdapter,
 	PFN_DEQUEUE_FUNCTION pfnDeQFunc[2];
 	u_int8_t fgChangeDeQFunc = TRUE;
 	u_int8_t fgGlobalQueFirst = TRUE;
+	uint32_t u4AvailableResourcePLE;
 
 	DBGLOG(QM, TEMP, "Enter %s (TC = %d, quota = %u)\n",
 		__func__, ucTC, u4CurrentQuota);
@@ -1884,7 +1720,9 @@ qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER *prAdapter,
 	if (u4CurrentQuota == 0)
 		return;
 	/* Check PLE resource */
-	if (!(*prPleCurrentQuota))
+	u4AvailableResourcePLE = nicTxResourceGetPleFreeCount(
+		prAdapter, ucTC);
+	if (!u4AvailableResourcePLE)
 		return;
 
 	prQM = &prAdapter->rQM;
@@ -1908,7 +1746,6 @@ qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER *prAdapter,
 	/* 1st dequeue function */
 	u4LeftResource = pfnDeQFunc[0](prAdapter, prQue, ucTC,
 		u4AvaliableResource,
-		prPleCurrentQuota,
 		(u4MaxResourceLimit - u4TotalUsedResource));
 
 	/* dequeue function comsumes no resource, change */
@@ -1931,7 +1768,7 @@ qmDequeueTxPacketsFromPerTypeQueues(IN struct ADAPTER *prAdapter,
 
 	/* 2nd dequeue function */
 	u4LeftResource = pfnDeQFunc[1](prAdapter, prQue, ucTC,
-		u4LeftResource, prPleCurrentQuota, u4MaxResourceLimit);
+		u4LeftResource, u4MaxResourceLimit);
 
 #if QM_FORWARDING_FAIRNESS
 	prQM->fgGlobalQFirst = fgGlobalQueFirst;
@@ -1955,7 +1792,6 @@ uint32_t
 qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 	OUT struct QUE *prQue,
 	IN uint8_t ucTC, IN uint32_t u4CurrentQuota,
-	IN uint32_t *prPleCurrentQuota,
 	IN uint32_t u4TotalQuota)
 {
 	struct BSS_INFO *prBssInfo;
@@ -1966,6 +1802,7 @@ qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 	struct QUE rMergeQue;
 	struct QUE *prMergeQue;
 	struct QUE_MGT *prQM;
+	uint32_t u4AvailableResourcePLE;
 
 	DBGLOG(QM, TEMP, "Enter %s (TC = %d, quota = %u)\n",
 		__func__, ucTC, u4CurrentQuota);
@@ -1974,7 +1811,9 @@ qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 	if (u4CurrentQuota == 0)
 		return u4CurrentQuota;
 	/* Check PLE resource */
-	if (!(*prPleCurrentQuota))
+	u4AvailableResourcePLE = nicTxResourceGetPleFreeCount(
+		prAdapter, ucTC);
+	if (!u4AvailableResourcePLE)
 		return u4CurrentQuota;
 
 	prQM = &prAdapter->rQM;
@@ -1994,7 +1833,7 @@ qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 					prCurrQueue);
 		if (prDequeuedPkt->u4PageCount > u4AvaliableResource)
 			break;
-		if ((*prPleCurrentQuota) < NIX_TX_PLE_PAGE_CNT_PER_FRAME)
+		if (u4AvailableResourcePLE < NIX_TX_PLE_PAGE_CNT_PER_FRAME)
 			break;
 
 		QUEUE_REMOVE_HEAD(prCurrQueue, prDequeuedPkt,
@@ -2003,7 +1842,7 @@ qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 			prDequeuedPkt->ucBssIndex);
 
-		if (prBssInfo && IS_BSS_ACTIVE(prBssInfo)) {
+		if (IS_BSS_ACTIVE(prBssInfo)) {
 			if (!prBssInfo->fgIsNetAbsent) {
 				/* to record WMM Set */
 				prDequeuedPkt->ucWmmQueSet =
@@ -2015,7 +1854,7 @@ qmDequeueTxPacketsFromGlobalQueue(IN struct ADAPTER *prAdapter,
 				prQM->u4DequeueCounter++;
 				u4AvaliableResource -=
 					prDequeuedPkt->u4PageCount;
-				(*prPleCurrentQuota) -=
+				u4AvailableResourcePLE -=
 					NIX_TX_PLE_PAGE_CNT_PER_FRAME;
 				QM_DBG_CNT_INC(prQM, QM_DBG_CNT_26);
 			} else {
@@ -2055,7 +1894,6 @@ struct MSDU_INFO *qmDequeueTxPackets(IN struct ADAPTER *prAdapter,
 	struct MSDU_INFO *prReturnedPacketListHead;
 	struct QUE rReturnedQue;
 	uint32_t u4MaxQuotaLimit;
-	uint32_t u4AvailableResourcePLE;
 
 	DBGLOG(QM, TEMP, "Enter qmDequeueTxPackets\n");
 
@@ -2078,21 +1916,16 @@ struct MSDU_INFO *qmDequeueTxPackets(IN struct ADAPTER *prAdapter,
 			u4MaxQuotaLimit =
 				(uint32_t) prTcqStatus->au4MaxNumOfPage[i];
 
-		u4AvailableResourcePLE = nicTxResourceGetPleFreeCount(
-			prAdapter, i);
-
 		if (i == BMC_TC_INDEX)
 			qmDequeueTxPacketsFromPerTypeQueues(prAdapter,
 				&rReturnedQue, (uint8_t)i,
 				prTcqStatus->au4FreePageCount[i],
-				&u4AvailableResourcePLE,
 				u4MaxQuotaLimit);
 		else
 			qmDequeueTxPacketsFromPerStaQueues(prAdapter,
 				&rReturnedQue,
 				(uint8_t)i,
 				prTcqStatus->au4FreePageCount[i],
-				&u4AvailableResourcePLE,
 				u4MaxQuotaLimit);
 
 		/* The aggregate number of dequeued packets */
@@ -2301,7 +2134,6 @@ void qmAdjustTcQuotaPle(IN struct ADAPTER *prAdapter,
 	int32_t i4pages;
 	struct TX_CTRL *prTxCtrl;
 	struct TX_TCQ_STATUS *prTc;
-	int32_t i4TotalExtraQuota = 0;
 
 	ASSERT(prAdapter);
 
@@ -2312,7 +2144,7 @@ void qmAdjustTcQuotaPle(IN struct ADAPTER *prAdapter,
 	if (!prTc->fgNeedPleCtrl)
 		return;
 
-	/* collect free PLE resource */
+
 	for (i = TC0_INDEX; i < TC_NUM; i++) {
 
 		if (!nicTxResourceIsPleCtrlNeeded(prAdapter, i))
@@ -2320,97 +2152,26 @@ void qmAdjustTcQuotaPle(IN struct ADAPTER *prAdapter,
 
 		/* adjust ple resource */
 		i4pages = prTcqAdjust->ai4Variation[i] *
-				NIX_TX_PLE_PAGE_CNT_PER_FRAME;
+			  NIX_TX_PLE_PAGE_CNT_PER_FRAME;
 
 		if (i4pages < 0) {
 			/* donate resource to other TC */
 			if (prTcqStatus->au4FreePageCount_PLE[i] < (-i4pages)) {
-				/* not enough to give */
+				/* not enought to give */
 				i4pages =
 					-(prTcqStatus->au4FreePageCount_PLE[i]);
 			}
-			i4TotalExtraQuota += -i4pages;
-
-			prTcqStatus->au4FreePageCount_PLE[i] += i4pages;
-			prTcqStatus->au4MaxNumOfPage_PLE[i] += i4pages;
-
-			prTcqStatus->au4FreeBufferCount_PLE[i] +=
-				(i4pages / NIX_TX_PLE_PAGE_CNT_PER_FRAME);
-			prTcqStatus->au4MaxNumOfBuffer_PLE[i] +=
-				(i4pages / NIX_TX_PLE_PAGE_CNT_PER_FRAME);
 		}
+
+
+		prTcqStatus->au4FreePageCount_PLE[i] += i4pages;
+		prTcqStatus->au4MaxNumOfPage_PLE[i] += i4pages;
+
+		prTcqStatus->au4FreeBufferCount_PLE[i] +=
+			prTcqAdjust->ai4Variation[i];
+		prTcqStatus->au4MaxNumOfBuffer_PLE[i] +=
+			prTcqAdjust->ai4Variation[i];
 	}
-
-	/* distribute PLE resource */
-	for (i = TC0_INDEX; i < TC_NUM; i++) {
-		if (!nicTxResourceIsPleCtrlNeeded(prAdapter, i))
-			continue;
-
-		/* adjust ple resource */
-		i4pages = prTcqAdjust->ai4Variation[i] *
-				NIX_TX_PLE_PAGE_CNT_PER_FRAME;
-
-		if (i4pages > 0) {
-			if (i4TotalExtraQuota >= i4pages) {
-				i4TotalExtraQuota -= i4pages;
-			} else {
-				i4pages = i4TotalExtraQuota;
-				i4TotalExtraQuota = 0;
-			}
-			prTcqStatus->au4FreePageCount_PLE[i] += i4pages;
-			prTcqStatus->au4MaxNumOfPage_PLE[i] += i4pages;
-
-			prTcqStatus->au4FreeBufferCount_PLE[i] =
-				(prTcqStatus->au4FreePageCount_PLE[i] /
-					NIX_TX_PLE_PAGE_CNT_PER_FRAME);
-			prTcqStatus->au4MaxNumOfBuffer_PLE[i] =
-				(prTcqStatus->au4MaxNumOfBuffer_PLE[i] /
-					NIX_TX_PLE_PAGE_CNT_PER_FRAME);
-		}
-	}
-
-	/* distribute remaining PLE resource */
-	while (i4TotalExtraQuota != 0) {
-		DBGLOG(QM, INFO,
-				"distribute remaining PLE resource[%u]\n",
-				i4TotalExtraQuota);
-		for (i = TC0_INDEX; i < TC_NUM; i++) {
-			if (!nicTxResourceIsPleCtrlNeeded(prAdapter, i))
-				continue;
-
-			if (i4TotalExtraQuota >=
-				NIX_TX_PLE_PAGE_CNT_PER_FRAME) {
-				prTcqStatus->au4FreePageCount_PLE[i] +=
-					NIX_TX_PLE_PAGE_CNT_PER_FRAME;
-				prTcqStatus->au4MaxNumOfPage_PLE[i] +=
-					NIX_TX_PLE_PAGE_CNT_PER_FRAME;
-
-				prTcqStatus->au4FreeBufferCount_PLE[i] += 1;
-				prTcqStatus->au4MaxNumOfBuffer_PLE[i] += 1;
-
-				i4TotalExtraQuota -=
-					NIX_TX_PLE_PAGE_CNT_PER_FRAME;
-			} else {
-				/* remaining PLE pages are
-				 * not enough for a package
-				 */
-				prTcqStatus->au4FreePageCount_PLE[i] +=
-					i4TotalExtraQuota;
-				prTcqStatus->au4MaxNumOfPage_PLE[i] +=
-					i4TotalExtraQuota;
-
-				prTcqStatus->au4FreeBufferCount_PLE[i] =
-					(prTcqStatus->au4FreePageCount_PLE[i] /
-						NIX_TX_PLE_PAGE_CNT_PER_FRAME);
-				prTcqStatus->au4MaxNumOfBuffer_PLE[i] =
-					(prTcqStatus->au4MaxNumOfPage_PLE[i] /
-						NIX_TX_PLE_PAGE_CNT_PER_FRAME);
-
-				i4TotalExtraQuota = 0;
-			}
-		}
-	}
-
 }
 
 #endif
@@ -2921,9 +2682,7 @@ void qmCheckForFastTcResourceCtrl(IN struct ADAPTER *prAdapter,
 	struct QUE_MGT *prQM = &prAdapter->rQM;
 	u_int8_t fgTrigger = FALSE;
 
-	if (!prAdapter->rTxCtrl.rTc.au4FreeBufferCount[ucTc]
-	|| ((prAdapter->rTxCtrl.rTc.fgNeedPleCtrl) &&
-	(!prAdapter->rTxCtrl.rTc.au4FreeBufferCount_PLE[ucTc]))) {
+	if (!prAdapter->rTxCtrl.rTc.au4FreeBufferCount[ucTc]) {
 		if (!prQM->au4CurrentTcResource[ucTc] ||
 			nicTxGetAdjustableResourceCnt(prAdapter))
 			fgTrigger = TRUE;
@@ -2955,7 +2714,6 @@ uint32_t gmGetDequeueQuota(
 
 	struct QUE_MGT *prQM = &prAdapter->rQM;
 
-	/* Only apply to SDIO, PCIE/AXI use HW DMA */
 	if ((prAdapter->rWifiVar.uDeQuePercentEnable == FALSE) ||
 		(prQM->fgIsTxResrouceControlEn == FALSE))
 		return u4TotalQuota;
@@ -2981,16 +2739,6 @@ uint32_t gmGetDequeueQuota(
 			u4Weight = prAdapter->rWifiVar.u4DeQuePercentHT20Nss1;
 		}
 	}
-#if (CFG_SUPPORT_802_11AX == 1)
-	else if (fgEfuseCtrlAxOn == 1) {
-		if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_BIT_HE)
-		;/* TBD */
-	}
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-	else if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_BIT_EHT)
-		;/* TBD */
-#endif
 
 	u4Quota = u4TotalQuota * u4Weight / 100;
 
@@ -3018,116 +2766,6 @@ void qmInitRxQueues(IN struct ADAPTER *prAdapter)
 	/* TODO */
 }
 
-static void processNanBmcRx(struct ADAPTER *prAdapter,
-		struct SW_RFB *prCurrSwRfb,
-		struct WLAN_MAC_HEADER *prWlanHeader, uint16_t u2FrameCtrl)
-{
-#if (CFG_SUPPORT_NAN == 1)
-	struct BSS_INFO *prBssInfo;
-	uint16_t u2MACLen = 0;
-	uint8_t ucBssIndex;
-
-	if (!prCurrSwRfb->prStaRec)
-		prCurrSwRfb->prStaRec =
-			nanGetStaRecByNDI(prAdapter, prWlanHeader->aucAddr2);
-
-	if (!prCurrSwRfb->prStaRec)
-		return;
-
-	ucBssIndex = prCurrSwRfb->prStaRec->ucBssIndex;
-	if (ucBssIndex >= ARRAY_SIZE(prAdapter->aprBssInfo))
-		return;
-
-	prBssInfo = prAdapter->aprBssInfo[ucBssIndex];
-	if (prBssInfo->eNetworkType != NETWORK_TYPE_NAN)
-		return;
-
-	DBGLOG(QM, INFO, "NAN special case for BMC packet\n");
-	if (RXM_IS_QOS_DATA_FRAME(u2FrameCtrl))
-		u2MACLen = sizeof(struct WLAN_MAC_HEADER_QOS);
-	else
-		u2MACLen = sizeof(struct WLAN_MAC_HEADER);
-
-	u2MACLen += ETH_LLC_LEN + ETH_SNAP_OUI_LEN;
-	u2MACLen -= ETHER_TYPE_LEN_OFFSET;
-	prCurrSwRfb->pvHeader += u2MACLen;
-	kalMemCopy(prCurrSwRfb->pvHeader, prWlanHeader->aucAddr1, MAC_ADDR_LEN);
-	kalMemCopy(prCurrSwRfb->pvHeader + MAC_ADDR_LEN, prWlanHeader->aucAddr2,
-					MAC_ADDR_LEN);
-	prCurrSwRfb->u2PacketLen -= u2MACLen;
-	/* record StaRec related info */
-	prCurrSwRfb->ucStaRecIdx = prCurrSwRfb->prStaRec->ucIndex;
-	prCurrSwRfb->ucWlanIdx = prCurrSwRfb->prStaRec->ucWlanIndex;
-	GLUE_SET_PKT_BSS_IDX(prCurrSwRfb->pvPacket,
-		secGetBssIdxByWlanIdx(prAdapter, prCurrSwRfb->ucWlanIdx));
-#endif
-}
-
-/**
- * When prCurrSwRfb->prStaRec == NULL, prBssInfo exist and start is connected,
- * fill the information from prBssInfo if address matched.
- * Update these information:
- *   prCurrSwRfb->pvHeader and the MAC address at where it points to
- *   prCurrSwRfb->u2PacketLen
- *   prCurrSwRfb->prStaRec
- *   prCurrSwRfb->ucStaRecIdx
- *   prCurrSwRfb->ucWlanIdx
- */
-static void fillRxNullStaRec(struct ADAPTER *prAdapter,
-		struct SW_RFB *prCurrSwRfb, uint16_t u2FrameCtrl,
-		struct BSS_INFO *prBssInfo,
-		struct WLAN_MAC_HEADER *prWlanHeader)
-{
-	if (!RXM_IS_DATA_FRAME(u2FrameCtrl))
-		return;
-
-	if (!prBssInfo || prBssInfo->eConnectionState != MEDIA_STATE_CONNECTED)
-		return;
-
-	/* rx header translation */
-	DBGLOG(QM, WARN,
-		"RXD Trans: FrameCtrl=0x%02x GVLD=0x%x, StaRecIdx=%u, WlanIdx=%u PktLen=%u\n",
-		u2FrameCtrl, prCurrSwRfb->ucGroupVLD, prCurrSwRfb->ucStaRecIdx,
-		prCurrSwRfb->ucWlanIdx, prCurrSwRfb->u2PacketLen);
-
-	DBGLOG_MEM8(QM, LOUD, prCurrSwRfb->pvHeader,
-			prCurrSwRfb->u2PacketLen < 32 ?
-			prCurrSwRfb->u2PacketLen : 32);
-
-	if (!prBssInfo->prStaRecOfAP)
-		return;
-
-	if (EQUAL_MAC_ADDR(prWlanHeader->aucAddr1, prBssInfo->aucOwnMacAddr) &&
-	    EQUAL_MAC_ADDR(prWlanHeader->aucAddr2, prBssInfo->aucBSSID)) {
-		uint16_t u2MACLen;
-
-		/* QoS data, VHT */
-		if (RXM_IS_QOS_DATA_FRAME(u2FrameCtrl))
-			u2MACLen = sizeof(struct WLAN_MAC_HEADER_QOS);
-		else
-			u2MACLen = sizeof(struct WLAN_MAC_HEADER);
-		u2MACLen += ETH_LLC_LEN + ETH_SNAP_OUI_LEN;
-		u2MACLen -= ETHER_TYPE_LEN_OFFSET;
-		prCurrSwRfb->pvHeader =
-			(uint8_t *)prCurrSwRfb->pvHeader + u2MACLen;
-		prCurrSwRfb->u2PacketLen -= u2MACLen;
-		COPY_MAC_ADDR(prCurrSwRfb->pvHeader, prWlanHeader->aucAddr1);
-		COPY_MAC_ADDR((uint8_t *)prCurrSwRfb->pvHeader + MAC_ADDR_LEN,
-				prWlanHeader->aucAddr2);
-
-		/* record StaRec related info */
-		prCurrSwRfb->prStaRec = prBssInfo->prStaRecOfAP;
-		prCurrSwRfb->ucStaRecIdx = prCurrSwRfb->prStaRec->ucIndex;
-		prCurrSwRfb->ucWlanIdx = prCurrSwRfb->prStaRec->ucWlanIndex;
-		GLUE_SET_PKT_BSS_IDX(prCurrSwRfb->pvPacket,
-				secGetBssIdxByWlanIdx(prAdapter,
-					prCurrSwRfb->ucWlanIdx));
-		DBGLOG_MEM8(QM, WARN, prCurrSwRfb->pvHeader,
-				prCurrSwRfb->u2PacketLen < 64 ?
-				prCurrSwRfb->u2PacketLen : 64);
-	}
-}
-
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Handle RX packets (buffer reordering)
@@ -3144,13 +2782,12 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 #if CFG_RX_REORDERING_ENABLED
 	struct SW_RFB *prCurrSwRfb;
 	struct SW_RFB *prNextSwRfb;
-	void *prRxStatus;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	struct QUE rReturnedQue;
 	struct QUE *prReturnedQue;
 	uint8_t *pucEthDestAddr;
 	u_int8_t fgIsBMC, fgIsHTran;
 	u_int8_t fgMicErr;
-	struct BSS_INFO *prBssInfoIso = NULL;
 #if CFG_SUPPORT_REPLAY_DETECTION
 	u_int8_t ucBssIndexRly = 0;
 	struct BSS_INFO *prBssInfoRly = NULL;
@@ -3170,13 +2807,13 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 		prNextSwRfb = QM_RX_GET_NEXT_SW_RFB(prCurrSwRfb);
 
 		prRxStatus = prCurrSwRfb->prRxStatus;
-		if (prCurrSwRfb->u2RxByteCount > CFG_RX_MAX_PKT_SIZE) {
+		if (prRxStatus->u2RxByteCount > CFG_RX_MAX_PKT_SIZE) {
 			prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 			QUEUE_INSERT_TAIL(prReturnedQue,
 				(struct QUE_ENTRY *) prCurrSwRfb);
 			DBGLOG(QM, ERROR,
 				"Drop packet when packet length is larger than CFG_RX_MAX_PKT_SIZE. Packet length=%d\n",
-				prCurrSwRfb->u2RxByteCount);
+				prRxStatus->u2RxByteCount);
 			continue;
 		}
 		/* TODO: (Tehuang) Check if relaying */
@@ -3186,13 +2823,9 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 #if CFG_RX_PKTS_DUMP
 		if (prAdapter->rRxCtrl.u4RxPktsDumpTypeMask & BIT(
 			    HIF_RX_PKT_TYPE_DATA)) {
-			log_dbg(SW4, INFO,
-				"QM RX DATA: net _u sta idx %u wlan idx %u",
-				prCurrSwRfb->ucStaRecIdx,
-				prCurrSwRfb->ucWlanIdx);
-			log_dbg(SW4, INFO,
-				" ssn _u tid %u ptype %u 11 %u\n",
-				prCurrSwRfb->ucTid,
+			log_dbg(SW4, INFO, "QM RX DATA: net _u sta idx %u wlan idx %u ssn _u tid %u ptype %u 11 %u\n",
+				prCurrSwRfb->ucStaRecIdx, prRxStatus->ucWlanIdx,
+				HAL_RX_STATUS_GET_TID(prRxStatus),
 				prCurrSwRfb->ucPacketType,
 				prCurrSwRfb->fgReorderBuffer);
 
@@ -3202,9 +2835,10 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 		}
 #endif
 
-		fgIsBMC = (prCurrSwRfb->fgIsBC | prCurrSwRfb->fgIsMC);
+		fgIsBMC = HAL_RX_STATUS_IS_BC(prRxStatus) |
+			HAL_RX_STATUS_IS_MC(prRxStatus);
 		fgIsHTran = FALSE;
-		if (prCurrSwRfb->fgHdrTran) {
+		if (HAL_RX_STATUS_GET_HEADER_TRAN(prRxStatus) == TRUE) {
 			/* (!HIF_RX_HDR_GET_80211_FLAG(prHifRxHdr)){ */
 
 			uint8_t ucBssIndex;
@@ -3217,7 +2851,8 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 				DBGLOG(QM, ERROR,
 					"H/W did Header Trans but prRxStatusGroup4 is NULL !!!\n");
 				DBGLOG_MEM8(QM, ERROR, prCurrSwRfb->pucRecvBuff,
-					prCurrSwRfb->u2RxByteCount);
+					HAL_RX_STATUS_GET_RX_BYTE_CNT(
+					prRxStatus));
 				prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 				QUEUE_INSERT_TAIL(prReturnedQue,
 					(struct QUE_ENTRY *)
@@ -3233,7 +2868,7 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 						 32 ? 32 :
 						prCurrSwRfb->u2PacketLen);
 #if 0
-				glSetRstReason(RST_GROUP4_NULL);
+				glGetRstReason(RST_GROUP4_NULL);
 				GL_RESET_TRIGGER(prAdapter,
 					RST_FLAG_DO_CORE_DUMP);
 #endif
@@ -3256,18 +2891,18 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 							ucStaRecIdx);
 #define __STR_FMT__ \
 	"Re-search the staRec = %d, mac = " MACSTR ", byteCnt= %d\n"
-					log_dbg(QM, TRACE,
+					DBGLOG(QM, TRACE,
 						__STR_FMT__,
 						prCurrSwRfb->ucStaRecIdx,
 						MAC2STR(aucTaAddr),
-						prCurrSwRfb->u2RxByteCount);
+						prRxStatus->u2RxByteCount);
 #undef __STR_FMT__
 				}
 
 				if (prCurrSwRfb->prStaRec == NULL) {
-					DBGLOG(RX, TEMP,
+					DBGLOG(QM, TRACE,
 						"Mark NULL the Packet for no STA_REC, wlanIdx=%d\n",
-						prCurrSwRfb->ucWlanIdx);
+						prRxStatus->ucWlanIdx);
 					RX_INC_CNT(&prAdapter->rRxCtrl,
 						RX_NO_STA_DROP_COUNT);
 					prCurrSwRfb->eDst =
@@ -3275,11 +2910,6 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 					QUEUE_INSERT_TAIL(prReturnedQue,
 						(struct QUE_ENTRY *)
 						prCurrSwRfb);
-
-					NIC_DUMP_ICV_RXD(prAdapter, prRxStatus);
-					NIC_DUMP_ICV_RXP(prCurrSwRfb->pvHeader,
-						prCurrSwRfb->u2PacketLen);
-
 					continue;
 				}
 
@@ -3290,124 +2920,178 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 						prCurrSwRfb->ucWlanIdx));
 			}
 
-			ucBssIndex = prCurrSwRfb->prStaRec->ucBssIndex;
-			prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-				ucBssIndex);
-
-			if (!IS_BSS_ACTIVE(prBssInfo)) {
-				log_dbg(RX, TEMP, "Mark NULL the Packet for inactive Bss %u\n",
-					ucBssIndex);
-				RX_INC_CNT(&prAdapter->rRxCtrl,
-					RX_INACTIVE_BSS_DROP_COUNT);
-				prCurrSwRfb->eDst =
-					RX_PKT_DESTINATION_NULL;
-				QUEUE_INSERT_TAIL(prReturnedQue,
-					(struct QUE_ENTRY *)
-					prCurrSwRfb);
-				continue;
-			}
-
-			if (prBssInfo->eCurrentOPMode ==
-				OP_MODE_ACCESS_POINT) {
-				if (IS_BMCAST_MAC_ADDR(
-					pucEthDestAddr)) {
-					prCurrSwRfb->eDst =
-				RX_PKT_DESTINATION_HOST_WITH_FORWARD;
-				} else if (
-					secLookupStaRecIndexFromTA(
-					prAdapter,
-					pucEthDestAddr)
-					!=
-					STA_REC_INDEX_NOT_FOUND) {
-
-					prCurrSwRfb->eDst =
-					RX_PKT_DESTINATION_FORWARD;
-				}
-			}
-#if CFG_SUPPORT_PASSPOINT
-			else if (hs20IsFrameFilterEnabled(prAdapter,
-				prBssInfo) &&
-				hs20IsUnsecuredFrame(prAdapter,
-				prBssInfo,
-				prCurrSwRfb)) {
-				DBGLOG(QM, WARN,
-					"Mark NULL the Packet for Dropped Packet %u\n",
-					ucBssIndex);
-				RX_INC_CNT(&prAdapter->rRxCtrl,
-					RX_HS20_DROP_COUNT);
-				prCurrSwRfb->eDst =
-					RX_PKT_DESTINATION_NULL;
-				QUEUE_INSERT_TAIL(prReturnedQue,
-					(struct QUE_ENTRY *)
-					prCurrSwRfb);
-				continue;
-			}
-#endif /* CFG_SUPPORT_PASSPOINT */
-		} else {
-			struct BSS_INFO *prBssInfo;
-			struct WLAN_MAC_HEADER *prWlanHeader;
-			uint16_t u2FrameCtrl;
-
-			prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
-				secGetBssIdxByWlanIdx(prAdapter,
-					prCurrSwRfb->ucWlanIdx));
-			prWlanHeader = prCurrSwRfb->pvHeader;
-			u2FrameCtrl = prWlanHeader->u2FrameCtrl;
-			prCurrSwRfb->u2SequenceControl =
-				prWlanHeader->u2SeqCtrl;
-
-			if (fgIsBMC)
-				processNanBmcRx(prAdapter, prCurrSwRfb,
-					prWlanHeader, u2FrameCtrl);
-
-			if (!prCurrSwRfb->prStaRec)
-				fillRxNullStaRec(prAdapter, prCurrSwRfb,
-						u2FrameCtrl, prBssInfo,
-						prWlanHeader);
-		}
-		/*
-		 * Independent pkt is marked in stats,
-		 * so it should be placed before rx reordering
-		 */
-		prBssInfoIso = GET_BSS_INFO_BY_INDEX(prAdapter,
-						secGetBssIdxByWlanIdx(prAdapter,
-						prCurrSwRfb->ucWlanIdx));
-
-		if (prBssInfoIso && prBssInfoIso->fgIsApIsolate &&
-			IS_BSS_APGO(prBssInfoIso)) {
-
-			if (p2pFuncIsApIsolate(prAdapter,
-				prCurrSwRfb, prBssInfoIso)) {
-				DBGLOG(QM, TRACE, "ap isolate met\n");
-				RX_INC_CNT(&prAdapter->rRxCtrl,
-						RX_AP_ISO_DROP_COUNT);
+			if (prCurrSwRfb->ucTid >= CFG_RX_MAX_BA_TID_NUM) {
+				log_dbg(QM, ERROR, "TID from RXD = %d, out of range !!!\n",
+					prCurrSwRfb->ucTid);
+				DBGLOG_MEM8(QM, ERROR,
+					prCurrSwRfb->pucRecvBuff,
+					HAL_RX_STATUS_GET_RX_BYTE_CNT(
+					prRxStatus));
 				prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 				QUEUE_INSERT_TAIL(prReturnedQue,
 					(struct QUE_ENTRY *) prCurrSwRfb);
 				continue;
 			}
-		}
 
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-		if (prCurrSwRfb->fgDataFrame && prCurrSwRfb->prStaRec &&
-			qmAmsduAttackDetection(prAdapter, prCurrSwRfb)) {
-			prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
-			QUEUE_INSERT_TAIL(prReturnedQue,
-				(struct QUE_ENTRY *) prCurrSwRfb);
-			DBGLOG(QM, INFO, "drop AMSDU attack packet\n");
-			continue;
-		}
+			if (prAdapter->rRxCtrl.rFreeSwRfbList.u4NumElem >
+				(CFG_RX_MAX_PKT_NUM -
+					CFG_NUM_OF_QM_RX_PKT_NUM) || TRUE) {
 
-		if (prCurrSwRfb->fgDataFrame && prCurrSwRfb->prStaRec &&
-			qmDetectRxInvalidEAPOL(prAdapter, prCurrSwRfb)) {
-			prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
-			QUEUE_INSERT_TAIL(prReturnedQue,
-				(struct QUE_ENTRY *) prCurrSwRfb);
-			DBGLOG(QM, INFO,
-				"drop EAPOL packet not in sec mode\n");
-			continue;
+				ucBssIndex = prCurrSwRfb->prStaRec->ucBssIndex;
+				prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
+					ucBssIndex);
+
+				if (!IS_BSS_ACTIVE(prBssInfo)) {
+					log_dbg(QM, TRACE, "Mark NULL the Packet for inactive Bss %u\n",
+						ucBssIndex);
+					RX_INC_CNT(&prAdapter->rRxCtrl,
+						RX_INACTIVE_BSS_DROP_COUNT);
+					prCurrSwRfb->eDst =
+						RX_PKT_DESTINATION_NULL;
+					QUEUE_INSERT_TAIL(prReturnedQue,
+						(struct QUE_ENTRY *)
+						prCurrSwRfb);
+					continue;
+				}
+
+				if (prBssInfo->eCurrentOPMode ==
+					OP_MODE_ACCESS_POINT) {
+					if (IS_BMCAST_MAC_ADDR(
+						pucEthDestAddr)) {
+						prCurrSwRfb->eDst =
+					RX_PKT_DESTINATION_HOST_WITH_FORWARD;
+					} else if (
+						secLookupStaRecIndexFromTA(
+							prAdapter,
+							pucEthDestAddr)
+							!=
+						STA_REC_INDEX_NOT_FOUND) {
+
+						prCurrSwRfb->eDst =
+						RX_PKT_DESTINATION_FORWARD;
+					}
+				}
+#if CFG_SUPPORT_PASSPOINT
+				else if (hs20IsFrameFilterEnabled(prAdapter,
+					prBssInfo) &&
+					hs20IsUnsecuredFrame(prAdapter,
+					prBssInfo,
+					prCurrSwRfb)) {
+					DBGLOG(QM, WARN,
+						"Mark NULL the Packet for Dropped Packet %u\n",
+						ucBssIndex);
+					RX_INC_CNT(&prAdapter->rRxCtrl,
+						RX_HS20_DROP_COUNT);
+					prCurrSwRfb->eDst =
+						RX_PKT_DESTINATION_NULL;
+					QUEUE_INSERT_TAIL(prReturnedQue,
+						(struct QUE_ENTRY *)
+						prCurrSwRfb);
+					continue;
+				}
+#endif /* CFG_SUPPORT_PASSPOINT */
+
+			} else {
+				/* Dont not occupy other SW RFB */
+				DBGLOG(QM, TRACE,
+					"Mark NULL the Packet for less Free Sw Rfb\n");
+				RX_INC_CNT(&prAdapter->rRxCtrl,
+					RX_LESS_SW_RFB_DROP_COUNT);
+				prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
+				QUEUE_INSERT_TAIL(prReturnedQue,
+					(struct QUE_ENTRY *) prCurrSwRfb);
+				continue;
+			}
+
+		} else {
+			uint16_t u2FrameCtrl = 0;
+			struct WLAN_MAC_HEADER *prWlanHeader = NULL;
+
+			prWlanHeader = (struct WLAN_MAC_HEADER *)
+				prCurrSwRfb->pvHeader;
+			u2FrameCtrl = prWlanHeader->u2FrameCtrl;
+			if (prCurrSwRfb->prStaRec == NULL &&
+				RXM_IS_DATA_FRAME(u2FrameCtrl) &&
+				(prAdapter->prAisBssInfo) &&
+				(prAdapter->prAisBssInfo->eConnectionState ==
+				PARAM_MEDIA_STATE_CONNECTED)) {
+				/* rx header translation */
+				log_dbg(QM, INFO, "RXD Trans: FrameCtrl=0x%02x GVLD=0x%x, StaRecIdx=%d, WlanIdx=%d PktLen=%d\n",
+					u2FrameCtrl, prCurrSwRfb->ucGroupVLD,
+					prCurrSwRfb->ucStaRecIdx,
+					prCurrSwRfb->ucWlanIdx,
+					prCurrSwRfb->u2PacketLen);
+
+				if (prAdapter->prAisBssInfo
+				    && prAdapter->prAisBssInfo->prStaRecOfAP)
+				if (EQUAL_MAC_ADDR(
+							prWlanHeader->
+							aucAddr1,
+							prAdapter->
+							prAisBssInfo->
+							aucOwnMacAddr)
+				    && EQUAL_MAC_ADDR(
+							prWlanHeader->
+							aucAddr2,
+							prAdapter->
+							prAisBssInfo->
+							aucBSSID)) {
+					uint16_t u2MACLen = 0;
+					/* QoS data, VHT */
+					if (RXM_IS_QOS_DATA_FRAME(
+						u2FrameCtrl))
+						u2MACLen = sizeof(
+						struct WLAN_MAC_HEADER_QOS);
+					else
+						u2MACLen = sizeof(
+							struct
+							WLAN_MAC_HEADER);
+					u2MACLen +=
+						ETH_LLC_LEN +
+						ETH_SNAP_OUI_LEN;
+					u2MACLen -=
+						ETHER_TYPE_LEN_OFFSET;
+					prCurrSwRfb->pvHeader +=
+						u2MACLen;
+					kalMemCopy(
+						prCurrSwRfb->pvHeader,
+						prWlanHeader->aucAddr1,
+						MAC_ADDR_LEN);
+					kalMemCopy(
+						prCurrSwRfb->pvHeader +
+						MAC_ADDR_LEN,
+						prWlanHeader->aucAddr2,
+						MAC_ADDR_LEN);
+					prCurrSwRfb->u2PacketLen -=
+						u2MACLen;
+
+					/* record StaRec related info */
+					prCurrSwRfb->prStaRec =
+						prAdapter->
+						prAisBssInfo->
+						prStaRecOfAP;
+					prCurrSwRfb->ucStaRecIdx =
+						prCurrSwRfb->prStaRec->
+						ucIndex;
+					prCurrSwRfb->ucWlanIdx =
+						prCurrSwRfb->prStaRec->
+						ucWlanIndex;
+					GLUE_SET_PKT_BSS_IDX(
+						prCurrSwRfb->pvPacket,
+						secGetBssIdxByWlanIdx(
+							prAdapter,
+							prCurrSwRfb->
+							ucWlanIdx));
+					DBGLOG_MEM8(QM, WARN,
+						(uint8_t *)
+						prCurrSwRfb->pvHeader,
+						(prCurrSwRfb->
+						u2PacketLen > 64) ? 64 :
+						prCurrSwRfb->
+						u2PacketLen);
+				}
+			}
 		}
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
 
 #if CFG_SUPPORT_WAPI
 		if (prCurrSwRfb->u2PacketLen > ETHER_HEADER_LEN) {
@@ -3421,8 +3105,8 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 			 * WPI(0x88b4) packet that is encrypted, drop here.
 			 */
 			if (u2Etype == ETH_WPI_1X &&
-			    prCurrSwRfb->ucSecMode != 0 &&
-			    prCurrSwRfb->fgIsCipherMS == 0) {
+			    HAL_RX_STATUS_GET_SEC_MODE(prRxStatus) != 0 &&
+			    HAL_RX_STATUS_IS_CIPHER_MISMATCH(prRxStatus) == 0) {
 				DBGLOG(QM, INFO,
 					"drop wpi packet with sec mode\n");
 				prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
@@ -3432,6 +3116,7 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 			}
 		}
 #endif
+
 
 		/* Todo:: Move the data class error check here */
 
@@ -3455,7 +3140,6 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 			prCurrSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 			QUEUE_INSERT_TAIL(prReturnedQue,
 				(struct QUE_ENTRY *) prCurrSwRfb);
-			DBGLOG(RX, TEMP, "BMC replay\n");
 			continue;
 		}
 #endif
@@ -3468,18 +3152,8 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 			 * enqueued into the reordering queue in the STA_REC
 			 * rather than into the rReturnedQue.
 			 */
-			if (prCurrSwRfb->ucTid >= CFG_RX_MAX_BA_TID_NUM) {
-				log_dbg(QM, ERROR,
-					"TID from RXD = %d, out of range !!!\n",
-					prCurrSwRfb->ucTid);
-				DBGLOG_MEM8(QM, ERROR,
-					prCurrSwRfb->pucRecvBuff,
-					prCurrSwRfb->u2RxByteCount);
-				QUEUE_INSERT_TAIL(prReturnedQue,
-					(struct QUE_ENTRY *) prCurrSwRfb);
-			} else
-				qmProcessPktWithReordering(prAdapter,
-					prCurrSwRfb, prReturnedQue);
+			qmProcessPktWithReordering(prAdapter, prCurrSwRfb,
+				prReturnedQue);
 
 		} else if (prCurrSwRfb->fgDataFrame) {
 			/* Check Class Error */
@@ -3488,8 +3162,7 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 				prCurrSwRfb->prStaRec) == TRUE)) {
 				struct RX_BA_ENTRY *prReorderQueParm = NULL;
 
-				if ((prCurrSwRfb->ucTid < CFG_RX_MAX_BA_TID_NUM)
-					&& !fgIsBMC && fgIsHTran &&
+				if (!fgIsBMC && fgIsHTran &&
 					(HAL_RX_STATUS_GET_FRAME_CTL_FIELD(
 					prCurrSwRfb->prRxStatusGroup4) &
 					MASK_FRAME_TYPE) != MAC_FRAME_DATA) {
@@ -3510,7 +3183,7 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 				} else
 					qmHandleRxPackets_AOSP_1;
 			} else {
-				DBGLOG(RX, TEMP,
+				DBGLOG(QM, TRACE,
 					"Mark NULL the Packet for class error\n");
 				RX_INC_CNT(&prAdapter->rRxCtrl,
 					RX_CLASS_ERR_DROP_COUNT);
@@ -3537,16 +3210,12 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 					RX_BAR_DROP_COUNT);
 				break;
 			default:
-				DBGLOG(RX, TEMP,
+				DBGLOG(QM, TRACE,
 					"Mark NULL the Packet for non-interesting type\n");
 				RX_INC_CNT(&prAdapter->rRxCtrl,
 					RX_NO_INTEREST_DROP_COUNT);
 				QUEUE_INSERT_TAIL(prReturnedQue,
 					(struct QUE_ENTRY *) prCurrSwRfb);
-
-				NIC_DUMP_ICV_RXD(prAdapter, prRxStatus);
-				NIC_DUMP_ICV_RXP(prCurrSwRfb->pvHeader,
-						prCurrSwRfb->u2PacketLen);
 				break;
 			}
 		}
@@ -3569,233 +3238,6 @@ struct SW_RFB *qmHandleRxPackets(IN struct ADAPTER *prAdapter,
 
 }
 
-#if CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief qmDetectRxInvalidEAPOL() is used for fake EAPOL checking.
- *
- * \param[in] prSwRfb        The RFB which is being processed.
- *
- * \return TRUE when we need to drop it
- */
-/*----------------------------------------------------------------------------*/
-u_int8_t qmDetectRxInvalidEAPOL(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb)
-{
-	uint8_t *pucPkt = NULL;
-	uint8_t ucBssIndex;
-	struct BSS_INFO *prBssInfo;
-	uint16_t u2EtherType = 0;
-	u_int8_t fgDrop = FALSE;
-	uint16_t u2SeqCtrl, u2FrameCtrl;
-	uint8_t ucFragNo;
-
-	DEBUGFUNC("qmDetectRxInvalidEAPOL");
-
-	ASSERT(prSwRfb);
-	ASSERT(prSwRfb->prStaRec);
-
-	/* return FALSE if no Header Translation*/
-	if (prSwRfb->fgHdrTran == FALSE)
-		return FALSE;
-
-	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
-		return FALSE;
-
-	pucPkt = prSwRfb->pvHeader;
-	if (!pucPkt)
-		return FALSE;
-
-	ucBssIndex = prSwRfb->prStaRec->ucBssIndex;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-
-	/* return FALSE if OP_MODE is not SAP */
-	if (!IS_BSS_ACTIVE(prBssInfo)
-		|| prBssInfo->eCurrentOPMode != OP_MODE_ACCESS_POINT)
-		return FALSE;
-
-	/* return FALSE for this frame is a mid/last fragment*/
-	u2FrameCtrl = HAL_RX_STATUS_GET_FRAME_CTL_FIELD(
-			prSwRfb->prRxStatusGroup4);
-	u2SeqCtrl = HAL_RX_STATUS_GET_SEQFrag_NUM(prSwRfb->prRxStatusGroup4);
-	ucFragNo = (uint8_t) (u2SeqCtrl & MASK_SC_FRAG_NUM);
-	if (prSwRfb->fgFragFrame && ucFragNo != 0)
-		return FALSE;
-
-	u2EtherType = (pucPkt[ETH_TYPE_LEN_OFFSET] << 8)
-			| (pucPkt[ETH_TYPE_LEN_OFFSET + 1]);
-
-	/* return FALSE if EtherType is not EAPOL */
-	if (u2EtherType != ETH_P_1X)
-		return FALSE;
-
-	if ((prSwRfb->eDst
-			== RX_PKT_DESTINATION_HOST_WITH_FORWARD
-		    || prSwRfb->eDst == RX_PKT_DESTINATION_FORWARD)) {
-		/* fgIsTxKeyReady is set by nicEventAddPkeyDone */
-		if (prSwRfb->prStaRec->fgIsTxKeyReady != TRUE)
-			fgDrop = TRUE;
-	}
-
-	DBGLOG(QM, TRACE,
-		"QM: eDst:%d TxKeyReady:%d fgDrop:%d",
-		prSwRfb->eDst, prSwRfb->prStaRec->fgIsTxKeyReady,
-		fgDrop);
-
-	return fgDrop;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
- * \brief AMSDU Attack Detection
- *
- * \param[in] prSwRfb The RX packet to process
- *
- * \return TRUE when we find an amsdu attack
- */
-/*----------------------------------------------------------------------------*/
-u_int8_t qmAmsduAttackDetection(IN struct ADAPTER *prAdapter,
-	IN struct SW_RFB *prSwRfb)
-{
-	u_int8_t fgDrop = FALSE;
-	uint8_t aucTaAddr[MAC_ADDR_LEN];
-	uint8_t *pucTaAddr = NULL, *pucRaAddr = NULL;
-	uint8_t *pucSaAddr = NULL, *pucDaAddr = NULL;
-	uint8_t *pucAmsduAddr = NULL, *pucCmpAddr = NULL;
-	uint8_t ucBssIndex = 0;
-	struct BSS_INFO *prBssInfo = NULL;
-	struct STA_RECORD *prStaRec = NULL;
-	uint16_t u2FrameCtrl, u2SSN;
-	struct WLAN_MAC_HEADER *prWlanHeader = NULL;
-	uint8_t ucTid;
-	uint8_t *pucPaylod = NULL;
-
-	DEBUGFUNC("qmAmsduAttackDetection");
-
-	ASSERT(prSwRfb);
-
-	prStaRec = prSwRfb->prStaRec;
-	ASSERT(prStaRec);
-
-	/* 802.11 header TA */
-	if (prSwRfb->fgHdrTran) {
-		u2SSN = HAL_RX_STATUS_GET_SEQFrag_NUM(
-			prSwRfb->prRxStatusGroup4) >> RX_STATUS_SEQ_NUM_OFFSET;
-		u2FrameCtrl = HAL_RX_STATUS_GET_FRAME_CTL_FIELD(
-				prSwRfb->prRxStatusGroup4);
-		HAL_RX_STATUS_GET_TA(prSwRfb->prRxStatusGroup4, aucTaAddr);
-		pucTaAddr = &aucTaAddr[0];
-		pucPaylod = prSwRfb->pvHeader;
-	} else {
-		prWlanHeader = (struct WLAN_MAC_HEADER *) prSwRfb->pvHeader;
-		u2SSN = prWlanHeader->u2SeqCtrl >> MASK_SC_SEQ_NUM_OFFSET;
-		u2FrameCtrl = prWlanHeader->u2FrameCtrl;
-		pucTaAddr = prWlanHeader->aucAddr2;
-		pucPaylod = prSwRfb->pvHeader + prSwRfb->u2HeaderLen;
-	}
-
-	/* 802.11 header RA */
-	ucBssIndex = prSwRfb->prStaRec->ucBssIndex;
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-	pucRaAddr = &prBssInfo->aucOwnMacAddr[0];
-
-	/* DA and SA */
-	pucDaAddr = pucPaylod;
-	pucSaAddr = pucPaylod + MAC_ADDR_LEN;
-
-	if (RXM_IS_QOS_DATA_FRAME(u2FrameCtrl)) {
-		ucTid = prSwRfb->ucTid;
-	} else {
-		/* for non-qos data, use TID_NUM as tid */
-		ucTid = TID_NUM;
-	}
-
-	if (prSwRfb->ucPayloadFormat == RX_PAYLOAD_FORMAT_MSDU) {
-		return FALSE;
-	} else if (prSwRfb->ucPayloadFormat
-			== RX_PAYLOAD_FORMAT_FIRST_SUB_AMSDU) {
-		if (RXM_IS_FROM_DS(u2FrameCtrl)) {
-			/*
-			 * FromDS frames:
-			 * A-MSDU DA must match 802.11 header RA
-			 */
-			pucCmpAddr = pucDaAddr;
-			pucAmsduAddr = pucRaAddr;
-		} else if (RXM_IS_TO_DS(u2FrameCtrl)) {
-			/*
-			 * ToDS frames:
-			 * A-MSDU SA must match 802.11 header TA
-			 */
-			pucCmpAddr = pucSaAddr;
-			pucAmsduAddr = pucTaAddr;
-		}
-
-		/* mark to drop amsdu with same SeqNo */
-		if (prSwRfb->fgIsFirstSubAMSDULLCMS) {
-			fgDrop = TRUE;
-			DBGLOG(QM, TRACE,
-				"QM: AMSDU Attack LLC Mismatch.");
-		} else {
-			if (prSwRfb->fgHdrTran) {
-				if (prSwRfb->u2PacketLen <= ETH_HLEN)
-					fgDrop = TRUE;
-			} else {
-				if (prSwRfb->u2PacketLen
-					<= prSwRfb->u2HeaderLen + ETH_HLEN)
-					fgDrop = TRUE;
-			}
-
-			if (fgDrop == TRUE)
-				DBGLOG(QM, TRACE,
-					"QM: AMSDU Attack Unexpected HLen.");
-		}
-
-		if (fgDrop == FALSE &&
-			pucCmpAddr != NULL && pucAmsduAddr != NULL) {
-			if (UNEQUAL_MAC_ADDR(pucCmpAddr, pucAmsduAddr))
-				fgDrop = TRUE;
-
-#define __STR_FMT__ \
-	"QM: FromDS:%d ToDS:%d TID:%u SN:%u PF:%u" \
-	" TA:" MACSTR " RA:" MACSTR " DA:" MACSTR " SA:" MACSTR " Drop:%d"
-			DBGLOG(QM, TRACE,
-				__STR_FMT__,
-				RXM_IS_FROM_DS(u2FrameCtrl),
-				RXM_IS_TO_DS(u2FrameCtrl),
-				ucTid, prSwRfb->u2SSN,
-				prSwRfb->ucPayloadFormat,
-				MAC2STR(pucTaAddr), MAC2STR(pucRaAddr),
-				MAC2STR(pucDaAddr), MAC2STR(pucSaAddr),
-				fgDrop
-				);
-#undef __STR_FMT__
-		}
-
-		prStaRec->afgIsAmsduInvalid[ucTid] = fgDrop;
-		prStaRec->au2AmsduInvalidSN[ucTid] = u2SSN;
-	} else {
-		/* drop it if find an asmdu attack in station record */
-		if (prStaRec->afgIsAmsduInvalid[ucTid] == TRUE
-			&& prStaRec->au2AmsduInvalidSN[ucTid] == u2SSN) {
-			fgDrop = TRUE;
-			DBGLOG(QM, TRACE,
-				"QM: AMSDU Attack TID:%u SN:%u PF:%u",
-				ucTid, prSwRfb->u2SSN,
-				prSwRfb->ucPayloadFormat);
-		}
-
-		/* reset flag when find last subframe */
-		if (prSwRfb->ucPayloadFormat
-			== RX_PAYLOAD_FORMAT_LAST_SUB_AMSDU) {
-			prStaRec->afgIsAmsduInvalid[ucTid] = FALSE;
-			prStaRec->au2AmsduInvalidSN[ucTid] = 0XFFFF;
-		}
-	}
-
-	return fgDrop;
-}
-#endif /* CFG_SUPPORT_FRAG_AGG_ATTACK_DETECTION */
-
 /*----------------------------------------------------------------------------*/
 /*!
  * \brief Reorder the received packet
@@ -3812,6 +3254,7 @@ void qmProcessPktWithReordering(IN struct ADAPTER *prAdapter,
 {
 
 	struct STA_RECORD *prStaRec;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	struct RX_BA_ENTRY *prReorderQueParm;
 
 #if CFG_SUPPORT_RX_AMSDU
@@ -3822,17 +3265,20 @@ void qmProcessPktWithReordering(IN struct ADAPTER *prAdapter,
 
 	ASSERT(prSwRfb);
 	ASSERT(prReturnedQue);
+	ASSERT(prSwRfb->prRxStatus);
 
 	/* We should have STA_REC here */
 	prStaRec = prSwRfb->prStaRec;
 	ASSERT(prStaRec);
 	ASSERT(prSwRfb->ucTid < CFG_RX_MAX_BA_TID_NUM);
 
+	prRxStatus = prSwRfb->prRxStatus;
+
 	if (prSwRfb->ucTid >= CFG_RX_MAX_BA_TID_NUM) {
 		DBGLOG(QM, WARN, "TID from RXD = %d, out of range!!\n",
 			prSwRfb->ucTid);
 		DBGLOG_MEM8(QM, ERROR, prSwRfb->pucRecvBuff,
-			prSwRfb->u2RxByteCount);
+			HAL_RX_STATUS_GET_RX_BYTE_CNT(prRxStatus));
 		prSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 		QUEUE_INSERT_TAIL(prReturnedQue,
 			(struct QUE_ENTRY *) prSwRfb);
@@ -3843,7 +3289,7 @@ void qmProcessPktWithReordering(IN struct ADAPTER *prAdapter,
 	prReorderQueParm = ((
 		prStaRec->aprRxReorderParamRefTbl)[prSwRfb->ucTid]);
 	if (!prReorderQueParm || !(prReorderQueParm->fgIsValid)) {
-		DBGLOG(RX, TEMP,
+		DBGLOG(QM, ERROR,
 			"Reordering but no BA agreement for STA[%d] TID[%d]\n",
 			prStaRec->ucIndex, prSwRfb->ucTid);
 		QUEUE_INSERT_TAIL(prReturnedQue,
@@ -3861,7 +3307,7 @@ void qmProcessPktWithReordering(IN struct ADAPTER *prAdapter,
 	/* RX reorder for one MSDU in AMSDU issue */
 	/* QUEUE_INITIALIZE(&prSwRfb->rAmsduQue); */
 
-	u8AmsduSubframeIdx = prSwRfb->ucPayloadFormat;
+	u8AmsduSubframeIdx = HAL_RX_STATUS_GET_PAYLOAD_FORMAT(prRxStatus);
 
 	/* prMpduSwRfb = prReorderQueParm->prMpduSwRfb; */
 	u4SeqNo = (uint32_t)prSwRfb->u2SSN;
@@ -3915,21 +3361,33 @@ void qmProcessPktWithReordering(IN struct ADAPTER *prAdapter,
 	prReorderQueParm->u4SeqNo = u4SeqNo;
 #endif
 
-	RX_DIRECT_REORDER_LOCK(prAdapter, 0);
 	/* Insert reorder packet */
 	qmInsertReorderPkt(prAdapter, prSwRfb, prReorderQueParm,
 		prReturnedQue);
-	RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
+
 }
 
 void qmProcessBarFrame(IN struct ADAPTER *prAdapter,
 	IN struct SW_RFB *prSwRfb, OUT struct QUE *prReturnedQue)
 {
+
+	struct STA_RECORD *prStaRec;
+	struct HW_MAC_RX_DESC *prRxStatus;
+	struct RX_BA_ENTRY *prReorderQueParm;
 	struct CTRL_BAR_FRAME *prBarCtrlFrame;
+
+	uint32_t u4SSN;
+	uint32_t u4WinStart;
+	uint32_t u4WinEnd;
+	struct QUE *prReorderQue;
+	/* P_SW_RFB_T prReorderedSwRfb; */
 
 	ASSERT(prSwRfb);
 	ASSERT(prReturnedQue);
+	ASSERT(prSwRfb->prRxStatus);
 	ASSERT(prSwRfb->pvHeader);
+
+	prRxStatus = prSwRfb->prRxStatus;
 
 	prBarCtrlFrame = (struct CTRL_BAR_FRAME *) prSwRfb->pvHeader;
 
@@ -3956,34 +3414,59 @@ void qmProcessBarFrame(IN struct ADAPTER *prAdapter,
 		return;
 	}
 
-	qmHandleRxReorderWinShift(prAdapter, prSwRfb->ucStaRecIdx,
-		prSwRfb->ucTid, prSwRfb->u2SSN, prReturnedQue);
-}
-
-/**
- * To avoid printing every fall behind drop msdu overwhelming the output buffer,
- * log only start and end SN by checking whether there is gap between current
- * dropping SN and the last dropped SN.
- */
-static void qmLogDropFallBehind(IN struct ADAPTER *prAdapter,
-		IN struct RX_BA_ENTRY *prReorderQueParm,
-		uint8_t ucTid, uint32_t u4BarSSN,
-		uint32_t u4SeqNo, uint32_t u4WinStart, uint32_t u4WinEnd)
-{
-	uint16_t u2LastDrop = prReorderQueParm->u2LastFallBehindDropSN;
-	uint16_t u2DropGap = (u4SeqNo - u2LastDrop) & MAX_SEQ_NO;
-
-	prReorderQueParm->u2LastFallBehindDropSN = u4SeqNo;
-
-	if (u2DropGap <= 1)
+	/* Check whether the STA_REC is activated */
+	prSwRfb->prStaRec = cnmGetStaRecByIndex(prAdapter,
+		prSwRfb->ucStaRecIdx);
+	prStaRec = prSwRfb->prStaRec;
+	if (prStaRec == NULL) {
+		/* ASSERT(prStaRec); */
 		return;
+	}
+#if 0
+	if (!(prStaRec->fgIsValid)) {
+		/* TODO: (Tehuang) Handle the Host-FW sync issue. */
+		DbgPrint("QM: (Warning) BAR for an invalid STA_REC\n");
+		/* ASSERT(0); */
+		return;
+	}
+#endif
 
-	DBGLOG(RX, INFO,
-	       "QM:(D)[%u](~%u)(%u~){%u,%u} BAR SSN:%u/%u total:%lu",
-	       ucTid, u2LastDrop, u4SeqNo,
-	       u4WinStart, u4WinEnd,
-	       IS_BAR_SSN_VALID(prReorderQueParm->u2BarSSN) ? 1 : 0, u4BarSSN,
-	       RX_GET_CNT(&prAdapter->rRxCtrl, RX_REORDER_BEHIND_DROP_COUNT));
+	/* Check whether the BA agreement exists */
+	prReorderQueParm = ((
+		prStaRec->aprRxReorderParamRefTbl)[prSwRfb->ucTid]);
+	if (!prReorderQueParm) {
+		/* TODO: (Tehuang) Handle the Host-FW sync issue. */
+		DBGLOG(QM, WARN,
+			"QM: (Warning) BAR for a NULL ReorderQueParm\n");
+		/* ASSERT(0); */
+		return;
+	}
+
+	u4SSN = (uint32_t) (prSwRfb->u2SSN);
+	prReorderQue = &(prReorderQueParm->rReOrderQue);
+	u4WinStart = (uint32_t) (prReorderQueParm->u2WinStart);
+	u4WinEnd = (uint32_t) (prReorderQueParm->u2WinEnd);
+
+	if (qmCompareSnIsLessThan(u4WinStart, u4SSN)) {
+		prReorderQueParm->u2WinStart = (uint16_t) u4SSN;
+		prReorderQueParm->u2WinEnd =
+			((prReorderQueParm->u2WinStart) +
+			(prReorderQueParm->u2WinSize) - 1) % MAX_SEQ_NO_COUNT;
+#if CFG_SUPPORT_RX_AMSDU
+		/* RX reorder for one MSDU in AMSDU issue */
+		prReorderQueParm->u8LastAmsduSubIdx = RX_PAYLOAD_FORMAT_MSDU;
+#endif
+		DBGLOG(QM, TRACE,
+			"QM:(BAR)[%d](%u){%hu,%hu}\n",
+			prSwRfb->ucTid, u4SSN,
+			prReorderQueParm->u2WinStart,
+			prReorderQueParm->u2WinEnd);
+		qmPopOutDueToFallAhead(prAdapter, prReorderQueParm,
+			prReturnedQue);
+	} else {
+		DBGLOG(QM, TRACE, "QM:(BAR)(%d)(%u){%u,%u}\n",
+			prSwRfb->ucTid, u4SSN, u4WinStart, u4WinEnd);
+	}
 }
 
 void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
@@ -3991,40 +3474,22 @@ void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 	IN struct RX_BA_ENTRY *prReorderQueParm,
 	OUT struct QUE *prReturnedQue)
 {
+	struct QUE *prReorderQue;
+
 	uint32_t u4SeqNo;
 	uint32_t u4WinStart;
 	uint32_t u4WinEnd;
-	uint32_t u4BarSSN;
 
 	/* Start to reorder packets */
 	u4SeqNo = (uint32_t) (prSwRfb->u2SSN);
+	prReorderQue = &(prReorderQueParm->rReOrderQue);
 	u4WinStart = (uint32_t) (prReorderQueParm->u2WinStart);
 	u4WinEnd = (uint32_t) (prReorderQueParm->u2WinEnd);
-	u4BarSSN = (uint32_t) (prReorderQueParm->u2BarSSN) & MAX_SEQ_NO;
 
 	/* Debug */
-	DBGLOG(RX, TEMP, "QM:ipid=%d(R)[%u](%u){%u,%u}\n",
-		GLUE_GET_PKT_IP_ID(prSwRfb->pvPacket), prSwRfb->ucTid,
+	DBGLOG_LIMITED(QM, LOUD, "QM:(R)[%u](%u){%u,%u}\n", prSwRfb->ucTid,
 		u4SeqNo, u4WinStart, u4WinEnd);
 
-	if (prReorderQueParm->fgNoDrop) {
-		if (!qmCompareSnIsLessThan(u4SeqNo,
-			prReorderQueParm->u2WinStart)) {
-			/* Fall behind SSN pkts started to Fall within
-			 * StartWin
-			 */
-			prReorderQueParm->u4SNOverlapCount++;
-			if (prReorderQueParm->u4SNOverlapCount > 10) {
-				/*  Set threshold as 10 to make sure
-				 *  the SSN is really falling within StartWin
-				 */
-				prReorderQueParm->u4SNOverlapCount = 0;
-				prReorderQueParm->fgNoDrop = FALSE;
-				DBGLOG(QM, INFO, "NO drop = FALSE, [%d][%d]\n",
-					u4SeqNo, prReorderQueParm->u2WinStart);
-			}
-		}
-	}
 	/* Case 1: Fall within */
 	if			/* 0 - start - sn - end - 4095 */
 	(((u4WinStart <= u4SeqNo) && (u4SeqNo <= u4WinEnd))
@@ -4032,30 +3497,14 @@ void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 	    || ((u4WinEnd < u4WinStart) && (u4WinStart <= u4SeqNo))
 	    /* 0 - sn - end - start - 4095 */
 	    || ((u4SeqNo <= u4WinEnd) && (u4WinEnd < u4WinStart))) {
-		DBGLOG(RX, TEMP, "RxPkt=%p seq=%d fall within\n",
-			prSwRfb, u4SeqNo);
-
-#if CFG_SUPPORT_RX_OOR_BAR
-		if (IS_BAR_SSN_VALID(prReorderQueParm->u2BarSSN) &&
-		    (u4SeqNo == u4BarSSN || SEQ_SMALLER(u4BarSSN, u4SeqNo))) {
-			prReorderQueParm->u2BarSSN = 0;
-			prReorderQueParm->u2LastRcvdSN = 0;
-			DBGLOG(RX, INFO,
-				"Clear BAR SSN, SN %d >= u4BarSSN %d received\n",
-				u4SeqNo, u4BarSSN);
-		}
-		prReorderQueParm->u2LastRcvdSN = u4SeqNo;
-#endif /* CFG_SUPPORT_RX_OOR_BAR */
 
 		qmInsertFallWithinReorderPkt(prAdapter, prSwRfb,
 					     prReorderQueParm, prReturnedQue);
 
 #if QM_RX_WIN_SSN_AUTO_ADVANCING
 		if (prReorderQueParm->fgIsWaitingForPktWithSsn) {
-			/* Let the first received packet
-			 * pass the reorder check
-			 */
-			DBGLOG(RX, TEMP, "QM:(A)[%d](%u){%u,%u}\n",
+			/* Let the first received packet pass the reorder check */
+			DBGLOG(QM, LOUD, "QM:(A)[%d](%u){%u,%u}\n",
 				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd);
 
 			prReorderQueParm->u2WinStart = (uint16_t) u4SeqNo;
@@ -4092,9 +3541,6 @@ void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 		uint16_t u2Delta, u2BeforeWinEnd;
 		uint32_t u4BeforeCount, u4MissingCount;
 
-		DBGLOG(RX, TEMP, "RxPkt=%p seq=%d fall ahead\n",
-			prSwRfb, u4SeqNo);
-
 #if QM_RX_WIN_SSN_AUTO_ADVANCING
 		if (prReorderQueParm->fgIsWaitingForPktWithSsn)
 			prReorderQueParm->fgIsWaitingForPktWithSsn = FALSE;
@@ -4108,8 +3554,8 @@ void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 		/* Advance the window after inserting a new tail */
 		prReorderQueParm->u2WinEnd = (uint16_t) u4SeqNo;
 		prReorderQueParm->u2WinStart =
-			(((prReorderQueParm->u2WinEnd) + MAX_SEQ_NO_COUNT -
-			prReorderQueParm->u2WinSize + 1) %
+			(((prReorderQueParm->u2WinEnd) -
+			(prReorderQueParm->u2WinSize) + MAX_SEQ_NO_COUNT + 1) %
 			MAX_SEQ_NO_COUNT);
 #if CFG_SUPPORT_RX_AMSDU
 		/* RX reorder for one MSDU in AMSDU issue */
@@ -4131,74 +3577,38 @@ void qmInsertReorderPkt(IN struct ADAPTER *prAdapter,
 
 		RX_ADD_CNT(&prAdapter->rRxCtrl, RX_DATA_REORDER_MISS_COUNT,
 			u4MissingCount);
-		/* If the SSN jump over 1024,
-		  *  we consider it as an abnormal jump and
-		  *  temporally reserve the fall behind packets until
-		  *  the pkt SSN is really falling within StartWin
-		  */
-		if (u2Delta > QUARTER_SEQ_NO_COUNT) {
-			prReorderQueParm->fgNoDrop = TRUE;
-			prReorderQueParm->u4SNOverlapCount = 0;
-			DBGLOG_LIMITED(QM, INFO,
-				"QM: SSN jump over 1024:[%d]\n", u2Delta);
-		}
-		DBGLOG(RX, TEMP, "QM: Miss Count:[%lu]\n",
-			RX_GET_CNT(&prAdapter->rRxCtrl,
-			RX_DATA_REORDER_MISS_COUNT));
 	}
 	/* Case 3: Fall behind */
 	else {
-#if CFG_SUPPORT_RX_OOR_BAR
-		if (IS_BAR_SSN_VALID(prReorderQueParm->u2BarSSN) &&
-		    SEQ_SMALLER(u4SeqNo, u4BarSSN) &&
-		    (u4SeqNo == prReorderQueParm->u2LastRcvdSN || /* AMSDU */
-		     SEQ_SMALLER(prReorderQueParm->u2LastRcvdSN, u4SeqNo))) {
-			qmPopOutReorderPkt(prAdapter, prSwRfb,
-				prReturnedQue, RX_DATA_REORDER_BEHIND_COUNT);
-			DBGLOG(RX, TRACE,
-				"QM: Data after BAR:[%d](%d){%d,%d} total:%lu",
-				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd,
-				RX_GET_CNT(&prAdapter->rRxCtrl,
-				RX_DATA_REORDER_BEHIND_COUNT));
-			return;
-		}
-#endif /* CFG_SUPPORT_RX_OOR_BAR */
-
 #if CFG_SUPPORT_LOWLATENCY_MODE || CFG_SUPPORT_OSHARE
-		if (qmIsNoDropPacket(prAdapter, prSwRfb) ||
-			prReorderQueParm->fgNoDrop) {
+		if (qmIsNoDropPacket(prAdapter, prSwRfb)) {
+			DBGLOG(QM, LOUD, "QM: No drop packet:[%d](%d){%d,%d}\n",
+				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd);
+
 			qmPopOutReorderPkt(prAdapter, prSwRfb,
 				prReturnedQue, RX_DATA_REORDER_BEHIND_COUNT);
-			DBGLOG(RX, TEMP,
-				"QM: No drop packet:[%d](%d){%d,%d} total:%lu\n",
-				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd,
-				RX_GET_CNT(&prAdapter->rRxCtrl,
-					RX_DATA_REORDER_BEHIND_COUNT));
 			return;
 		}
 #endif /* CFG_SUPPORT_LOWLATENCY_MODE */
 
 #if QM_RX_WIN_SSN_AUTO_ADVANCING && QM_RX_INIT_FALL_BEHIND_PASS
 		if (prReorderQueParm->fgIsWaitingForPktWithSsn) {
-			qmPopOutReorderPkt(prAdapter, prSwRfb, prReturnedQue,
-				RX_DATA_REORDER_BEHIND_COUNT);
-			DBGLOG(RX, TEMP, "QM:(P)[%u](%u){%u,%u} total:%lu\n",
-				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd,
-				RX_GET_CNT(&prAdapter->rRxCtrl,
-					RX_DATA_REORDER_BEHIND_COUNT));
+			DBGLOG(QM, LOUD, "QM:(P)[%d](%u){%u,%u}\n",
+				prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd);
+			qmPopOutReorderPkt(prAdapter, prSwRfb, prReturnedQue, RX_DATA_REORDER_BEHIND_COUNT);
 			return;
 		}
 #endif
 
 		/* An erroneous packet */
+		DBGLOG(QM, LOUD, "QM:(D)[%d](%u){%u,%u}\n",
+			prSwRfb->ucTid, u4SeqNo, u4WinStart, u4WinEnd);
 		prSwRfb->eDst = RX_PKT_DESTINATION_NULL;
 		qmPopOutReorderPkt(prAdapter, prSwRfb, prReturnedQue,
-			RX_REORDER_BEHIND_DROP_COUNT);
-
-		qmLogDropFallBehind(prAdapter, prReorderQueParm,
-		       prSwRfb->ucTid, u4BarSSN, u4SeqNo, u4WinStart, u4WinEnd);
+			RX_DATA_REORDER_BEHIND_COUNT);
 		return;
 	}
+
 }
 
 void qmInsertFallWithinReorderPkt(IN struct ADAPTER *prAdapter,
@@ -4208,6 +3618,7 @@ void qmInsertFallWithinReorderPkt(IN struct ADAPTER *prAdapter,
 {
 	struct SW_RFB *prExaminedQueuedSwRfb;
 	struct QUE *prReorderQue;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	uint8_t u8AmsduSubframeIdx; /* RX reorder for one MSDU in AMSDU issue */
 
 	ASSERT(prSwRfb);
@@ -4218,7 +3629,9 @@ void qmInsertFallWithinReorderPkt(IN struct ADAPTER *prAdapter,
 	prExaminedQueuedSwRfb = (struct SW_RFB *) QUEUE_GET_HEAD(
 		prReorderQue);
 
-	u8AmsduSubframeIdx = prSwRfb->ucPayloadFormat;
+	prRxStatus = prSwRfb->prRxStatus;
+	u8AmsduSubframeIdx = HAL_RX_STATUS_GET_PAYLOAD_FORMAT(
+		prRxStatus);
 
 	/* There are no packets queued in the Reorder Queue */
 	if (prExaminedQueuedSwRfb == NULL) {
@@ -4273,12 +3686,6 @@ void qmInsertFallWithinReorderPkt(IN struct ADAPTER *prAdapter,
 				qmPopOutReorderPkt(prAdapter,
 					prSwRfb, prReturnedQue,
 					RX_DUPICATE_DROP_COUNT);
-				DBGLOG(RX, TEMP,
-					"seq=%d dup drop total:%lu\n",
-					prSwRfb->u2SSN,
-					RX_GET_CNT(&prAdapter->rRxCtrl,
-						RX_DUPICATE_DROP_COUNT));
-				LINK_QUALITY_COUNT_DUP(prAdapter, prSwRfb);
 				return;
 			}
 
@@ -4330,6 +3737,7 @@ void qmInsertFallWithinReorderPkt(IN struct ADAPTER *prAdapter,
 		}
 
 		prReorderQue->u4NumElem++;
+
 	}
 
 }
@@ -4349,6 +3757,7 @@ void qmInsertFallAheadReorderPkt(IN struct ADAPTER *prAdapter,
 	prReorderQueParm->fgIsAmsduDuplicated = FALSE;
 #endif
 	prReorderQue = &(prReorderQueParm->rReOrderQue);
+
 	/* There are no packets queued in the Reorder Queue */
 	if (QUEUE_IS_EMPTY(prReorderQue)) {
 		((struct QUE_ENTRY *) prSwRfb)->prPrev = NULL;
@@ -4363,6 +3772,7 @@ void qmInsertFallAheadReorderPkt(IN struct ADAPTER *prAdapter,
 	}
 	prReorderQue->prTail = (struct QUE_ENTRY *) prSwRfb;
 	prReorderQue->u4NumElem++;
+
 }
 
 void qmPopOutReorderPkt(IN struct ADAPTER *prAdapter,
@@ -4392,6 +3802,7 @@ void qmPopOutReorderPkt(IN struct ADAPTER *prAdapter,
 			struct SW_RFB *);
 	}
 #endif
+
 	RX_ADD_CNT(&prAdapter->rRxCtrl, eRxCounter, u4PktCnt);
 }
 
@@ -4403,6 +3814,7 @@ void qmPopOutDueToFallWithin(IN struct ADAPTER *prAdapter,
 	struct QUE *prReorderQue;
 	u_int8_t fgDequeuHead, fgMissing;
 	OS_SYSTIME rCurrentTime, *prMissTimeout;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	/* RX reorder for one MSDU in AMSDU issue */
 	uint8_t fgIsAmsduSubframe;
 
@@ -4429,7 +3841,9 @@ void qmPopOutDueToFallWithin(IN struct ADAPTER *prAdapter,
 		fgDequeuHead = FALSE;
 
 		/* RX reorder for one MSDU in AMSDU issue */
-		fgIsAmsduSubframe = prReorderedSwRfb->ucPayloadFormat;
+		prRxStatus = prReorderedSwRfb->prRxStatus;
+		fgIsAmsduSubframe = HAL_RX_STATUS_GET_PAYLOAD_FORMAT(
+			prRxStatus);
 #if CFG_SUPPORT_RX_AMSDU
 		/* If SN + 1 come and last frame is first or middle,
 		 * update winstart
@@ -4483,7 +3897,7 @@ void qmPopOutDueToFallWithin(IN struct ADAPTER *prAdapter,
 				prReorderQueParm->u2FirstBubbleSn =
 					prReorderQueParm->u2WinStart;
 
-				DBGLOG(RX, TEMP,
+				DBGLOG(QM, TRACE,
 					"QM:(Bub Timer) STA[%u] TID[%u] BubSN[%u] Win{%d, %d}\n",
 					prReorderQueParm->ucStaRecIdx,
 					prReorderedSwRfb->ucTid,
@@ -4498,7 +3912,7 @@ void qmPopOutDueToFallWithin(IN struct ADAPTER *prAdapter,
 				prAdapter->u4QmRxBaMissTimeout
 				))) {
 
-				DBGLOG(RX, TEMP,
+				DBGLOG(QM, TRACE,
 					"QM:RX BA Timout Next Tid %d SSN %d\n",
 					prReorderQueParm->ucTid,
 					prReorderedSwRfb->u2SSN);
@@ -4531,14 +3945,12 @@ void qmPopOutDueToFallWithin(IN struct ADAPTER *prAdapter,
 					NULL;
 			}
 			prReorderQue->u4NumElem--;
-			qmPopOutReorderPkt(prAdapter, prReorderedSwRfb,
-				prReturnedQue, RX_DATA_REORDER_WITHIN_COUNT);
-			DBGLOG(RX, TEMP, "QM: [%d] %d (%d) within total:%lu\n",
+			DBGLOG(QM, LOUD, "QM: [%d] %d (%d)\n",
 				prReorderQueParm->ucTid,
 				prReorderedSwRfb->u2PacketLen,
-				prReorderedSwRfb->u2SSN,
-				RX_GET_CNT(&prAdapter->rRxCtrl,
-					RX_DATA_REORDER_WITHIN_COUNT));
+				prReorderedSwRfb->u2SSN);
+			qmPopOutReorderPkt(prAdapter, prReorderedSwRfb,
+				prReturnedQue, RX_DATA_REORDER_WITHIN_COUNT);
 		}
 	}
 
@@ -4563,6 +3975,7 @@ void qmPopOutDueToFallAhead(IN struct ADAPTER *prAdapter,
 	struct SW_RFB *prReorderedSwRfb;
 	struct QUE *prReorderQue;
 	u_int8_t fgDequeuHead;
+	struct HW_MAC_RX_DESC *prRxStatus;
 	uint8_t fgIsAmsduSubframe;/* RX reorder for one MSDU in AMSDU issue */
 
 	prReorderQue = &(prReorderQueParm->rReOrderQue);
@@ -4578,7 +3991,9 @@ void qmPopOutDueToFallAhead(IN struct ADAPTER *prAdapter,
 		fgDequeuHead = FALSE;
 
 		/* RX reorder for one MSDU in AMSDU issue */
-		fgIsAmsduSubframe = prReorderedSwRfb->ucPayloadFormat;
+		prRxStatus = prReorderedSwRfb->prRxStatus;
+		fgIsAmsduSubframe =
+			HAL_RX_STATUS_GET_PAYLOAD_FORMAT(prRxStatus);
 #if CFG_SUPPORT_RX_AMSDU
 		/* If SN + 1 come and last frame is first or middle,
 		 * update winstart
@@ -4642,7 +4057,7 @@ void qmPopOutDueToFallAhead(IN struct ADAPTER *prAdapter,
 				prReorderQueParm->u2FirstBubbleSn =
 					prReorderQueParm->u2WinStart;
 
-				DBGLOG(RX, TEMP,
+				DBGLOG(QM, TRACE,
 					"QM:(Bub Timer) STA[%u] TID[%u] BubSN[%u] Win{%d, %d}\n",
 					prReorderQueParm->ucStaRecIdx,
 					prReorderedSwRfb->ucTid,
@@ -4666,14 +4081,13 @@ void qmPopOutDueToFallAhead(IN struct ADAPTER *prAdapter,
 				prNext)->prPrev = NULL;
 			}
 			prReorderQue->u4NumElem--;
+			DBGLOG_LIMITED(QM, TRACE, "QM: [%d] %d (%d)\n",
+				       prReorderQueParm->ucTid,
+				       prReorderedSwRfb->u2PacketLen,
+				       prReorderedSwRfb->u2SSN);
+
 			qmPopOutReorderPkt(prAdapter, prReorderedSwRfb,
 				prReturnedQue, RX_DATA_REORDER_AHEAD_COUNT);
-			DBGLOG(RX, TEMP, "QM: [%u] %u (%u) ahead total:%lu\n",
-				prReorderQueParm->ucTid,
-				prReorderedSwRfb->u2PacketLen,
-				prReorderedSwRfb->u2SSN,
-				RX_GET_CNT(&prAdapter->rRxCtrl,
-					RX_DATA_REORDER_WITHIN_COUNT));
 		}
 	}
 
@@ -4747,8 +4161,6 @@ void qmHandleEventCheckReorderBubble(IN struct ADAPTER *prAdapter,
 
 	prReorderQue = &(prReorderQueParm->rReOrderQue);
 
-	RX_DIRECT_REORDER_LOCK(prAdapter, 0);
-
 	if (QUEUE_IS_EMPTY(prReorderQue)) {
 		prReorderQueParm->fgHasBubble = FALSE;
 
@@ -4756,7 +4168,6 @@ void qmHandleEventCheckReorderBubble(IN struct ADAPTER *prAdapter,
 			"QM:(Bub Check Cancel) STA[%u] TID[%u], Bubble has been filled\n",
 			prReorderQueParm->ucStaRecIdx, prReorderQueParm->ucTid);
 
-		RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
 		return;
 	}
 
@@ -4772,8 +4183,6 @@ void qmHandleEventCheckReorderBubble(IN struct ADAPTER *prAdapter,
 			prReorderQue);
 
 		prReorderQueParm->u2WinStart = prReorderedSwRfb->u2SSN + 1;
-		if (prReorderQueParm->u2WinStart >= MAX_SEQ_NO_COUNT)
-			prReorderQueParm->u2WinStart %= MAX_SEQ_NO_COUNT;
 		prReorderQueParm->u2WinEnd =
 			((prReorderQueParm->u2WinStart) +
 			(prReorderQueParm->u2WinSize) - 1) % MAX_SEQ_NO_COUNT;
@@ -4785,17 +4194,13 @@ void qmHandleEventCheckReorderBubble(IN struct ADAPTER *prAdapter,
 			prReturnedQue);
 
 		DBGLOG(QM, TRACE,
-			"QM:(Bub Flush) STA[%u] TID[%u] BubSN[%u] Win{%u, %u}\n",
+			"QM:(Bub Flush) STA[%u] TID[%u] BubSN[%u] Win{%d, %d}\n",
 			prReorderQueParm->ucStaRecIdx,
 			prReorderQueParm->ucTid,
 			prReorderQueParm->u2FirstBubbleSn,
 			prReorderQueParm->u2WinStart,
 			prReorderQueParm->u2WinEnd);
 
-		prReorderQueParm->fgHasBubble = FALSE;
-		RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
-
-		/* process prReturnedQue after unlock prReturnedQue */
 		if (QUEUE_IS_NOT_EMPTY(prReturnedQue)) {
 			QM_TX_SET_NEXT_MSDU_INFO(
 				(struct SW_RFB *) QUEUE_GET_TAIL(
@@ -4824,24 +4229,24 @@ void qmHandleEventCheckReorderBubble(IN struct ADAPTER *prAdapter,
 				prReorderQueParm->ucStaRecIdx,
 				prReorderQueParm->ucTid);
 		}
+
+		prReorderQueParm->fgHasBubble = FALSE;
 	}
 	/* First bubble has been filled but others exist */
 	else {
 		prReorderQueParm->u2FirstBubbleSn =
 			prReorderQueParm->u2WinStart;
+		cnmTimerStartTimer(prAdapter,
+			&(prReorderQueParm->rReorderBubbleTimer),
+			prAdapter->u4QmRxBaMissTimeout);
 
 		DBGLOG(QM, TRACE,
-			"QM:(Bub Timer) STA[%u] TID[%u] BubSN[%u] Win{%u, %u}\n",
+			"QM:(Bub Timer) STA[%u] TID[%u] BubSN[%u] Win{%d, %d}\n",
 			prReorderQueParm->ucStaRecIdx,
 			prReorderQueParm->ucTid,
 			prReorderQueParm->u2FirstBubbleSn,
 			prReorderQueParm->u2WinStart,
 			prReorderQueParm->u2WinEnd);
-		RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
-
-		cnmTimerStartTimer(prAdapter,
-			&(prReorderQueParm->rReorderBubbleTimer),
-			prAdapter->u4QmRxBaMissTimeout);
 	}
 
 	prMissTimeout = &g_arMissTimeout[
@@ -4943,11 +4348,6 @@ void qmHandleEventTxAddBa(IN struct ADAPTER *prAdapter,
 	prStaRec->u4MaxMpduLen = prEventTxAddBa->u4MaxMpduLen;
 	prStaRec->u4MinMpduLen = prEventTxAddBa->u4MinMpduLen;
 
-#if CFG_MTK_MDDP_SUPPORT
-	if (mddpIsSupportMcifWifi())
-		mddpNotifyDrvTxd(prAdapter, prStaRec, TRUE);
-#endif
-
 	DBGLOG(QM, INFO,
 	       "QM:Event +TxBa bitmap[0x%x] count[%u] MaxLen[%u] MinLen[%u]\n",
 	       prStaRec->ucAmsduEnBitmap, prStaRec->ucMaxMpduCount,
@@ -5015,6 +4415,7 @@ void qmHandleEventRxAddBa(IN struct ADAPTER *prAdapter,
 		 * the free-to-use BA entry
 		 */
 		DBGLOG(QM, ERROR, "QM: (Error) qmAddRxBaEntry() failure\n");
+		ASSERT(0);
 	}
 
 }
@@ -5087,11 +4488,11 @@ u_int8_t qmAddRxBaEntry(IN struct ADAPTER *prAdapter,
 
 	ASSERT(ucStaRecIdx < CFG_STA_REC_NUM);
 
-	if (ucStaRecIdx >= CFG_STA_REC_NUM || ucTid >= CFG_RX_MAX_BA_TID_NUM) {
+	if (ucStaRecIdx >= CFG_STA_REC_NUM) {
 		/* Invalid STA_REC index, discard the event packet */
 		DBGLOG(QM, WARN,
-			"QM: (WARNING) RX ADDBA Event for a invalid ucStaRecIdx = %d, ucTID=%d\n",
-			ucStaRecIdx, ucTid);
+			"QM: (WARNING) RX ADDBA Event for a invalid ucStaRecIdx = %d\n",
+			ucStaRecIdx);
 		return FALSE;
 	}
 
@@ -5146,7 +4547,7 @@ u_int8_t qmAddRxBaEntry(IN struct ADAPTER *prAdapter,
 		g_arMissTimeout[ucStaRecIdx][ucTid] = 0;
 
 		DBGLOG(QM, INFO,
-			"QM: +RxBA(STA=%u TID=%u WinStart=%u WinEnd=%u WinSize=%u)\n",
+			"QM: +RxBA(STA=%d TID=%d WinStart=%d WinEnd=%d WinSize=%d)\n",
 			ucStaRecIdx, ucTid, prRxBaEntry->u2WinStart,
 			prRxBaEntry->u2WinEnd,
 			prRxBaEntry->u2WinSize);
@@ -5170,7 +4571,7 @@ void qmDelRxBaEntry(IN struct ADAPTER *prAdapter,
 	IN uint8_t ucStaRecIdx, IN uint8_t ucTid,
 	IN u_int8_t fgFlushToHost)
 {
-	struct RX_BA_ENTRY *prRxBaEntry = NULL;
+	struct RX_BA_ENTRY *prRxBaEntry;
 	struct STA_RECORD *prStaRec;
 	struct SW_RFB *prFlushedPacketList = NULL;
 	struct QUE_MGT *prQM = &prAdapter->rQM;
@@ -5188,9 +4589,7 @@ void qmDelRxBaEntry(IN struct ADAPTER *prAdapter,
 #endif
 
 	/* Remove the BA entry for the same (STA, TID) tuple if it exists */
-	if (ucTid < CFG_RX_MAX_BA_TID_NUM) {
-		prRxBaEntry = prStaRec->aprRxReorderParamRefTbl[ucTid];
-	}
+	prRxBaEntry = prStaRec->aprRxReorderParamRefTbl[ucTid];
 
 	if (prRxBaEntry) {
 
@@ -5262,23 +4661,6 @@ void qmDelRxBaEntry(IN struct ADAPTER *prAdapter,
 			prRxCtrl->u4QueuedCnt, prRxCtrl->u4DequeuedCnt);
 	}
 #endif
-}
-
-u_int8_t qmIsIndependentPkt(IN struct SW_RFB *prSwRfb)
-{
-	struct sk_buff *skb = NULL;
-
-	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
-		return FALSE;
-
-	skb = (struct sk_buff *)(prSwRfb->pvPacket);
-	if (!skb)
-		return FALSE;
-
-	if (GLUE_GET_INDEPENDENT_PKT(skb))
-		return TRUE;
-
-	return FALSE;
 }
 
 void mqmParseAssocReqWmmIe(IN struct ADAPTER *prAdapter,
@@ -5432,7 +4814,6 @@ void mqmParseAssocRspWmmIe(IN uint8_t *pucIE,
 			if (IE_LEN(pucIE) != 24)
 				break;	/* WMM Info IE with a wrong length */
 			prStaRec->fgIsQoS = TRUE;
-			prStaRec->fgIsWmmSupported = TRUE;
 			prStaRec->fgIsUapsdSupported =
 				!!(prWmmParam->ucQosInfo & WMM_QOS_INFO_UAPSD);
 			for (eAci = ACI_BE; eAci < ACI_NUM; eAci++)
@@ -5545,19 +4926,10 @@ void mqmProcessAssocRsp(IN struct ADAPTER *prAdapter,
 			}
 		}
 		/* Parse AC parameters and write to HW CRs */
-		if (prStaRec->fgIsQoS) {
+		if ((prStaRec->fgIsQoS)
+			&& (prStaRec->eStaType == STA_TYPE_LEGACY_AP)) {
 			mqmParseEdcaParameters(prAdapter, prSwRfb, pucIEStart,
 				u2IELength, TRUE);
-#if (CFG_SUPPORT_802_11AX == 1)
-			if (fgEfuseCtrlAxOn == 1) {
-				mqmParseMUEdcaParams(prAdapter, prSwRfb,
-				pucIEStart, u2IELength, TRUE);
-			}
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-			/*TODO */
-#endif
-
 #if ARP_MONITER_ENABLE
 			qmResetArpDetect();
 #endif
@@ -5567,18 +4939,6 @@ void mqmProcessAssocRsp(IN struct ADAPTER *prAdapter,
 			prStaRec->fgIsQoS);
 		if (prStaRec->fgIsWmmSupported)
 			nicQmUpdateWmmParms(prAdapter, prStaRec->ucBssIndex);
-#if (CFG_SUPPORT_802_11AX == 1)
-		if (fgEfuseCtrlAxOn == 1) {
-		if (prStaRec->fgIsMuEdcaSupported ||
-			prAdapter->fgMuEdcaOverride) {
-			nicQmUpdateMUEdcaParams(prAdapter,
-				prStaRec->ucBssIndex);
-		}
-		}
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-		/*TODO */
-#endif
 	}
 }
 
@@ -5597,9 +4957,6 @@ void mqmProcessBcn(IN struct ADAPTER *prAdapter,
 {
 	struct BSS_INFO *prBssInfo;
 	u_int8_t fgNewParameter;
-#if (CFG_SUPPORT_802_11AX == 1)
-	u_int8_t fgNewMUEdca = FALSE;
-#endif
 	uint8_t i;
 
 	ASSERT(prAdapter);
@@ -5617,7 +4974,7 @@ void mqmProcessBcn(IN struct ADAPTER *prAdapter,
 			if (prBssInfo->eCurrentOPMode ==
 				OP_MODE_INFRASTRUCTURE &&
 			    prBssInfo->eConnectionState ==
-			    MEDIA_STATE_CONNECTED) {
+			    PARAM_MEDIA_STATE_CONNECTED) {
 				/* P2P client or AIS infra STA */
 				if (EQUAL_MAC_ADDR(prBssInfo->aucBSSID,
 					((struct WLAN_MAC_MGMT_HEADER *)
@@ -5628,17 +4985,6 @@ void mqmProcessBcn(IN struct ADAPTER *prAdapter,
 							prAdapter,
 							prSwRfb, pucIE,
 							u2IELength, FALSE);
-#if (CFG_SUPPORT_802_11AX == 1)
-				if (fgEfuseCtrlAxOn == 1) {
-				fgNewMUEdca = mqmParseMUEdcaParams(
-						prAdapter, prSwRfb, pucIE,
-						u2IELength, FALSE);
-					}
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-				/*TODO */
-#endif
-
 				}
 			}
 
@@ -5648,22 +4994,9 @@ void mqmProcessBcn(IN struct ADAPTER *prAdapter,
 					prBssInfo->ucBssIndex);
 				fgNewParameter = FALSE;
 			}
-#if (CFG_SUPPORT_802_11AX == 1)
-			if (fgEfuseCtrlAxOn == 1) {
-				if (fgNewMUEdca) {
-					nicQmUpdateMUEdcaParams(prAdapter,
-						prBssInfo->ucBssIndex);
-					fgNewMUEdca = FALSE;
-				}
-			}
-#endif
-#if (CFG_SUPPORT_802_11BE == 1)
-			/*TODO */
-#endif
-		}
-	}		/* end of IS_BSS_ACTIVE() */
+		}		/* end of IS_BSS_ACTIVE() */
+	}
 }
-
 
 u_int8_t mqmUpdateEdcaParameters(IN struct BSS_INFO	*prBssInfo,
 	IN uint8_t *pucIE, IN u_int8_t fgForceOverride)
@@ -5708,170 +5041,6 @@ u_int8_t mqmUpdateEdcaParameters(IN struct BSS_INFO	*prBssInfo,
 
 	return fgNewParameter;
 }
-
-#if (CFG_SUPPORT_802_11AX == 1)
-uint8_t mqmCompareMUEdcaParameters(
-	struct _IE_MU_EDCA_PARAM_T *prIeMUEdcaParam,
-	struct BSS_INFO *prBssInfo)
-{
-	struct _CMD_MU_EDCA_PARAMS_T *prBSSMUEdca;
-	struct _MU_AC_PARAM_RECORD_T *prMUAcParamInIE;
-	enum ENUM_WMM_ACI eAci;
-
-	/* Check Set Count */
-	if (prBssInfo->ucMUEdcaUpdateCnt !=
-		(prIeMUEdcaParam->ucMUQosInfo & WMM_QOS_INFO_PARAM_SET_CNT))
-		return FALSE;
-
-	for (eAci = 0; eAci < WMM_AC_INDEX_NUM; eAci++) {
-		prBSSMUEdca = &prBssInfo->arMUEdcaParams[eAci];
-		prMUAcParamInIE = &prIeMUEdcaParam->arMUAcParam[eAci];
-
-		/* ACM */
-		if (prBSSMUEdca->ucIsACMSet != ((prMUAcParamInIE->ucAciAifsn &
-			WMM_ACIAIFSN_ACM) ? TRUE : FALSE))
-			return FALSE;
-
-		/* AIFSN */
-		if (prBSSMUEdca->ucAifsn != (prMUAcParamInIE->ucAciAifsn &
-			WMM_ACIAIFSN_AIFSN))
-			return FALSE;
-
-		/* CW Max */
-		if (prBSSMUEdca->ucECWmax !=
-			((prMUAcParamInIE->ucEcw & WMM_ECW_WMAX_MASK)
-				>> WMM_ECW_WMAX_OFFSET))
-			return FALSE;
-
-		/* CW Min */
-		if (prBSSMUEdca->ucECWmin !=
-			(prMUAcParamInIE->ucEcw & WMM_ECW_WMIN_MASK))
-			return FALSE;
-
-		/* MU EDCA timer */
-		if (prBSSMUEdca->ucMUEdcaTimer !=
-			prMUAcParamInIE->ucMUEdcaTimer)
-			return FALSE;
-	}
-
-	return TRUE;
-}
-
-uint8_t mqmUpdateMUEdcaParams(struct BSS_INFO *prBssInfo,
-	uint8_t *pucIE, uint8_t fgForceOverride)
-{
-	struct _CMD_MU_EDCA_PARAMS_T *prBSSMUEdca;
-	struct _IE_MU_EDCA_PARAM_T *prIeMUEdcaParam;
-	struct _MU_AC_PARAM_RECORD_T *prMUAcParamInIE;
-	enum ENUM_WMM_ACI eAci;
-	uint8_t fgNewParameter = FALSE;
-
-	do {
-		if (IE_LEN(pucIE) != 14)
-			break;	/* MU EDCA Param IE with a wrong length */
-
-		prIeMUEdcaParam = (struct _IE_MU_EDCA_PARAM_T *) pucIE;
-
-		/*
-		 * Check the Parameter Set Count to determine whether
-		 * MU EDCA parameters have been changed
-		 */
-		if (!fgForceOverride) {
-			if (mqmCompareMUEdcaParameters(prIeMUEdcaParam,
-				prBssInfo)) {
-				fgNewParameter = FALSE;
-				break;
-			}
-		}
-
-		fgNewParameter = TRUE;
-		/* Update Parameter Set Count */
-		prBssInfo->ucMUEdcaUpdateCnt = (prIeMUEdcaParam->ucMUQosInfo &
-			WMM_QOS_INFO_PARAM_SET_CNT);
-		/* Update MU EDCA parameters to BSS structure */
-		for (eAci = 0; eAci < WMM_AC_INDEX_NUM; eAci++) {
-			prMUAcParamInIE = &(prIeMUEdcaParam->arMUAcParam[eAci]);
-			prBSSMUEdca = &prBssInfo->arMUEdcaParams[eAci];
-
-			prBSSMUEdca->ucECWmin = prMUAcParamInIE->ucEcw &
-							WMM_ECW_WMIN_MASK;
-			prBSSMUEdca->ucECWmax = (prMUAcParamInIE->ucEcw &
-							WMM_ECW_WMAX_MASK)
-							>> WMM_ECW_WMAX_OFFSET;
-			prBSSMUEdca->ucAifsn = (prMUAcParamInIE->ucAciAifsn &
-				WMM_ACIAIFSN_AIFSN);
-			prBSSMUEdca->ucIsACMSet = (prMUAcParamInIE->ucAciAifsn &
-				WMM_ACIAIFSN_ACM) ? TRUE : FALSE;
-			prBSSMUEdca->ucMUEdcaTimer =
-				prMUAcParamInIE->ucMUEdcaTimer;
-
-			DBGLOG(QM, INFO,
-				"BSS[%u]: eAci[%d] ACM[%d] Aifsn[%d],",
-				prBssInfo->ucBssIndex, eAci,
-				prBSSMUEdca->ucIsACMSet, prBSSMUEdca->ucAifsn);
-			DBGLOG(QM, INFO,
-				"ECWmin/max[%d/%d] NewParameter[%d]\n",
-				prBSSMUEdca->ucECWmin, prBSSMUEdca->ucECWmax,
-				fgNewParameter);
-
-		}
-	} while (FALSE);
-
-	return fgNewParameter;
-}
-
-uint8_t
-mqmParseMUEdcaParams(
-	struct ADAPTER *prAdapter,
-	struct SW_RFB *prSwRfb,
-	uint8_t *pucIE,
-	uint16_t u2IELength,
-	uint8_t fgForceOverride)
-{
-	struct STA_RECORD *prStaRec;
-	uint16_t u2Offset;
-	struct BSS_INFO *prBssInfo;
-	uint8_t fgNewParameter = FALSE;
-
-	DEBUGFUNC("mqmParseMUEdcaParams");
-
-	if (!prSwRfb)
-		return FALSE;
-
-	if (!pucIE)
-		return FALSE;
-
-	prStaRec = cnmGetStaRecByIndex(prAdapter, prSwRfb->ucStaRecIdx);
-	if (prStaRec == NULL)
-		return FALSE;
-
-	DBGLOG(QM, TRACE, "QM: (fgIsQoS=%d)\n", prStaRec->fgIsQoS);
-
-	if (IS_FEATURE_DISABLED(prAdapter->rWifiVar.ucQoS) ||
-		(!prStaRec->fgIsQoS))
-		return FALSE;
-
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, prStaRec->ucBssIndex);
-
-	/* Goal: Obtain the MU EDCA parameters */
-	IE_FOR_EACH(pucIE, u2IELength, u2Offset) {
-		switch (IE_ID(pucIE)) {
-		case ELEM_ID_RESERVED:
-			if (IE_ID_EXT(pucIE) == ELEM_EXT_ID_MU_EDCA_PARAM) {
-				prStaRec->fgIsMuEdcaSupported = TRUE;
-				fgNewParameter = mqmUpdateMUEdcaParams(
-					prBssInfo, pucIE, fgForceOverride);
-			}
-			break;
-		default:
-			break;
-		}
-	}
-
-	return fgNewParameter;
-}
-#endif
-
 
 /*----------------------------------------------------------------------------*/
 /*!
@@ -6075,10 +5244,6 @@ void mqmProcessScanResult(IN struct ADAPTER *prAdapter,
 	prStaRec->fgIsWmmSupported = FALSE;
 	prStaRec->fgIsUapsdSupported = FALSE;
 	prStaRec->fgIsQoS = FALSE;
-	prStaRec->fgIsMscsSupported = FALSE;
-#if (CFG_SUPPORT_802_11AX == 1)
-	prStaRec->fgIsMuEdcaSupported = FALSE;
-#endif
 
 	fgIsHtVht = FALSE;
 
@@ -6100,34 +5265,9 @@ void mqmProcessScanResult(IN struct ADAPTER *prAdapter,
 			prStaRec->fgSupportBTM =
 				!!((*(uint32_t *)(pucIE + 2)) &
 			BIT(ELEM_EXT_CAP_BSS_TRANSITION_BIT));
-#if CFG_TC10_FEATURE
-			prStaRec->fgSupportProxyARP =
-				!!((*(uint32_t *)(pucIE + 2)) &
-			BIT(ELEM_EXT_CAP_PROXY_ARP_BIT));
-
-			prStaRec->fgSupportTFS =
-				!!((*(uint32_t *)(pucIE + 2)) &
-			BIT(ELEM_EXT_CAP_TFS_BIT));
-
-			prStaRec->fgSupportWNMSleep =
-				!!((*(uint32_t *)(pucIE + 2)) &
-			BIT(ELEM_EXT_CAP_WNM_SLEEP_BIT));
-
-			prStaRec->fgSupportTIMBcast =
-				!!((*(uint32_t *)(pucIE + 2)) &
-			BIT(ELEM_EXT_CAP_TIM_BCAST_BIT));
-
-			prStaRec->fgSupportDMS =
-				!!((*(uint32_t *)(pucIE + 2)) &
-			BIT(ELEM_EXT_CAP_DMS_BIT));
 #endif
-#endif
-			prStaRec->fgIsMscsSupported = wlanCheckExtCapBit(
-				prStaRec, pucIE, ELEM_EXT_CAP_MSCS_BIT);
-			if (IS_FEATURE_DISABLED(
-				prAdapter->rWifiVar.ucCheckBeacon))
-				prStaRec->fgIsMscsSupported = TRUE;
 			break;
+
 		case ELEM_ID_WMM:
 			if ((WMM_IE_OUI_TYPE(pucIE) == VENDOR_OUI_TYPE_WMM) &&
 			    (!kalMemCmp(WMM_IE_OUI(pucIE), aucWfaOui, 3))) {
@@ -6199,18 +5339,6 @@ void mqmProcessScanResult(IN struct ADAPTER *prAdapter,
 
 	if (fgIsHtVht || prStaRec->fgIsWmmSupported)
 		prStaRec->fgIsQoS = TRUE;
-
-#if (CFG_SUPPORT_802_11AX == 1)
-	if (fgEfuseCtrlAxOn == 1) {
-		if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11AX)
-			prStaRec->fgIsQoS = TRUE;
-	}
-#endif
-
-#if (CFG_SUPPORT_802_11BE == 1)
-	if (prStaRec->ucDesiredPhyTypeSet & PHY_TYPE_SET_802_11BE)
-		prStaRec->fgIsQoS = TRUE;
-#endif
 }
 
 /*----------------------------------------------------------------------------*/
@@ -6658,8 +5786,7 @@ enum ENUM_FRAME_ACTION qmGetFrameAction(IN struct ADAPTER *prAdapter,
 	DEBUGFUNC("qmGetFrameAction");
 
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-	prStaRec = cnmGetStaRecByIndexWithoutInUseCheck(prAdapter,
-			ucStaRecIdx);
+	prStaRec = QM_GET_STA_REC_PTR_FROM_INDEX(prAdapter, ucStaRecIdx);
 
 	do {
 		/* 4 <1> Tx, if FORCE_TX is set */
@@ -6669,22 +5796,8 @@ enum ENUM_FRAME_ACTION qmGetFrameAction(IN struct ADAPTER *prAdapter,
 				eFrameAction = FRAME_ACTION_TX_PKT;
 				break;
 			}
-
-#if CFG_SUPPORT_NAN
-			if (prMsduInfo->ucTxToNafQueFlag == TRUE) {
-				eFrameAction = FRAME_ACTION_TX_PKT;
-				break;
-			}
-#endif
 		}
 		/* 4 <2> Drop, if BSS is inactive */
-		if (!prBssInfo) {
-			DBGLOG(QM, INFO,
-				"Drop packets (BSS is NULL)\n");
-			eFrameAction = FRAME_ACTION_DROP_PKT;
-			break;
-		}
-
 		if (!IS_BSS_ACTIVE(prBssInfo)) {
 			DBGLOG(QM, TRACE,
 				"Drop packets (BSS[%u] is INACTIVE)\n",
@@ -6742,6 +5855,7 @@ enum ENUM_FRAME_ACTION qmGetFrameAction(IN struct ADAPTER *prAdapter,
 				}
 			}
 		}
+
 	} while (FALSE);
 
 	/* <5> Resource CHECK! */
@@ -6799,53 +5913,26 @@ void qmHandleEventBssAbsencePresence(IN struct ADAPTER *prAdapter,
 	struct EVENT_BSS_ABSENCE_PRESENCE *prEventBssStatus;
 	struct BSS_INFO *prBssInfo;
 	u_int8_t fgIsNetAbsentOld;
-	struct GLUE_INFO *glue = prAdapter->prGlueInfo;
-	struct GL_HIF_INFO *hif = &glue->rHifInfo;
-	char *pos = NULL, *end = NULL;
-	char buf[512];
-	int i;
 
 	prEventBssStatus = (struct EVENT_BSS_ABSENCE_PRESENCE *) (
 		prEvent->aucBuffer);
 	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter,
 		prEventBssStatus->ucBssIndex);
-	if (!prBssInfo) {
-		DBGLOG(QM, INFO, "NAF:prBssInfo is NULL\n");
-		return;
-	}
-
 	fgIsNetAbsentOld = prBssInfo->fgIsNetAbsent;
 	prBssInfo->fgIsNetAbsent = prEventBssStatus->ucIsAbsent;
 	prBssInfo->ucBssFreeQuota = prEventBssStatus->ucBssFreeQuota;
 
+	DBGLOG(QM, INFO, "NAF=%d,%d,%d\n",
+		prEventBssStatus->ucBssIndex, prBssInfo->fgIsNetAbsent,
+		prBssInfo->ucBssFreeQuota);
+
 	if (!prBssInfo->fgIsNetAbsent) {
-		if (!prBssInfo->tmLastPresent)
-			prBssInfo->tmLastPresent = kalGetTimeTick();
 		/* ToDo:: QM_DBG_CNT_INC */
 		QM_DBG_CNT_INC(&(prAdapter->rQM), QM_DBG_CNT_27);
 	} else {
-		if (prBssInfo->tmLastPresent) {
-			prBssInfo->u4PresentTime = kalGetTimeTick() -
-				prBssInfo->tmLastPresent;
-			prBssInfo->tmLastPresent = 0;
-		}
 		/* ToDo:: QM_DBG_CNT_INC */
 		QM_DBG_CNT_INC(&(prAdapter->rQM), QM_DBG_CNT_28);
 	}
-
-	memset(buf, 0, sizeof(buf));
-	pos = buf;
-	end = pos + sizeof(buf);
-	for (i = 0; i < NUM_OF_TX_RING; ++i) {
-		pos += kalSnprintf(pos, end - pos, "[%u]",
-			hif->TxRing[i].u4UsedCnt);
-	}
-
-	DBGLOG(QM, INFO, "NAF:B=%d,A=%d,F=%d,P=%u used=%d %s\n",
-		prEventBssStatus->ucBssIndex, prBssInfo->fgIsNetAbsent,
-		prBssInfo->ucBssFreeQuota, prBssInfo->u4PresentTime,
-		hif->rTokenInfo.u4UsedCnt, buf);
-
 	/* From Absent to Present */
 	if ((fgIsNetAbsentOld) && (!prBssInfo->fgIsNetAbsent)) {
 		if (HAL_IS_TX_DIRECT(prAdapter))
@@ -6855,7 +5942,6 @@ void qmHandleEventBssAbsencePresence(IN struct ADAPTER *prAdapter,
 			prAdapter->rQM.fgForceReassign = TRUE;
 #endif
 			kalSetEvent(prAdapter->prGlueInfo);
-			kalSetTxEvent2Hif(prAdapter->prGlueInfo);
 		}
 	}
 }
@@ -7152,33 +6238,6 @@ uint32_t qmDumpQueueStatus(IN struct ADAPTER *prAdapter,
 		u4TotalBufferCount, u4TotalPageCount, u4CurBufferCount,
 		u4CurPageCount);
 
-	u4TotalBufferCount = 0;
-	u4TotalPageCount = 0;
-	u4CurBufferCount = 0;
-	u4CurPageCount = 0;
-	LOGBUF(pucBuf, u4Max, u4Len,
-		"------<Dump PLE QUEUE Status>------\n");
-
-	for (i = TC0_INDEX; i < TC_NUM; i++) {
-		LOGBUF(pucBuf, u4Max, u4Len,
-			"TC%u ResCount: Max[%02u/%03u] Free[%02u/%03u] PreUsed[%03u]\n",
-			i, prTxCtrl->rTc.au4MaxNumOfBuffer_PLE[i],
-			prTxCtrl->rTc.au4MaxNumOfPage_PLE[i],
-			prTxCtrl->rTc.au4FreeBufferCount_PLE[i],
-			prTxCtrl->rTc.au4FreePageCount_PLE[i],
-			prTxCtrl->rTc.au4PreUsedPageCount[i]);
-
-		u4TotalBufferCount += prTxCtrl->rTc.au4MaxNumOfBuffer_PLE[i];
-		u4TotalPageCount += prTxCtrl->rTc.au4MaxNumOfPage_PLE[i];
-		u4CurBufferCount += prTxCtrl->rTc.au4FreeBufferCount_PLE[i];
-		u4CurPageCount += prTxCtrl->rTc.au4FreePageCount_PLE[i];
-	}
-
-	LOGBUF(pucBuf, u4Max, u4Len,
-		"ToT ResCount: Max[%02u/%03u] Free[%02u/%03u]\n",
-		u4TotalBufferCount, u4TotalPageCount, u4CurBufferCount,
-		u4CurPageCount);
-
 	LOGBUF(pucBuf, u4Max, u4Len,
 		"---------------------------------\n");
 
@@ -7272,9 +6331,6 @@ uint32_t qmDumpQueueStatus(IN struct ADAPTER *prAdapter,
 
 	LOGBUF(pucBuf, u4Max, u4Len,
 		"---------------------------------\n");
-	if (prGlueInfo->rCmdQueue.u4NumElem > 0)
-		cmdBufDumpCmdQueue(&prGlueInfo->rCmdQueue,
-				"waiting Tx CMD queue");
 
 	return u4Len;
 }
@@ -7373,6 +6429,14 @@ mqmSendDelBaFrame(IN struct ADAPTER *prAdapter,
 		(STA_REC_INDEX_NOT_FOUND),
 		WLAN_MAC_HEADER_LEN, ACTION_DELBA_FRAME_LEN, NULL,
 		MSDU_RATE_MODE_AUTO);
+
+#if CFG_SUPPORT_802_11W
+	if (rsnCheckBipKeyInstalled(prAdapter, prStaRec)) {
+		DBGLOG(RSN, INFO, "Set MSDU_OPT_PROTECTED_FRAME\n");
+		nicTxConfigPktOption(prTxMsduInfo, MSDU_OPT_PROTECTED_FRAME,
+			TRUE);
+	}
+#endif
 
 	/* TID and fgIsInitiator are needed
 	 * when processing TX Done of the DELBA frame
@@ -8043,6 +7107,14 @@ void mqmHandleAddBaReq(IN struct ADAPTER *prAdapter,
 			mqmCallbackAddBaRspSent,
 			MSDU_RATE_MODE_AUTO);
 
+#if CFG_SUPPORT_802_11W
+		if (rsnCheckBipKeyInstalled(prAdapter, prStaRec)) {
+			DBGLOG(RSN, INFO, "Set MSDU_OPT_PROTECTED_FRAME\n");
+			nicTxConfigPktOption(prTxMsduInfo,
+				MSDU_OPT_PROTECTED_FRAME, TRUE);
+		}
+#endif
+
 		/* Note: prTxMsduInfo->ucTID is not used for transmitting the
 		 * ADDBA_RSP. However, when processing TX Done of this
 		 * ADDBA_RSP, the TID value is needed, so store the TID value
@@ -8213,39 +7285,16 @@ void qmDetectArpNoResponse(struct ADAPTER *prAdapter,
 	uint8_t *pucData = NULL;
 	uint16_t u2EtherType = 0;
 	int arpOpCode = 0;
-	struct BSS_INFO *prAisBssInfo = NULL;
 	struct WIFI_VAR *prWifiVar = NULL;
 	uint32_t uArpMonitorNumber;
-	uint32_t uArpMonitorRxPktNum;
-	struct net_device *prNetDev = NULL;
-	struct GLUE_INFO *prGlueInfo = NULL;
 
-	if (!prAdapter ||
-		!prAdapter->prGlueInfo ||
-		!prAdapter->prGlueInfo->prDevHandler) {
-		DBGLOG(QM, WARN, "Param is invalid\n");
-		return;
-	}
-	prGlueInfo = prAdapter->prGlueInfo;
-	prNetDev = prGlueInfo->prDevHandler;
-	prWifiVar = &prAdapter->rWifiVar;
-	uArpMonitorNumber = prWifiVar->uArpMonitorNumber;
-	uArpMonitorRxPktNum = prWifiVar->uArpMonitorRxPktNum;
-
-	if (uArpMonitorNumber == 0)
-		return;
-
-	/* We need to disable arp monitor in CTIA mode */
-	if (prAdapter->fgDisBcnLostDetection == TRUE)
+	if (!prAdapter)
 		return;
 
 	prStaRec = QM_GET_STA_REC_PTR_FROM_INDEX(
 		prAdapter, prMsduInfo->ucStaRecIndex);
 	if (!prStaRec || !IS_STA_IN_AIS(prStaRec))
 		return;
-
-	prAisBssInfo = aisGetAisBssInfo(prAdapter,
-		prStaRec->ucBssIndex);
 
 	if (prMsduInfo->eSrc != TX_PACKET_OS)
 		return;
@@ -8258,10 +7307,16 @@ void qmDetectArpNoResponse(struct ADAPTER *prAdapter,
 	pucData = prSkb->data;
 	if (!pucData)
 		return;
+
 	u2EtherType = (pucData[ETH_TYPE_LEN_OFFSET] << 8) |
 		(pucData[ETH_TYPE_LEN_OFFSET + 1]);
 
 	if (u2EtherType != ETH_P_ARP)
+		return;
+
+	prWifiVar = &prAdapter->rWifiVar;
+	uArpMonitorNumber = prWifiVar->uArpMonitorNumber;
+	if (uArpMonitorNumber == 0)
 		return;
 
 	/* If ARP req is neither to apIp nor to gatewayIp, ignore detection */
@@ -8273,31 +7328,17 @@ void qmDetectArpNoResponse(struct ADAPTER *prAdapter,
 
 	arpOpCode = (pucData[ETH_TYPE_LEN_OFFSET + 8] << 8) |
 		(pucData[ETH_TYPE_LEN_OFFSET + 8 + 1]);
-
 	if (arpOpCode == ARP_PRO_REQ) {
 		arpMoniter++;
-		/* Record counts of RX Packets when Tx 1st ARP Req */
-		if (!last_rx_packets) {
-			last_rx_packets = prNetDev->stats.rx_packets;
-			latest_rx_packets = 0;
-		}
-		/* Record counts of RX Packets when TX ARP Req recently */
-		latest_rx_packets = prNetDev->stats.rx_packets;
 		if (arpMoniter > uArpMonitorNumber) {
-			if ((latest_rx_packets - last_rx_packets) <=
-				uArpMonitorRxPktNum) {
-				DBGLOG(INIT, WARN, "IOT issue, arp no resp!\n");
-				if (prAisBssInfo)
-					prAisBssInfo->u2DeauthReason =
-				BEACON_TIMEOUT_DUE_2_APR_NO_RESPONSE;
-				prAdapter->cArpNoResponseIdx =
-				prStaRec->ucBssIndex;
-			} else
-				DBGLOG(INIT, WARN, "ARP, still have %d pkts\n",
-					latest_rx_packets - last_rx_packets);
+			DBGLOG(INIT, WARN,
+				"IOT Critical issue, arp no resp: %d, check AP!\n",
+				uArpMonitorNumber);
+			if (prAdapter->prAisBssInfo)
+				prAdapter->prAisBssInfo->u2DeauthReason =
+					BEACON_TIMEOUT_DUE_2_APR_NO_RESPONSE;
+			aisBssBeaconTimeout(prAdapter);
 			arpMoniter = 0;
-			last_rx_packets = 0;
-			latest_rx_packets = 0;
 			kalMemZero(apIp, sizeof(apIp));
 		}
 	}
@@ -8309,10 +7350,6 @@ void qmHandleRxArpPackets(struct ADAPTER *prAdapter,
 	uint8_t *pucData = NULL;
 	uint16_t u2EtherType = 0;
 	int arpOpCode = 0;
-	struct BSS_INFO *prAisBssInfo = NULL;
-
-	prAisBssInfo = aisGetAisBssInfo(prAdapter,
-		secGetBssIdxByRfb(prAdapter, prSwRfb));
 
 	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
 		return;
@@ -8330,12 +7367,12 @@ void qmHandleRxArpPackets(struct ADAPTER *prAdapter,
 		(pucData[ETH_TYPE_LEN_OFFSET + 8 + 1]);
 	if (arpOpCode == ARP_PRO_RSP) {
 		arpMoniter = 0;
-		if (prAisBssInfo &&
-			prAisBssInfo->prStaRecOfAP) {
+		if (prAdapter->prAisBssInfo &&
+			prAdapter->prAisBssInfo->prStaRecOfAP) {
 			if (EQUAL_MAC_ADDR(
 				&(pucData[ETH_TYPE_LEN_OFFSET + 10]),
 				/* source hardware address */
-				prAisBssInfo->
+				prAdapter->prAisBssInfo->
 				prStaRecOfAP->aucMacAddr)) {
 				kalMemCopy(apIp,
 					&(pucData[ETH_TYPE_LEN_OFFSET + 16]),
@@ -8354,16 +7391,14 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 	uint8_t *pucData = NULL;
 	uint8_t *pucEthBody = NULL;
 	uint8_t *pucUdpBody = NULL;
-	uint32_t ipHLen = 0;
-	uint32_t udpLen = 0;
+	uint32_t udpLength = 0;
 	uint32_t i = 0;
 	struct BOOTP_PROTOCOL *prBootp = NULL;
 	uint32_t u4DhcpMagicCode = 0;
 	uint8_t dhcpTypeGot = 0;
 	uint8_t dhcpGatewayGot = 0;
 
-	/* check if eth header and ip header is safe to read */
-	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN + IP_HEADER_LEN)
+	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
 		return;
 
 	pucData = (uint8_t *)prSwRfb->pvHeader;
@@ -8373,31 +7408,19 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 		pucData[ETH_TYPE_LEN_OFFSET + 1]) != ETH_P_IPV4)
 		return;
 
-	/* check ip version and ip proto */
-	pucEthBody = &pucData[ETHER_HEADER_LEN];
+	pucEthBody = &pucData[ETH_HLEN];
 	if (((pucEthBody[0] & IPVH_VERSION_MASK) >>
 		IPVH_VERSION_OFFSET) != IPVERSION)
 		return;
 	if (pucEthBody[9] != IP_PRO_UDP)
 		return;
 
-	/* check ip header len and if udp header safe to read */
-	ipHLen = (pucEthBody[0] & 0x0F) * 4;
-	if (unlikely(prSwRfb->u2PacketLen <
-		ETHER_HEADER_LEN + ipHLen + UDP_HDR_LEN))
-		return;
-
-	/* check udp port is dhcp */
-	pucUdpBody = &pucEthBody[ipHLen];
+	pucUdpBody = &pucEthBody[(pucEthBody[0] & 0x0F) * 4];
 	if ((pucUdpBody[0] << 8 | pucUdpBody[1]) != UDP_PORT_DHCPS ||
 		(pucUdpBody[2] << 8 | pucUdpBody[3]) != UDP_PORT_DHCPC)
 		return;
 
-	udpLen = pucUdpBody[4] << 8 | pucUdpBody[5];
-	/* check if udp payload safe to read */
-	if (unlikely(prSwRfb->u2PacketLen <
-		ETHER_HEADER_LEN + ipHLen + udpLen))
-		return;
+	udpLength = pucUdpBody[4] << 8 | pucUdpBody[5];
 
 	prBootp = (struct BOOTP_PROTOCOL *) &pucUdpBody[8];
 
@@ -8414,7 +7437,7 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 	 * 2. not sure the dhcp option always usd 255 as a end mark?
 	 *    if so, while condition should be removed?
 	 */
-	while (i < udpLen - 248) {
+	while (i < udpLength - 248) {
 		/* bcz of the strange struct BOOTP_PROTOCOL *,
 		 * the dhcp magic code was count in dhcp options
 		 * so need to [i + 4] to skip it
@@ -8431,8 +7454,11 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 				gatewayIp[2] = prBootp->aucOptions[i + 8];
 				gatewayIp[3] = prBootp->aucOptions[i + 9];
 
-				DBGLOG(INIT, TRACE, "Gateway ip: " IPV4STR "\n",
-					IPV4TOSTR(&gatewayIp[0]));
+				DBGLOG(INIT, TRACE, "Gateway ip: %d.%d.%d.%d\n",
+					gatewayIp[0],
+					gatewayIp[1],
+					gatewayIp[2],
+					gatewayIp[3]);
 			};
 			dhcpGatewayGot = 1;
 			break;
@@ -8446,15 +7472,6 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 					kalMemZero(gatewayIp,
 						sizeof(gatewayIp));
 				return;
-			} else if (prBootp->aucOptions[i + 6] == 0x05) {
-				uint8_t ucBssIndex =
-					secGetBssIdxByRfb(
-					prAdapter, prSwRfb);
-				/* Check if join timer is ticking, then release
-				 * channel privilege and stop join timer.
-				 */
-				qmReleaseCHAtFinishedDhcp(prAdapter,
-					ucBssIndex);
 			}
 			dhcpTypeGot = 1;
 			break;
@@ -8476,8 +7493,6 @@ void qmHandleRxDhcpPackets(struct ADAPTER *prAdapter,
 void qmResetArpDetect(void)
 {
 	arpMoniter = 0;
-	last_rx_packets = 0;
-	latest_rx_packets = 0;
 	kalMemZero(apIp, sizeof(apIp));
 	kalMemZero(gatewayIp, sizeof(gatewayIp));
 }
@@ -8541,7 +7556,9 @@ void qmResetTcControlResource(IN struct ADAPTER *prAdapter)
 }
 #endif
 
+#ifdef CFG_SUPPORT_REPLAY_DETECTION
 /* To change PN number to UINT64 */
+#define CCMPTSCPNNUM	6
 u_int8_t qmRxPNtoU64(uint8_t *pucPN, uint8_t uPNNum,
 	uint64_t *pu64Rets)
 {
@@ -8566,7 +7583,6 @@ u_int8_t qmRxPNtoU64(uint8_t *pucPN, uint8_t uPNNum,
 	return TRUE;
 }
 
-#ifdef CFG_SUPPORT_REPLAY_DETECTION
 /* To check PN/TSC between RxStatus and local record.
  * return TRUE if PNS is not bigger than PNT
  */
@@ -8601,6 +7617,7 @@ u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 	struct GLUE_INFO *prGlueInfo = NULL;
 	struct GL_WPA_INFO *prWpaInfo = NULL;
 	struct GL_DETECT_REPLAY_INFO *prDetRplyInfo = NULL;
+	struct HW_MAC_RX_DESC *prRxStatus = NULL;
 
 	if (!prAdapter)
 		return TRUE;
@@ -8612,14 +7629,12 @@ u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 		return FALSE;
 	}
 
-	/* BMC only need check CCMP and TKIP Cipher suite */
-	ucSecMode = prSwRfb->ucSecMode;
-
 	prGlueInfo = prAdapter->prGlueInfo;
+	prWpaInfo = &prGlueInfo->rWpaInfo;
 
-	prWpaInfo = aisGetWpaInfo(prAdapter,
-		secGetBssIdxByRfb(prAdapter, prSwRfb));
-
+	/* BMC only need check CCMP and TKIP Cipher suite */
+	prRxStatus = prSwRfb->prRxStatus;
+	ucSecMode = HAL_RX_STATUS_GET_SEC_MODE(prRxStatus);
 	DBGLOG_LIMITED(QM, TRACE, "ucSecMode = [%u], ChiperGroup = [%u]\n",
 			ucSecMode, prWpaInfo->u4CipherGroup);
 
@@ -8632,20 +7647,19 @@ u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 	}
 
 	if (prWpaInfo->u4CipherGroup != IW_AUTH_CIPHER_TKIP &&
-		prWpaInfo->u4CipherGroup != IW_AUTH_CIPHER_CCMP) {
+	    prWpaInfo->u4CipherGroup != IW_AUTH_CIPHER_CCMP) {
 		DBGLOG(QM, ERROR,
 			"RX status Chipher mode doens't match AP's setting\n");
 		return FALSE;
 	}
 
-	ucKeyID = prSwRfb->ucKeyID;
+	ucKeyID = HAL_RX_STATUS_GET_KEY_ID(prRxStatus);
 	if (ucKeyID >= MAX_KEY_NUM) {
 		DBGLOG(QM, ERROR, "KeyID: %d error\n", ucKeyID);
 		return TRUE;
 	}
 
-	prDetRplyInfo = aisGetDetRplyInfo(prAdapter,
-		secGetBssIdxByRfb(prAdapter, prSwRfb));
+	prDetRplyInfo = &prGlueInfo->prDetRplyInfo;
 	/* TODO : Need check fw rekey while fw rekey event. */
 	if (ucKeyID != prDetRplyInfo->ucCurKeyId) {
 		DBGLOG(QM, TRACE,
@@ -8685,38 +7699,16 @@ u_int8_t qmHandleRxReplay(struct ADAPTER *prAdapter,
 }
 #endif
 
-u_int8_t
-qmIsIPLayerPacket(uint8_t *pucPkt)
-{
-	uint16_t u2EtherType =
-		(pucPkt[ETH_TYPE_LEN_OFFSET] << 8)
-			| (pucPkt[ETH_TYPE_LEN_OFFSET + 1]);
-
-	if (u2EtherType == ETH_P_IPV4 || u2EtherType == ETH_P_IPV6) {
-		uint8_t *pucEthBody = &pucPkt[ETH_HLEN];
-		uint8_t ucIpProto =
-			(u2EtherType == ETH_P_IPV4 ?
-				pucEthBody[IP_PROTO_HLEN] :
-				pucEthBody[IPV6_HDR_PROTOCOL_OFFSET]);
-
-		if (ucIpProto == IP_PRO_UDP || ucIpProto == IP_PRO_TCP)
-			return TRUE;
-	}
-
-	return FALSE;
-}
-
+#if CFG_SUPPORT_LOWLATENCY_MODE || CFG_SUPPORT_OSHARE
 u_int8_t
 qmIsNoDropPacket(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 {
 	uint8_t *pucData = (uint8_t *) prSwRfb->pvHeader;
+	uint16_t u2Etype = (pucData[ETH_TYPE_LEN_OFFSET] << 8)
+		| (pucData[ETH_TYPE_LEN_OFFSET + 1]);
 	uint8_t ucBssIndex
 		= secGetBssIdxByWlanIdx(prAdapter, prSwRfb->ucWlanIdx);
 	u_int8_t fgCheckDrop = FALSE;
-	struct BSS_INFO *prBssInfo = NULL;
-
-	if (ucBssIndex <= MAX_BSSID_NUM)
-		prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
 
 #if CFG_SUPPORT_LOWLATENCY_MODE
 	if (prAdapter->fgEnLowLatencyMode)
@@ -8726,39 +7718,22 @@ qmIsNoDropPacket(IN struct ADAPTER *prAdapter, IN struct SW_RFB *prSwRfb)
 #if CFG_SUPPORT_OSHARE
 	if (!fgCheckDrop &&
 		(prAdapter->fgEnOshareMode) &&
-		prBssInfo &&
-		prBssInfo->eNetworkType == NETWORK_TYPE_P2P)
+		(ucBssIndex <= MAX_BSSID_NUM) &&
+		(GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex)->eNetworkType
+			== NETWORK_TYPE_P2P))
 		fgCheckDrop = TRUE;
 #endif
 
-#if CFG_MTK_MDDP_SUPPORT
-	if (!fgCheckDrop && mddpIsSupportMddpWh() &&
-	    prAdapter->fgMddpActivated &&
-	    prBssInfo && prBssInfo->eNetworkType == NETWORK_TYPE_P2P) {
-		struct WIFI_VAR *prWifiVar = NULL;
-		struct P2P_CONNECTION_SETTINGS *prP2PConnSettings = NULL;
+	if (fgCheckDrop && u2Etype == ETH_P_IP) {
+		uint8_t *pucEthBody = &pucData[ETH_HLEN];
+		uint8_t ucIpProto = pucEthBody[IP_PROTO_HLEN];
 
-		prWifiVar = &prAdapter->rWifiVar;
-		if (prWifiVar && prBssInfo->u4PrivateData < BSS_P2P_NUM) {
-			prP2PConnSettings = prWifiVar->prP2PConnSettings[
-				prBssInfo->u4PrivateData];
-			fgCheckDrop = prP2PConnSettings &&
-				p2pFuncIsAPMode(prP2PConnSettings);
-		}
+		if (ucIpProto == IP_PRO_UDP || ucIpProto == IP_PRO_TCP)
+			return TRUE;
 	}
-#endif
-
-	if (fgCheckDrop && qmIsIPLayerPacket(pucData))
-		return TRUE;
-
-	/* For some special packet, like DNS, DHCP,
-	 * do not drop evan fall behind.
-	 */
-	if (qmIsIndependentPkt(prSwRfb))
-		return TRUE;
-
 	return FALSE;
 }
+#endif /* CFG_SUPPORT_LOWLATENCY_MODE */
 
 void qmMoveStaTxQueue(struct STA_RECORD *prSrcStaRec,
 		      struct STA_RECORD *prDstStaRec)
@@ -8806,37 +7781,22 @@ void qmHandleDelTspec(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 	struct MSDU_INFO *prMsduInfo = NULL;
 	struct AC_QUE_PARMS *prAcQueParam = NULL;
 	uint8_t ucTc = 0;
-	struct BSS_INFO *prAisBssInfo = NULL;
 
-	if (eAci >= ACI_NUM)
-		return;
-
-	if (!prStaRec || eAci == ACI_NUM || eAci == ACI_BK || !prAdapter) {
+	if (!prStaRec || eAci == ACI_NUM || eAci == ACI_BK || !prAdapter ||
+	    !prAdapter->prAisBssInfo) {
 		DBGLOG(QM, ERROR, "prSta NULL %d, eAci %d, prAdapter NULL %d\n",
 		       !prStaRec, eAci, !prAdapter);
 		return;
 	}
-	prAisBssInfo = aisGetAisBssInfo(prAdapter,
-		prStaRec->ucBssIndex);
-	if (!prAisBssInfo) {
-		DBGLOG(QM, ERROR, "prAisBssInfo NULL\n");
-		return;
-	}
-
 	prSrcQue = &prStaRec->arTxQueue[aucWmmAC2TcResourceSet1[eAci]];
-	prAcQueParam = &(prAisBssInfo->arACQueParms[0]);
-	ucActivedTspec = wmmHasActiveTspec(
-		aisGetWMMInfo(prAdapter, prAisBssInfo->ucBssIndex));
+	prAcQueParam = &(prAdapter->prAisBssInfo->arACQueParms[0]);
+	ucActivedTspec = wmmHasActiveTspec(&prAdapter->rWifiVar.rWmmInfo);
 
 	while (prAcQueParam[eAci].ucIsACMSet &&
-			!(ucActivedTspec & BIT(eAci)) && eAci != ACI_BK
-			&& eAci < ACI_NUM) {
+			!(ucActivedTspec & BIT(eAci)) && eAci != ACI_BK) {
 		eAci = aeNextAci[eAci];
-		if (eAci < ACI_NUM)
-			ucNewUp = aucNextUP[eAci];
+		ucNewUp = aucNextUP[eAci];
 	}
-	if (eAci >= ACI_NUM)
-		return;
 	DBGLOG(QM, INFO, "new ACI %d, ACM %d, HasTs %d\n", eAci,
 	       prAcQueParam[eAci].ucIsACMSet, !!(ucActivedTspec & BIT(eAci)));
 	ucTc = aucWmmAC2TcResourceSet1[eAci];
@@ -8855,154 +7815,4 @@ void qmHandleDelTspec(struct ADAPTER *prAdapter, struct STA_RECORD *prStaRec,
 #endif
 	nicTxAdjustTcq(prAdapter);
 	kalSetEvent(prAdapter->prGlueInfo);
-}
-
-void qmReleaseCHAtFinishedDhcp(struct ADAPTER *prAdapter,
-			uint8_t ucBssIndex)
-{
-	struct BSS_INFO *prBssInfo;
-	struct AIS_FSM_INFO *prAisFsmInfo = (struct AIS_FSM_INFO *) NULL;
-
-	if (prAdapter == NULL)
-		return;
-
-	prBssInfo = GET_BSS_INFO_BY_INDEX(prAdapter, ucBssIndex);
-	if (prBssInfo == NULL)
-		return;
-
-	if (IS_BSS_AIS(prBssInfo)) { /* STA */
-		prAisFsmInfo = aisGetAisFsmInfo(prAdapter, ucBssIndex);
-
-		if (!timerPendingTimer(&prAisFsmInfo->rJoinTimeoutTimer)) {
-			DBGLOG(QM, ERROR, "No channel occupation\n");
-		} else {
-			DBGLOG(QM, INFO, "Dhcp done, stop join timer.\n");
-			cnmTimerStopTimer(prAdapter,
-				&prAisFsmInfo->rJoinTimeoutTimer);
-			aisFsmRunEventJoinTimeout(prAdapter, ucBssIndex);
-		}
-	} else if (IS_BSS_P2P(prBssInfo)) { /* GC */
-		DBGLOG(QM, INFO, "Dhcp done, stop GC join timer\n");
-		p2pRoleFsmNotifyDhcpDone(prAdapter, ucBssIndex);
-	}
-}
-
-void qmHandleRxReorderWinShift(IN struct ADAPTER *prAdapter,
-	IN uint8_t ucStaRecIdx, uint8_t ucTid, uint32_t u4SSN,
-	OUT struct QUE *prReturnedQue)
-{
-	struct STA_RECORD *prStaRec;
-	struct RX_BA_ENTRY *prReorderQueParm;
-	uint32_t u4WinStart;
-	uint32_t u4WinEnd;
-
-	/* Check whether the STA_REC is activated */
-	prStaRec = cnmGetStaRecByIndex(prAdapter, ucStaRecIdx);
-	if (prStaRec == NULL) {
-		/* ASSERT(prStaRec); */
-		return;
-	}
-
-	/* Check whether the BA agreement exists */
-	prReorderQueParm = prStaRec->aprRxReorderParamRefTbl[ucTid];
-	if (!prReorderQueParm) {
-		/* TODO: (Tehuang) Handle the Host-FW sync issue. */
-		DBGLOG(QM, WARN,
-			"QM: (Warning) BAR for a NULL ReorderQueParm\n");
-		/* ASSERT(0); */
-		return;
-	}
-
-	RX_DIRECT_REORDER_LOCK(prAdapter, 0);
-
-	u4WinStart = (uint32_t) (prReorderQueParm->u2WinStart);
-	u4WinEnd = (uint32_t) (prReorderQueParm->u2WinEnd);
-
-	if (qmCompareSnIsLessThan(u4WinStart, u4SSN)) {
-#if CFG_SUPPORT_RX_OOR_BAR
-		prReorderQueParm->u2BarSSN = u4SSN;
-		DBGLOG(RX, INFO,
-			"BAR: update WinStart from %u to %u, LastRcvdSN=%u",
-			prReorderQueParm->u2WinStart,
-			prReorderQueParm->u2BarSSN,
-			prReorderQueParm->u2LastRcvdSN);
-		SET_BAR_SSN_VALID(prReorderQueParm->u2BarSSN);
-#endif /* CFG_SUPPORT_RX_OOR_BAR */
-
-		prReorderQueParm->u2WinStart = (uint16_t) u4SSN;
-		prReorderQueParm->u2WinEnd =
-			((prReorderQueParm->u2WinStart) +
-			(prReorderQueParm->u2WinSize) - 1) % MAX_SEQ_NO_COUNT;
-
-#if CFG_SUPPORT_RX_AMSDU
-		/* RX reorder for one MSDU in AMSDU issue */
-		prReorderQueParm->u8LastAmsduSubIdx = RX_PAYLOAD_FORMAT_MSDU;
-#endif
-
-		DBGLOG(RX, TEMP,
-			"QM:(BAR U)[%d](%u){%hu,%hu}\n",
-			ucTid, u4SSN,
-			prReorderQueParm->u2WinStart,
-			prReorderQueParm->u2WinEnd);
-		qmPopOutDueToFallAhead(prAdapter, prReorderQueParm,
-			prReturnedQue);
-	} else {
-		DBGLOG(RX, TEMP, "QM:(BAR I)(%d)(%u){%u,%u}\n",
-			ucTid, u4SSN, u4WinStart, u4WinEnd);
-	}
-
-	RX_DIRECT_REORDER_UNLOCK(prAdapter, 0);
-}
-
-void qmCheckRxEAPOLM3(IN struct ADAPTER *prAdapter,
-			IN struct SW_RFB *prSwRfb, uint8_t ucBssIndex)
-{
-	uint8_t *pPkt = NULL;
-	struct sk_buff *skb = NULL;
-	uint16_t u2EtherType;
-	uint8_t *pucEthBody;
-	struct GL_WPA_INFO *prWpaInfo;
-
-	if (prSwRfb->u2PacketLen <= ETHER_HEADER_LEN)
-		return;
-
-	pPkt = prSwRfb->pvHeader;
-	if (!pPkt)
-		return;
-
-	skb = (struct sk_buff *)(prSwRfb->pvPacket);
-	if (!skb)
-		return;
-
-	/* get ethernet protocol */
-	u2EtherType = (pPkt[ETH_TYPE_LEN_OFFSET] << 8)
-			| (pPkt[ETH_TYPE_LEN_OFFSET + 1]);
-	pucEthBody = &pPkt[ETH_HLEN];
-
-	prWpaInfo = aisGetWpaInfo(prAdapter, ucBssIndex);
-	prAdapter->fgIsPostponeTxEAPOLM3 = FALSE;
-
-	if (u2EtherType == ETH_P_1X) {
-		uint8_t *pucEapol = pucEthBody;
-		uint8_t ucEapolType = pucEapol[1];
-		uint16_t u2KeyInfo = 0;
-		uint8_t m;
-
-		if (ucEapolType == ETH_EAPOL_KEY) {
-			WLAN_GET_FIELD_BE16(&pucEapol[5], &u2KeyInfo);
-			m = ((u2KeyInfo & 0x1100) == 0x0000 ||
-				(u2KeyInfo & 0x0008) == 0x0000) ? 1 : 3;
-
-			if (m == 3 &&
-				prWpaInfo->u4WpaVersion ==
-					IW_AUTH_WPA_VERSION_WPA &&
-				prWpaInfo->u4CipherPairwise ==
-					IW_AUTH_CIPHER_TKIP &&
-				!prSwRfb->prStaRec->fgIsTxKeyReady) {
-				prAdapter->fgIsPostponeTxEAPOLM3 = TRUE;
-				DBGLOG(QM, INFO,
-					"[WPA1 TKIP] Postpone sending EAPOL M4 until PTK installed!");
-			}
-		}
-	}
 }

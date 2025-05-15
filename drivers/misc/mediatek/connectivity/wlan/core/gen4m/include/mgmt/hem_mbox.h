@@ -149,8 +149,6 @@ enum ENUM_MSG_ID {
 	** FT
 	*/
 	MID_OID_SAA_FSM_CONTINUE,
-	/* OID notify SAA to continue SAE authentication/association fsm */
-	MID_OID_SAA_FSM_EXTERNAL_AUTH,
 	/* AIS notify SAA for Aborting authentication/association fsm */
 	MID_AIS_SAA_FSM_ABORT,
 	/* SAA notify AIS for indicating join complete */
@@ -191,7 +189,6 @@ enum ENUM_MSG_ID {
 	MID_MNY_P2P_CHNL_REQ,
 	MID_MNY_P2P_CHNL_ABORT,
 	MID_MNY_P2P_MGMT_TX,
-	MID_MNY_P2P_MGMT_TX_CANCEL_WAIT,
 	MID_MNY_P2P_GROUP_DISSOLVE,
 	MID_MNY_P2P_MGMT_FRAME_REGISTER,
 	MID_MNY_P2P_NET_DEV_REGISTER,
@@ -224,31 +221,11 @@ enum ENUM_MSG_ID {
 	MID_MNY_AIS_REMAIN_ON_CHANNEL,
 	MID_MNY_AIS_CANCEL_REMAIN_ON_CHANNEL,
 	MID_MNY_AIS_MGMT_TX,
-	MID_MNY_AIS_MGMT_TX_CANCEL_WAIT,
 	MID_WNM_AIS_BSS_TRANSITION,
 	MID_OID_WMM_TSPEC_OPERATE,
-	MID_RRM_REQ_SCHEDULE,
+	MID_RLM_RM_SCHEDULE,
 #if CFG_SUPPORT_NCHO
 	MID_MNY_AIS_NCHO_ACTION_FRAME,
-#endif
-	MID_MNY_P2P_ACS,
-#if (CFG_SUPPORT_TWT == 1)
-	/*--------------------------------------------------*/
-	/* TWT Requester Support                            */
-	/*--------------------------------------------------*/
-	MID_TWT_REQ_FSM_START,
-	MID_TWT_REQ_FSM_TEARDOWN,
-	MID_TWT_REQ_FSM_SUSPEND,
-	MID_TWT_REQ_FSM_RESUME,
-	MID_TWT_REQ_IND_RESULT,
-	MID_TWT_REQ_IND_SUSPEND_DONE,
-	MID_TWT_REQ_IND_RESUME_DONE,
-	MID_TWT_REQ_IND_TEARDOWN_DONE,
-	MID_TWT_REQ_IND_INFOFRM,
-	MID_TWT_PARAMS_SET,
-#endif
-#if (CFG_SUPPORT_NAN == 1)
-	MID_CNM_NAN_CH_GRANT,
 #endif
 	MID_TOTAL_NUM
 };
@@ -318,79 +295,19 @@ struct MSG_REMAIN_ON_CHANNEL {
 	uint8_t ucChannelNum;
 	uint32_t u4DurationMs;
 	uint64_t u8Cookie;
-	enum ENUM_CH_REQ_TYPE eReqType;
-	uint8_t ucBssIdx;
 };
 
 struct MSG_CANCEL_REMAIN_ON_CHANNEL {
 	struct MSG_HDR rMsgHdr;	/* Must be the first member */
 	uint64_t u8Cookie;
-	uint8_t ucBssIdx;
 };
 
 struct MSG_MGMT_TX_REQUEST {
 	struct MSG_HDR rMsgHdr;
-	uint8_t ucBssIdx;
 	struct MSDU_INFO *prMgmtMsduInfo;
 	uint64_t u8Cookie;	/* For indication. */
 	u_int8_t fgNoneCckRate;
-	u_int8_t fgIsOffChannel;
-	struct RF_CHANNEL_INFO rChannelInfo;
-	enum ENUM_CHNL_EXT eChnlExt;
 	u_int8_t fgIsWaitRsp;
-	uint32_t u4Duration;
-};
-
-#if (CFG_SUPPORT_TWT == 1)
-struct _MSG_TWT_REQFSM_START_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-};
-
-struct _MSG_TWT_REQFSM_IND_RESULT_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-};
-
-struct _MSG_TWT_REQFSM_TEARDOWN_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-};
-
-struct _MSG_TWT_REQFSM_SUSPEND_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-};
-
-struct _MSG_TWT_REQFSM_RESUME_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-	u_int8_t ucNextTWTSize;
-	u_int64_t u8NextTWT;
-};
-
-struct _MSG_TWT_REQFSM_IND_INFOFRM_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct STA_RECORD *prStaRec;
-	u_int8_t ucTWTFlowId;
-	struct _NEXT_TWT_INFO_T rNextTWTInfo;
-};
-
-struct _MSG_TWT_PARAMS_SET_T {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	struct _TWT_CTRL_T rTWTCtrl;
-};
-#endif
-
-struct MSG_CANCEL_TX_WAIT_REQUEST {
-	struct MSG_HDR rMsgHdr;	/* Must be the first member */
-	uint64_t u8Cookie;
-	uint8_t ucBssIdx;
 };
 
 struct MSG_SAA_FT_CONTINUE {
@@ -400,12 +317,6 @@ struct MSG_SAA_FT_CONTINUE {
 	** Request Protocol
 	*/
 	u_int8_t fgFTRicRequest;
-};
-
-struct MSG_SAA_EXTERNAL_AUTH_DONE {
-	struct MSG_HDR rMsgHdr;
-	struct STA_RECORD *prStaRec;
-	uint16_t status;
 };
 
 /* specific message data types */

@@ -178,24 +178,16 @@ UINT32 g_stp_sdio_host_count;
 static struct proc_dir_entry *gStpSdioRxDbgEntry;
 static INT32 stp_sdio_rxdbg_cnt;
 static struct stp_sdio_rxdbg stp_sdio_rxdbg_buffer[STP_SDIO_RXDBG_COUNT];
-static struct timespec64 old = {0};
+static struct timeval old = {0};
 #define TX_NO_ACK_TIMEOUT_ASSERT 5 /* tx no ack timeout assert, unit:second*/
 
 static ssize_t stp_sdio_rxdbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
 static ssize_t stp_sdio_rxdbg_write(struct file *filp, const char __user *buf, size_t count,
 			     loff_t *f_pos);
-
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 static const struct file_operations stp_sdio_rxdbg_fops = {
 	.read = stp_sdio_rxdbg_read,
 	.write = stp_sdio_rxdbg_write,
 };
-#else
-static const struct proc_ops stp_sdio_rxdbg_fops = {
-	.proc_read = stp_sdio_rxdbg_read,
-	.proc_write = stp_sdio_rxdbg_write,
-};
-#endif
 
 #endif
 
@@ -205,17 +197,10 @@ static struct proc_dir_entry *gStpSdioOwnEntry;
 static ssize_t stp_sdio_own_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
 static ssize_t stp_sdio_own_write(struct file *filp, const char __user *buf, size_t count,
 			   loff_t *f_pos);
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 static const struct file_operations stp_sdio_own_fops = {
 	.read = stp_sdio_own_read,
 	.write = stp_sdio_own_write,
 };
-#else
-static const struct proc_ops stp_sdio_own_fops = {
-	.proc_read = stp_sdio_own_read,
-	.proc_write = stp_sdio_own_write,
-};
-#endif
 
 #endif
 
@@ -226,17 +211,10 @@ static struct proc_dir_entry *gStpSdioTxDbgEntry;
 static ssize_t stp_sdio_txdbg_read(struct file *filp, char __user *buf, size_t count, loff_t *f_pos);
 static ssize_t stp_sdio_txdbg_write(struct file *filp, const char __user *buf, size_t count,
 			     loff_t *f_pos);
-#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 6, 0))
 static const struct file_operations stp_sdio_txdbg_fops = {
 	.read = stp_sdio_txdbg_read,
 	.write = stp_sdio_txdbg_write,
 };
-#else
-static const struct proc_ops stp_sdio_txdbg_fops = {
-	.proc_read = stp_sdio_txdbg_read,
-	.proc_write = stp_sdio_txdbg_write,
-};
-#endif
 
 #if STP_SDIO_TXDBG
 static INT32 stp_sdio_txdbg_cnt;
@@ -269,7 +247,7 @@ MODULE_LICENSE("GPL");
 MODULE_AUTHOR("MediaTek Inc WCN_SE_CS3");
 MODULE_DESCRIPTION("Read-Copy Update tracing for hierarchical implementation");
 
-INT32 gStpSdioDbgLvl = STPSDIO_LOG_INFO;
+UINT32 gStpSdioDbgLvl = STPSDIO_LOG_INFO;
 /*******************************************************************************
 *                                 M A C R O S
 ********************************************************************************
@@ -1092,7 +1070,7 @@ INT32 stp_sdio_tx(const PUINT8 data, const UINT32 size, PUINT32 written_size)
 	PUINT8 pkt_bufp;
 	UINT32 prev_wr_idx;
 	UINT32 prev_size;
-	MTK_WCN_STP_SDIO_PKT_BUF *pb = NULL;
+	MTK_WCN_STP_SDIO_PKT_BUF *pb;
 	UINT32 idx;
 
 	osal_ftrace_print("%s|S|L|%d\n", __func__, size);
@@ -1668,7 +1646,7 @@ static VOID stp_sdio_tx_wkr_comp(MTK_WCN_STP_SDIO_HIF_INFO * const p_info)
 
 		idx = p_info->tx_pkt_list.pkt_rd_cnt++ & STP_SDIO_TX_PKT_LIST_SIZE_MASK;
 		p_info->firmware_info.tx_fifo_size += p_info->tx_pkt_list.pkt_size_list[idx];
-		p_info->tx_pkt_list.out_ts[idx] = (UINT32)jiffies;
+		p_info->tx_pkt_list.out_ts[idx] = jiffies;
 		--comp_count;
 	}
 	if (p_info->retry_enable_flag) {
@@ -1926,7 +1904,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 				wake_up_interruptible(&pb->fullwait_q);
 			}
 			spin_unlock_irqrestore(&pb->rd_cnt_lock, pb->rd_irq_flag);
-			osal_do_gettimeofday(&old);
+			do_gettimeofday(&old);
 		} else {
 			/* tx FIFO free space < packet size, wait next time */
 #if STP_SDIO_DBG_SUPPORT && STP_SDIO_TXPERFDBG
@@ -1935,7 +1913,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 			++stp_sdio_txperf_fifo_lmt_cnt;
 #endif
 
-			osal_do_gettimeofday(&now);
+			do_gettimeofday(&now);
 			if ((now.tv_sec - old.tv_sec) > TX_NO_ACK_TIMEOUT_ASSERT) {
 				STPSDIO_PR_INFO("tx_fifo_size(%d), four_byte_align_len(%d), tx_packet_num(%d)\n",
 						p_info->firmware_info.tx_fifo_size, four_byte_align_len,
@@ -1970,7 +1948,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 	INT32 ret;
 	UINT32 idx;
 	MTK_WCN_STP_SDIO_PKT_BUF *pb;
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
@@ -2041,7 +2019,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 			/* record the SDIO packet size in packet size list: using 4-byte aligned length! */
 			idx = p_info->tx_pkt_list.pkt_wr_cnt++ & STP_SDIO_TX_PKT_LIST_SIZE_MASK;
 			p_info->tx_pkt_list.pkt_size_list[idx] = four_byte_align_len;
-			p_info->tx_pkt_list.in_ts[idx] = (UINT32)jiffies;
+			p_info->tx_pkt_list.in_ts[idx] = jiffies;
 			p_info->tx_pkt_list.out_ts[idx] = 0;
 
 			STPSDIO_PR_DBG("wr(0x%x, %ld) rd(0x%x, %ld), tx fifo(size:%d), pkt_num(%d)done\n",
@@ -2113,7 +2091,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 			}
 			spin_unlock_irqrestore(&p_info->pkt_buf.rd_idx_lock,
 					       p_info->pkt_buf.rd_irq_flag);
-			osal_do_gettimeofday(&old);
+			do_gettimeofday(&old);
 		} else {
 #if STP_SDIO_DBG_SUPPORT && STP_SDIO_TXPERFDBG
 			stp_sdio_txperf_fifo_left += p_info->firmware_info.tx_fifo_size;
@@ -2121,7 +2099,7 @@ static VOID stp_sdio_tx_wkr(struct work_struct *work)
 			++stp_sdio_txperf_fifo_lmt_cnt;
 #endif
 			/* (tx FIFO free space < packet size) or (the number of tx packets >= 7) */
-			osal_do_gettimeofday(&now);
+			do_gettimeofday(&now);
 			if ((now.tv_sec - old.tv_sec) > TX_NO_ACK_TIMEOUT_ASSERT) {
 				STPSDIO_PR_INFO("tx_fifo_size(%d), four_byte_align_len(%d), tx_packet_num(%d)\n",
 						p_info->firmware_info.tx_fifo_size, four_byte_align_len,
@@ -3245,7 +3223,7 @@ ssize_t stp_sdio_own_write(struct file *filp, const char __user *buffer, size_t 
 	PINT8 pDelimiter = " \t";
 	INT32 x = 0;
 	INT8 buf[128] = { 0 };
-	LONG res = 0;
+	LONG res;
 
 	if (len >= osal_sizeof(buf)) {
 		STPSDIO_PR_ERR("input handling fail!\n");

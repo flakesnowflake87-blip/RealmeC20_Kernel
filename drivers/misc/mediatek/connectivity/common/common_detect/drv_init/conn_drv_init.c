@@ -25,16 +25,11 @@
 #include "bluetooth_drv_init.h"
 #include "gps_drv_init.h"
 
+#if (MTK_WCN_REMOVE_KO)
 int do_connectivity_driver_init(int chip_id)
 {
 	int i_ret = 0;
 	int tmp_ret = 0;
-	static int init_before;
-
-	/* To avoid invoking more than once.*/
-	if (init_before)
-		return 0;
-	init_before = 1;
 
 	tmp_ret = do_common_drv_init(chip_id);
 	i_ret += tmp_ret;
@@ -65,3 +60,5 @@ int do_connectivity_driver_init(int chip_id)
 
 	return i_ret;
 }
+#endif
+

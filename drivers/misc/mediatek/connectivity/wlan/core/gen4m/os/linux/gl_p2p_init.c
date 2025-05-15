@@ -79,8 +79,7 @@
  */
 
 #define P2P_INF_NAME "p2p%d"
-
-#define AP_INF_NAME  "swlan%d"
+#define AP_INF_NAME  "ap%d"
 
 /******************************************************************************
  *                             D A T A   T Y P E S
@@ -119,35 +118,16 @@ static uint16_t mode = RUNNING_P2P_MODE;
 void p2pSetSuspendMode(struct GLUE_INFO *prGlueInfo, u_int8_t fgEnable)
 {
 	struct net_device *prDev = NULL;
-	struct GL_P2P_INFO *prP2PInfo = NULL;
 
 	if (!prGlueInfo)
 		return;
 
-	if (!prGlueInfo->prAdapter->fgIsP2PRegistered ||
-		(prGlueInfo->prAdapter->rP2PNetRegState !=
-			ENUM_NET_REG_STATE_REGISTERED)) {
+	if (!prGlueInfo->prAdapter->fgIsP2PRegistered) {
 		DBGLOG(INIT, INFO, "%s: P2P is not enabled, SKIP!\n", __func__);
 		return;
 	}
 
-	/* For P2P interfaces, prDevHandler points to the net_device of
-	 * p2p0 interface. And aprRoleHandler points to the net_device
-	 * of p2p virtual interface (i.e., p2p1) when it was created.
-	 * And when p2p virtual interface is deleted, aprRoleHandler
-	 * will change to point to prDevHandler. Hence, when
-	 * aprRoleHandler & prDevHandler are pointing to different
-	 * addresses, it means vif p2p1 exists. Otherwise it means p2p1
-	 * was already deleted.
-	 */
-	prP2PInfo = prGlueInfo->prP2PInfo[0];
-	if ((prP2PInfo->aprRoleHandler != NULL) &&
-		(prP2PInfo->aprRoleHandler != prP2PInfo->prDevHandler)) {
-		prDev = prP2PInfo->aprRoleHandler;
-	} else {
-		prDev = prP2PInfo->prDevHandler;
-	}
-
+	prDev = prGlueInfo->prP2PInfo[0]->prDevHandler;
 	if (!prDev) {
 		DBGLOG(INIT, INFO,
 			"%s: P2P dev is not available, SKIP!\n", __func__);
@@ -224,10 +204,6 @@ void p2pSetMode(IN uint8_t ucAPMode)
 		ifname = prP2PInfName;
 		ifname2 = prAPInfName;
 		break;
-	case 4:
-		mode = RUNNING_DUAL_P2P_MODE;
-		ifname = prP2PInfName;
-		break;
 	}
 }				/* p2pSetMode */
 
@@ -241,22 +217,16 @@ void p2pSetMode(IN uint8_t ucAPMode)
 /*---------------------------------------------------------------------------*/
 u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 {
-	u_int8_t idx = 0;
-
-	GLUE_SPIN_LOCK_DECLARATION();
-	GLUE_ACQUIRE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
-
-	g_P2pPrDev = NULL;
+	int idx = 0;
 
 	if (prGlueInfo->prAdapter->fgIsP2PRegistered == FALSE) {
 		DBGLOG(P2P, INFO, "p2p is not registered\n");
-		GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 		return FALSE;
 	}
 
+	DBGLOG(P2P, INFO, "fgIsP2PRegistered FALSE\n");
 	prGlueInfo->prAdapter->fgIsP2PRegistered = FALSE;
 	prGlueInfo->prAdapter->p2p_scan_report_all_bss = FALSE;
-	GLUE_RELEASE_SPIN_LOCK(prGlueInfo, SPIN_LOCK_NET_DEV);
 
 	glUnregisterP2P(prGlueInfo, 0xff);
 
@@ -268,14 +238,14 @@ u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 		if (gprP2pRoleWdev[idx] == NULL)
 			continue;
 #if CFG_ENABLE_UNIFY_WIPHY
-		if (wlanIsAisDev(gprP2pRoleWdev[idx]->netdev)) {
+		if (gprP2pRoleWdev[idx] == gprWdev) {
 			/* This is AIS/AP Interface */
 			gprP2pRoleWdev[idx] = NULL;
 			continue;
 		}
 #endif
 		/* free gprP2pWdev in wlanDestroyAllWdev */
-		if (gprP2pRoleWdev[idx] == gprP2pWdev[idx])
+		if (gprP2pRoleWdev[idx] == gprP2pWdev)
 			continue;
 
 		DBGLOG(INIT, INFO, "Unregister gprP2pRoleWdev[%d]\n", idx);
@@ -296,7 +266,7 @@ u_int8_t p2pRemove(struct GLUE_INFO *prGlueInfo)
 	 * system operation (poweroff, suspend) might reference it.
 	 * set_wiphy_dev(wiphy, NULL): set the wiphy->dev->parent = NULL
 	 */
-	if (gprP2pWdev[0] != NULL)
+	if (gprP2pWdev != NULL)
 		set_wiphy_dev(gprP2pWdev->wiphy, NULL);
 #endif
 

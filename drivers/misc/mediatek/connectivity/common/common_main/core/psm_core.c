@@ -106,7 +106,7 @@ ENUM_STP_TX_IF_TYPE __weak wmt_plat_get_comm_if_type(VOID)
 	return STP_MAX_IF_TX;
 }
 
-MTK_WCN_BOOL mtk_wcn_stp_psm_dbg_level(INT32 dbglevel)
+MTK_WCN_BOOL mtk_wcn_stp_psm_dbg_level(UINT32 dbglevel)
 {
 	if (dbglevel >= 0 && dbglevel <= 4) {
 		gPsmDbgLevel = dbglevel;
@@ -354,12 +354,8 @@ static INT32 _stp_psm_clean_up_redundant_active_op(P_OSAL_OP_Q pOpQ)
 				RB_PUT(pFreeOpQ, pOp);
 			} else if (prev_opId == prev_prev_opId) {
 				RB_GET(pOpQ, pOp);
-				if (!pOp) {
-					STP_PSM_PR_DBG("RB_GET pOp == NULL\n");
-				} else {
-					STP_PSM_PR_DBG("redundant opId(%d) found, remove it\n",
+				STP_PSM_PR_DBG("redundant opId(%d) found, remove it\n",
 						 pOp->op.opId);
-				}
 				RB_PUT(pFreeOpQ, pOp);
 			} else
 			    if ((prev_opId == STP_OPID_PSM_WAKEUP
@@ -507,7 +503,7 @@ INT32 _stp_psm_put_act_op(MTKSTP_PSM_T *stp_psm, P_OSAL_OP pOp)
 		}
 	} while (0);
 
-	if (stp_psm && pOp && atomic_dec_and_test(&pOp->ref_count)) {
+	if (pOp && atomic_dec_and_test(&pOp->ref_count)) {
 		/* put Op back to freeQ */
 		bRet = _stp_psm_put_op(stp_psm, &stp_psm->rFreeOpQ, pOp);
 		if (bRet == 0)
@@ -965,9 +961,6 @@ static inline INT32 _stp_psm_wait_wmt_event_wq(MTKSTP_PSM_T *stp_psm)
 		STP_PSM_PR_DBG("sleep-wake_lock(%d)\n", osal_wake_lock_count(&stp_psm->wake_lock));
 		osal_wake_unlock(&stp_psm->wake_lock);
 		STP_PSM_PR_DBG("sleep-wake_lock#(%d)\n", osal_wake_lock_count(&stp_psm->wake_lock));
-
-		if (osal_wake_lock_count(&stp_psm->wake_lock) == 0 && stp_psm->update_wmt_fw_patch_chip_rst != NULL)
-			stp_psm->update_wmt_fw_patch_chip_rst();
 	} else if (osal_test_bit(STP_PSM_WMT_EVENT_ROLL_BACK_EN, &stp_psm->flag)) {
 		osal_clear_bit(STP_PSM_WMT_EVENT_ROLL_BACK_EN, &stp_psm->flag);
 		_stp_psm_dbg_dmp_in(g_stp_psm_dbg, stp_psm->flag.data, __LINE__);
@@ -1003,9 +996,6 @@ static inline INT32 _stp_psm_notify_stp(MTKSTP_PSM_T *stp_psm, const MTKSTP_PSM_
 {
 
 	INT32 retval = STP_PSM_OPERATION_SUCCESS;
-
-	if (action < 0 || action >= STP_PSM_MAX_ACTION)
-		return STP_PSM_OPERATION_FAIL;
 
 	if (action == EIRQ) {
 		STP_PSM_PR_DBG("Call _stp_psm_notify_wmt_host_awake_wq\n\r");
@@ -1134,7 +1124,7 @@ static inline INT32 _stp_psm_notify_wmt(MTKSTP_PSM_T *stp_psm, const MTKSTP_PSM_
 {
 	INT32 ret = STP_PSM_OPERATION_SUCCESS;
 
-	if (stp_psm == NULL || action < 0 || action >= STP_PSM_MAX_ACTION)
+	if (stp_psm == NULL)
 		return STP_PSM_OPERATION_FAIL;
 
 	switch (_stp_psm_get_state(stp_psm)) {
@@ -1277,13 +1267,10 @@ static inline INT32 _stp_psm_notify_wmt(MTKSTP_PSM_T *stp_psm, const MTKSTP_PSM_
 	return ret;
 }
 
-static inline VOID _stp_psm_stp_is_idle(timer_handler_arg arg)
+static inline VOID _stp_psm_stp_is_idle(ULONG data)
 {
-	ULONG data;
-	MTKSTP_PSM_T *stp_psm;
+	MTKSTP_PSM_T *stp_psm = (MTKSTP_PSM_T *) data;
 
-	GET_HANDLER_DATA(arg, data);
-	stp_psm = (MTKSTP_PSM_T *) data;
 	osal_clear_bit(STP_PSM_WMT_EVENT_DISABLE_MONITOR_RX_HIGH_DENSITY, &stp_psm->flag);
 	_stp_psm_dbg_dmp_in(g_stp_psm_dbg, stp_psm->flag.data, __LINE__);
 	osal_clear_bit(STP_PSM_WMT_EVENT_DISABLE_MONITOR_TX_HIGH_DENSITY, &stp_psm->flag);
@@ -1352,9 +1339,6 @@ static inline INT32 _stp_psm_do_wait(MTKSTP_PSM_T *stp_psm, MTKSTP_PSM_STATE_T s
 	INT32 limit = POLL_WAIT_TIME / POLL_WAIT;
 	UINT64 sec = 0;
 	ULONG usec = 0;
-
-	if (state < 0 || state >= STP_PSM_MAX_STATE)
-		return STP_PSM_OPERATION_FAIL;
 
 	osal_get_local_time(&sec, &usec);
 	while (_stp_psm_get_state(stp_psm) != state && i < limit && mtk_wcn_stp_is_enable()) {
@@ -1590,7 +1574,7 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir)
 	return 0;
 }
 #else
-static struct timespec64 tv_now, tv_end;
+static struct timeval tv_now, tv_end;
 static INT32 sample_start;
 static INT32 tx_sum_len;
 static INT32 rx_sum_len;
@@ -1604,11 +1588,11 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir, INT32 l
 		else
 			tx_sum_len += length;
 
-		osal_do_gettimeofday(&tv_now);
+		do_gettimeofday(&tv_now);
 		/* STP_PSM_PR_INFO("tv_now:%d.%d tv_end:%d.%d\n", tv_now.tv_sec, tv_now.tv_usec,
 		 * tv_end.tv_sec,tv_end.tv_usec);
 		 */
-		if (((tv_now.tv_sec == tv_end.tv_sec) && (tv_now.tv_nsec > tv_end.tv_nsec)) ||
+		if (((tv_now.tv_sec == tv_end.tv_sec) && (tv_now.tv_usec > tv_end.tv_usec)) ||
 		    (tv_now.tv_sec > tv_end.tv_sec)) {
 			STP_PSM_PR_INFO("STP speed rx:%d tx:%d\n", rx_sum_len, tx_sum_len);
 			if ((rx_sum_len + tx_sum_len) > RTX_SPEED_THRESHOLD) {
@@ -1628,7 +1612,7 @@ INT32 stp_psm_disable_by_tx_rx_density(MTKSTP_PSM_T *stp_psm, INT32 dir, INT32 l
 		}
 	} else {
 		sample_start = 1;
-		osal_do_gettimeofday(&tv_now);
+		do_gettimeofday(&tv_now);
 		tv_end = tv_now;
 		tv_end.tv_sec += SAMPLE_DURATION;
 	}
@@ -1790,11 +1774,11 @@ INT32 stp_psm_check_sleep_enable(MTKSTP_PSM_T *stp_psm)
 static INT32 _stp_psm_dbg_dmp_in(STP_PSM_RECORD_T *stp_psm_dbg, UINT32 flag, UINT32 line_num)
 {
 	INT32 index = 0;
-	struct timespec64 now;
+	struct timeval now;
 
 	if (stp_psm_dbg) {
 		osal_lock_unsleepable_lock(&stp_psm_dbg->lock);
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 		index = stp_psm_dbg->in - 1;
 		index = (index + STP_PSM_DBG_SIZE) % STP_PSM_DBG_SIZE;
 		STP_PSM_PR_DBG("index(%d)\n", index);
@@ -1803,7 +1787,7 @@ static INT32 _stp_psm_dbg_dmp_in(STP_PSM_RECORD_T *stp_psm_dbg, UINT32 flag, UIN
 		stp_psm_dbg->queue[stp_psm_dbg->in].line_num = line_num;
 		stp_psm_dbg->queue[stp_psm_dbg->in].package_no = g_record_num++;
 		stp_psm_dbg->queue[stp_psm_dbg->in].sec = now.tv_sec;
-		stp_psm_dbg->queue[stp_psm_dbg->in].usec = now.tv_nsec / NSEC_PER_USEC;
+		stp_psm_dbg->queue[stp_psm_dbg->in].usec = now.tv_usec;
 		stp_psm_dbg->size++;
 		STP_PSM_PR_DBG("pre_Flag = %d, cur_flag = %d\n", stp_psm_dbg->queue[stp_psm_dbg->in].prev_flag,
 				 stp_psm_dbg->queue[stp_psm_dbg->in].cur_flag);
@@ -1859,14 +1843,14 @@ static INT32 _stp_psm_dbg_out_printk(STP_PSM_RECORD_T *stp_psm_dbg)
 static INT32 _stp_psm_opid_dbg_dmp_in(P_STP_PSM_OPID_RECORD p_opid_dbg, UINT32 opid, UINT32 line_num)
 {
 	INT32 index = 0;
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
 	osal_get_local_time(&ts, &nsec);
 	if (p_opid_dbg) {
 		osal_lock_unsleepable_lock(&p_opid_dbg->lock);
-		osal_do_gettimeofday(&now);
+		do_gettimeofday(&now);
 		index = p_opid_dbg->in - 1;
 		index = (index + STP_PSM_DBG_SIZE) % STP_PSM_DBG_SIZE;
 		STP_PSM_PR_DBG("index(%d)\n", index);
@@ -1875,7 +1859,7 @@ static INT32 _stp_psm_opid_dbg_dmp_in(P_STP_PSM_OPID_RECORD p_opid_dbg, UINT32 o
 		p_opid_dbg->queue[p_opid_dbg->in].line_num = line_num;
 		p_opid_dbg->queue[p_opid_dbg->in].package_no = g_opid_record_num++;
 		p_opid_dbg->queue[p_opid_dbg->in].sec = now.tv_sec;
-		p_opid_dbg->queue[p_opid_dbg->in].usec = now.tv_nsec / NSEC_PER_USEC;
+		p_opid_dbg->queue[p_opid_dbg->in].usec = now.tv_usec;
 		p_opid_dbg->queue[p_opid_dbg->in].pid = current->pid;
 		p_opid_dbg->queue[p_opid_dbg->in].l_sec = ts;
 		p_opid_dbg->queue[p_opid_dbg->in].l_nsec = nsec;
@@ -1953,7 +1937,6 @@ MTKSTP_PSM_T *stp_psm_init(VOID)
 	stp_psm->wmt_notify = wmt_lib_ps_stp_cb;
 	stp_psm->is_wmt_quick_ps_support = wmt_lib_is_quick_ps_support;
 	stp_psm->idle_time_to_sleep = STP_PSM_IDLE_TIME_SLEEP;
-	stp_psm->update_wmt_fw_patch_chip_rst = wmt_lib_update_fw_patch_chip_rst;
 	stp_psm->flag.data = 0;
 	stp_psm->stp_tx_cb = NULL;
 	stp_psm_set_sleep_enable(stp_psm);

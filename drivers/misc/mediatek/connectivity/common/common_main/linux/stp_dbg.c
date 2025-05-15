@@ -43,12 +43,11 @@
 #include "stp_sdio.h"
 #include "stp_core.h"
 #include "mtk_wcn_consys_hw.h"
-#include "wmt_lib.h"
 
 
 UINT32 gStpDbgLogOut;
 UINT32 gStpDbgDumpType = STP_DBG_PKT;
-INT32 gStpDbgDbgLevel = STP_DBG_LOG_INFO;
+UINT32 gStpDbgDbgLevel = STP_DBG_LOG_INFO;
 
 MTKSTP_DBG_T *g_stp_dbg;
 
@@ -97,9 +96,11 @@ static INT32 num_bind_process;
 static pid_t bind_pid[MAX_BIND_PROCESS];
 static P_WCN_CORE_DUMP_T g_core_dump;
 static P_STP_DBG_CPUPCR_T g_stp_dbg_cpupcr;
+/* just show in log at present */
+static P_STP_DBG_DMAREGS_T g_stp_dbg_dmaregs;
 
-static VOID stp_dbg_core_dump_timeout_handler(timer_handler_arg arg);
-static VOID stp_dbg_dump_emi_timeout_handler(timer_handler_arg arg);
+static VOID stp_dbg_core_dump_timeout_handler(ULONG data);
+static VOID stp_dbg_dump_emi_timeout_handler(ULONG data);
 static _osal_inline_ P_WCN_CORE_DUMP_T stp_dbg_core_dump_init(UINT32 timeout);
 static _osal_inline_ INT32 stp_dbg_core_dump_deinit(P_WCN_CORE_DUMP_T dmp);
 static _osal_inline_ INT32 stp_dbg_core_dump_check_end(PUINT8 buf, INT32 len);
@@ -129,6 +130,8 @@ static INT32 stp_dbg_nl_reset(struct sk_buff *skb, struct genl_info *info);
 static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO_PARSER_TYPE type);
 static _osal_inline_ P_STP_DBG_CPUPCR_T stp_dbg_cpupcr_init(VOID);
 static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr);
+static _osal_inline_ P_STP_DBG_DMAREGS_T stp_dbg_dmaregs_init(VOID);
+static _osal_inline_ VOID stp_dbg_dmaregs_deinit(P_STP_DBG_DMAREGS_T pDmaRegs);
 
 INT32 __weak mtk_btif_rxd_be_blocked_flag_get(VOID)
 {
@@ -141,18 +144,14 @@ static struct genl_ops stp_dbg_gnl_ops_array[] = {
 	{
 		.cmd = STP_DBG_COMMAND_BIND,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0))
 		.policy = stp_dbg_genl_policy,
-#endif
 		.doit = stp_dbg_nl_bind,
 		.dumpit = NULL,
 	},
 	{
 		.cmd = STP_DBG_COMMAND_RESET,
 		.flags = 0,
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 2, 0))
 		.policy = stp_dbg_genl_policy,
-#endif
 		.doit = stp_dbg_nl_reset,
 		.dumpit = NULL,
 	},
@@ -166,16 +165,13 @@ static struct genl_family stp_dbg_gnl_family = {
 	.maxattr = STP_DBG_ATTR_MAX,
 	.ops = stp_dbg_gnl_ops_array,
 	.n_ops = ARRAY_SIZE(stp_dbg_gnl_ops_array),
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 2, 0))
-	.policy = stp_dbg_genl_policy,
-#endif
 };
 /* stp_dbg_core_dump_timeout_handler - handler of coredump timeout
  * @ data - core dump object's pointer
  *
  * No return value
  */
-static VOID stp_dbg_core_dump_timeout_handler(timer_handler_arg arg)
+static VOID stp_dbg_core_dump_timeout_handler(ULONG data)
 {
 	stp_dbg_set_coredump_timer_state(CORE_DUMP_TIMEOUT);
 	stp_btm_notify_coredump_timeout_wq(g_stp_dbg->btm);
@@ -187,7 +183,7 @@ static VOID stp_dbg_core_dump_timeout_handler(timer_handler_arg arg)
  *
  * No return value
  */
-static VOID stp_dbg_dump_emi_timeout_handler(timer_handler_arg arg)
+static VOID stp_dbg_dump_emi_timeout_handler(ULONG data)
 {
 	STP_DBG_PR_ERR("dump emi timeout!\n");
 	mtk_stp_notify_emi_dump_end();
@@ -323,6 +319,9 @@ static _osal_inline_ INT32 stp_dbg_core_dump_in(P_WCN_CORE_DUMP_T dmp, PUINT8 bu
 		stp_dbg_core_dump_header_init(dmp);
 		/* show coredump start info on UI */
 		/* osal_dbg_assert_aee("MT662x f/w coredump start", "MT662x firmware coredump start"); */
+#if STP_DBG_AEE_EXP_API
+		aee_kernel_dal_show("CONSYS coredump start ....\n");
+#endif
 		/* parsing data, and check end srting */
 		ret = stp_dbg_core_dump_check_end(buf, len);
 		if (ret == 1) {
@@ -376,11 +375,11 @@ static _osal_inline_ INT32 stp_dbg_core_dump_post_handle(P_WCN_CORE_DUMP_T dmp)
 	ENUM_STP_FW_ISSUE_TYPE issue_type;
 
 	if ((dmp->p_head != NULL)
-	    && ((osal_strnstr(dmp->p_head, "<ASSERT>", dmp->head_len)) != NULL ||
-		stp_dbg_get_host_trigger_assert())) {
+	    && ((osal_strnstr(dmp->p_head, "<ASSERT>", dmp->head_len)) != NULL)) {
 		PINT8 pStr = dmp->p_head;
 		PINT8 pDtr = NULL;
 
+		STP_DBG_PR_INFO(" <ASSERT> string found\n");
 		if (stp_dbg_get_host_trigger_assert())
 			issue_type = STP_HOST_TRIGGER_FW_ASSERT;
 		else
@@ -402,8 +401,8 @@ static _osal_inline_ INT32 stp_dbg_core_dump_post_handle(P_WCN_CORE_DUMP_T dmp)
 		if (pStr != NULL) {
 			pDtr = osal_strchr(pStr, '-');
 			if (pDtr != NULL) {
-				tmp = STP_CORE_DUMP_INFO_SZ - osal_strlen(INFO_HEAD);
-				tmp = ((pDtr - pStr) > tmp) ? tmp : (pDtr - pStr);
+				tmp = pDtr - pStr;
+				tmp = (tmp > STP_CORE_DUMP_INFO_SZ) ? STP_CORE_DUMP_INFO_SZ : tmp;
 				osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], pStr, tmp);
 				dmp->info[osal_strlen(dmp->info) + 1] = '\0';
 			} else {
@@ -414,9 +413,10 @@ static _osal_inline_ INT32 stp_dbg_core_dump_post_handle(P_WCN_CORE_DUMP_T dmp)
 			}
 		}
 	} else if ((dmp->p_head != NULL)
-			&& ((osal_strnstr(dmp->p_head, "<EXCEPTION>", dmp->head_len) != NULL)
-			|| (osal_strnstr(dmp->p_head, "ABT", dmp->head_len) != NULL))) {
-		stp_dbg_set_fw_info(dmp->p_head, dmp->head_len, STP_FW_ABT);
+		   && ((osal_strnstr(dmp->p_head, "ABT", dmp->head_len)) != NULL)) {
+		STP_DBG_PR_ERR("fw ABT happens, set to Fw ABT Exception\n");
+		stp_dbg_set_fw_info("Fw ABT Exception", osal_strlen("Fw ABT Exception"),
+				    STP_FW_ABT);
 		osal_strcpy(&dmp->info[0], INFO_HEAD);
 		osal_memcpy(&dmp->info[osal_strlen(INFO_HEAD)], "Fw ABT Exception...",
 			    osal_strlen("Fw ABT Exception..."));
@@ -520,19 +520,23 @@ INT32 stp_dbg_core_dump_flush(INT32 rst, MTK_WCN_BOOL coredump_is_timeout)
 	stp_dbg_core_dump_out(g_core_dump, &pbuf, &len);
 	STP_DBG_PR_INFO("buf 0x%zx, len %d\n", (SIZE_T) pbuf, len);
 
-#if IS_ENABLED(CONFIG_MTK_AEE_AED)
 	/* show coredump end info on UI */
 	/* osal_dbg_assert_aee("MT662x f/w coredump end", "MT662x firmware coredump ends"); */
 #if STP_DBG_AEE_EXP_API
+	if (coredump_is_timeout)
+		aee_kernel_dal_show("++ CONSYS coredump tiemout or fail, pass received coredump to AEE ++\n");
+	else
+		aee_kernel_dal_show("++ CONSYS coredump get successfully ++\n");
+	/* call AEE driver API */
 #if ENABLE_F_TRACE
 	aed_combo_exception_api(NULL, 0, (const PINT32)pbuf, len, (const PINT8)g_core_dump->info,
 			DB_OPT_FTRACE);
 #else
 	aed_combo_exception(NULL, 0, (const PINT32)pbuf, len, (const PINT8)g_core_dump->info);
 #endif
-#endif
 
 #endif
+
 	/* reset */
 	g_core_dump->count = 0;
 	stp_dbg_compressor_deinit(g_core_dump->compressor);
@@ -666,14 +670,10 @@ INT32 stp_dbg_trigger_collect_ftrace(PUINT8 pbuf, INT32 len)
 
 	if (g_core_dump) {
 		osal_strncpy(&g_core_dump->info[0], pbuf, len);
-#if IS_ENABLED(CONFIG_MTK_AEE_AED)
 		aed_combo_exception(NULL, 0, (const PINT32)pbuf, len, (const PINT8)g_core_dump->info);
-#endif
 	} else {
 		STP_DBG_PR_INFO("g_core_dump is not initialized\n");
-#if IS_ENABLED(CONFIG_MTK_AEE_AED)
 		aed_combo_exception(NULL, 0, (const PINT32)pbuf, len, (const PINT8)pbuf);
-#endif
 	}
 
 	return 0;
@@ -752,7 +752,6 @@ static _osal_inline_ INT32 stp_dbg_gzip_compressor(PVOID worker, PUINT8 in_buf, 
 static _osal_inline_ P_WCN_COMPRESSOR_T stp_dbg_compressor_init(PUINT8 name, INT32 L1_buf_sz,
 		INT32 L2_buf_sz)
 {
-	INT32 ret = 0;
 	z_stream *pstream = NULL;
 	P_WCN_COMPRESSOR_T compress = NULL;
 
@@ -781,12 +780,8 @@ static _osal_inline_ P_WCN_COMPRESSOR_T stp_dbg_compressor_init(PUINT8 name, INT
 			STP_DBG_PR_ERR("alloc workspace failed!\n");
 			goto fail;
 		}
-		ret = zlib_deflateInit2(pstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS,
+		zlib_deflateInit2(pstream, Z_DEFAULT_COMPRESSION, Z_DEFLATED, -MAX_WBITS,
 				  DEF_MEM_LEVEL, Z_DEFAULT_STRATEGY);
-		if (ret != Z_OK) {
-			STP_DBG_PR_INFO("[%s::%d] zlib_deflateInit2 failed!\n", __func__, __LINE__);
-			goto fail;
-		}
 	}
 
 	compress->handler = stp_dbg_gzip_compressor;
@@ -1114,8 +1109,8 @@ static VOID stp_dbg_dump_data(PUINT8 pBuf, PINT8 title, INT32 len)
 	/* pr_warn("    ", title, len); */
 	for (k = 0; k < len; k++) {
 		if (strlen(str) < 200) {
-			if (snprintf(buf_str, sizeof(buf_str), "0x%02x ", pBuf[k]) > 0)
-				strncat(str, buf_str, strlen(buf_str));
+			snprintf(buf_str, sizeof(buf_str), "0x%02x ", pBuf[k]);
+			strncat(str, buf_str, strlen(buf_str));
 		} else {
 			pr_warn("More than 200 of the data is too much\n");
 			break;
@@ -1151,19 +1146,6 @@ INT32 stp_dbg_disable(MTKSTP_DBG_T *stp_dbg)
 	return 0;
 }
 
-static PINT8 stp_get_dbg_type_string(const PINT8 *pType, UINT32 type)
-{
-	PINT8 info_task_type = "<DBG>";
-
-	if (!pType)
-		return NULL;
-
-	if ((mtk_wcn_stp_is_support_gpsl5() == 0) && (type == INFO_TASK_INDX))
-		return info_task_type;
-	else
-		return pType[type];
-}
-
 static _osal_inline_ INT32 stp_dbg_dmp_in(MTKSTP_DBG_T *stp_dbg, PINT8 buf, INT32 len)
 {
 	ULONG flags;
@@ -1195,8 +1177,7 @@ static _osal_inline_ INT32 stp_dbg_dmp_in(MTKSTP_DBG_T *stp_dbg, PINT8 buf, INT3
 			pHdr->sec,
 			pHdr->usec,
 			pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx",
-			stp_get_dbg_type_string(pType, pHdr->type),
-			pHdr->no, pHdr->len, pHdr->seq, pHdr->ack);
+			pType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq, pHdr->ack);
 
 		if (length > 0)
 			stp_dbg_dump_data(pBuf, pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx", length);
@@ -1248,8 +1229,7 @@ static VOID stp_dbg_dmp_print_work(struct work_struct *work)
 			pHdr->sec,
 			pHdr->usec,
 			pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx",
-			stp_get_dbg_type_string(pType, pHdr->type),
-			pHdr->no, pHdr->len, pHdr->seq,
+			pType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq,
 			pHdr->ack, pHdr->l_sec, pHdr->l_nsec);
 
 		if (len > 0)
@@ -1420,8 +1400,7 @@ INT32 stp_dbg_dmp_append(MTKSTP_DBG_T *stp_dbg, PUINT8 pBuf, INT32 max_len)
 		len += osal_sprintf(pBuf + len, "\t%llu.%06lus, %s:pT%sn(%d)l(%4d)s(%d)a(%d)\t",
 				    pHdr->l_sec, pHdr->l_nsec,
 				    pHdr->dir == PKT_DIR_TX ? "Tx" : "Rx",
-				    stp_get_dbg_type_string(pType, pHdr->type),
-				    pHdr->no, pHdr->len, pHdr->seq,
+				    pType[pHdr->type], pHdr->no, pHdr->len, pHdr->seq,
 				    pHdr->ack);
 
 		for (i = 0; i < l; i++, p++)
@@ -1454,7 +1433,7 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 			      INT32 crc, INT32 dir, INT32 len, INT32 dbg_type)
 {
 
-	struct timespec64 now;
+	struct timeval now;
 	UINT64 ts;
 	ULONG nsec;
 
@@ -1463,15 +1442,15 @@ static _osal_inline_ INT32 stp_dbg_fill_hdr(STP_DBG_HDR_T *hdr, INT32 type, INT3
 		return -EINVAL;
 	}
 
-	osal_do_gettimeofday(&now);
+	do_gettimeofday(&now);
 	osal_get_local_time(&ts, &nsec);
 	hdr->last_dbg_type = gStpDbgDumpType;
 	gStpDbgDumpType = dbg_type;
 	hdr->dbg_type = dbg_type;
 	hdr->ack = ack;
 	hdr->seq = seq;
-	hdr->sec = (UINT32)now.tv_sec;
-	hdr->usec = (UINT32)(now.tv_nsec / NSEC_PER_USEC);
+	hdr->sec = now.tv_sec;
+	hdr->usec = now.tv_usec;
 	hdr->crc = crc;
 	hdr->dir = dir;	/* rx */
 	hdr->dmy = 0xffffffff;
@@ -1602,7 +1581,7 @@ VOID stp_dbg_nl_deinit(VOID)
 
 static INT32 stp_dbg_nl_bind(struct sk_buff *skb, struct genl_info *info)
 {
-	struct nlattr *na = NULL;
+	struct nlattr *na;
 	PINT8 mydata;
 	INT32 i;
 
@@ -1804,7 +1783,6 @@ INT32 stp_dbg_dump_num(LONG dmp_num)
 
 static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO_PARSER_TYPE type)
 {
-#define WDT_INFO_HEAD "Watch Dog Timeout"
 	PINT8 pStr = NULL;
 	PINT8 pDtr = NULL;
 	PINT8 pTemp = NULL;
@@ -1816,7 +1794,7 @@ static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO
 	INT32 remain_array_len = 0;
 
 	PUINT8 parser_sub_string[] = {
-		"{ASSERT} ",
+		"<ASSERT> ",
 		"id=",
 		"isr=",
 		"irq=",
@@ -1993,10 +1971,10 @@ static _osal_inline_ INT32 stp_dbg_parser_assert_str(PINT8 str, ENUM_ASSERT_INFO
 		osal_memcpy(&tempBuf[0], pDtr, len);
 		tempBuf[len] = '\0';
 
-		if (osal_memcmp(tempBuf, "*", osal_strlen("*")) == 0)
+		if (osal_memcmp(tempBuf, "*", len) == 0)
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_type[0], "general assert",
 					osal_strlen("general assert"));
-		if (osal_memcmp(tempBuf, WDT_INFO_HEAD, osal_strlen(WDT_INFO_HEAD)) == 0)
+		if (osal_memcmp(tempBuf, "Watch Dog Timeout", len) == 0)
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_type[0], "wdt", osal_strlen("wdt"));
 		if (osal_memcmp(tempBuf, "RB_FULL", osal_strlen("RB_FULL")) == 0) {
 			osal_memcpy(&g_stp_dbg_cpupcr->assert_type[0], tempBuf, len);
@@ -2059,56 +2037,200 @@ static _osal_inline_ VOID stp_dbg_cpupcr_deinit(P_STP_DBG_CPUPCR_T pCpupcr)
 	}
 }
 
-/*
- *	who call this ?
- *	- stp_dbg_soc_paged_dump
- *		generate coredump and coredump timeout
- *	- wmt_dbg_poll_cpupcr                          --> debug only, removed
- *		dump cpupcr through command
- *	- mtk_stp_dbg_poll_cpupcr (should remove this) --> removed
- *		export to other drivers
- *	- _stp_btm_handler
- *		coredump timeout
- *	- wmt_ctrl_rx
- *		rx timeout
- *	- stp_do_tx_timeout
- *		tx timeout
- *
- */
+static _osal_inline_ P_STP_DBG_DMAREGS_T stp_dbg_dmaregs_init(VOID)
+{
+	P_STP_DBG_DMAREGS_T pDmaRegs = NULL;
+
+	pDmaRegs = (P_STP_DBG_DMAREGS_T) osal_malloc(osal_sizeof(STP_DBG_DMAREGS_T));
+	if (!pDmaRegs) {
+		STP_DBG_PR_ERR("stp dbg dmareg allocate memory fail!\n");
+		return NULL;
+	}
+
+	osal_memset(pDmaRegs, 0, osal_sizeof(STP_DBG_DMAREGS_T));
+
+	osal_sleepable_lock_init(&pDmaRegs->lock);
+
+	return pDmaRegs;
+}
+
+static VOID stp_dbg_dmaregs_deinit(P_STP_DBG_DMAREGS_T pDmaRegs)
+{
+	if (pDmaRegs) {
+		osal_sleepable_lock_deinit(&pDmaRegs->lock);
+		osal_free(pDmaRegs);
+		pDmaRegs = NULL;
+	}
+}
+
 INT32 stp_dbg_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
 {
+	INT32 i = 0;
+	UINT32 value = 0x0;
 	ENUM_WMT_CHIP_TYPE chip_type;
+	UINT8 cccr_value = 0x0;
+	INT32 chip_id = -1;
+	INT32 i_ret = 0;
+	INT32 count = 0;
+
+	if (!g_stp_dbg_cpupcr) {
+		STP_DBG_PR_ERR("NULL reference pointer\n");
+		return -1;
+	}
 
 	chip_type = wmt_detect_get_chip_type();
 
-	switch (chip_type) {
-	case WMT_CHIP_TYPE_COMBO:
-		stp_dbg_combo_poll_cpupcr(times, sleep, cmd);
-		break;
-	case WMT_CHIP_TYPE_SOC:
-		stp_dbg_soc_poll_cpupcr(times, sleep, cmd);
-		break;
-	default:
-		STP_DBG_PR_INFO("error chip type(%d)\n", chip_type);
+	if (times > STP_DBG_CPUPCR_NUM)
+		times = STP_DBG_CPUPCR_NUM;
+
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+	for (i = 0; i < times; i++) {
+		switch (chip_type) {
+		case WMT_CHIP_TYPE_COMBO:
+			stp_sdio_rw_retry(HIF_TYPE_READL, STP_SDIO_RETRY_LIMIT,
+					g_stp_sdio_host_info.sdio_cltctx, SWPCDBGR, &value, 0);
+			g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count] = value;
+			osal_get_local_time(&(g_stp_dbg_cpupcr->sec_buffer[g_stp_dbg_cpupcr->count]),
+					&(g_stp_dbg_cpupcr->nsec_buffer[g_stp_dbg_cpupcr->count]));
+			break;
+		case WMT_CHIP_TYPE_SOC:
+			g_stp_dbg_cpupcr->buffer[g_stp_dbg_cpupcr->count] = wmt_plat_read_cpupcr();
+			osal_get_local_time(&(g_stp_dbg_cpupcr->sec_buffer[g_stp_dbg_cpupcr->count]),
+					&(g_stp_dbg_cpupcr->nsec_buffer[g_stp_dbg_cpupcr->count]));
+			break;
+		default:
+			STP_DBG_PR_ERR("error chip type(%d)\n", chip_type);
+		}
+
+		if (sleep > 0)
+			osal_sleep_ms(sleep);
+
+		g_stp_dbg_cpupcr->count++;
+		if (g_stp_dbg_cpupcr->count >= STP_DBG_CPUPCR_NUM)
+			g_stp_dbg_cpupcr->count = 0;
+	}
+
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+	if (cmd) {
+		UINT8 str[160] = {""};
+		PUINT8 p = str;
+		INT32 str_len = 0;
+
+		for (i = 0; i < STP_DBG_CPUPCR_NUM; i++) {
+			if (g_stp_dbg_cpupcr->sec_buffer[i] == 0 &&
+			    g_stp_dbg_cpupcr->nsec_buffer[i] == 0)
+				continue;
+
+			count++;
+			if (count % 4 != 0) {
+				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
+						       g_stp_dbg_cpupcr->sec_buffer[i],
+						       g_stp_dbg_cpupcr->nsec_buffer[i],
+						       g_stp_dbg_cpupcr->buffer[i]);
+				p += str_len;
+			} else {
+				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
+						       g_stp_dbg_cpupcr->sec_buffer[i],
+						       g_stp_dbg_cpupcr->nsec_buffer[i],
+						       g_stp_dbg_cpupcr->buffer[i]);
+				STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
+				p = str;
+			}
+		}
+		if (count % 4 != 0)
+			STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
+
+		if (chip_type == WMT_CHIP_TYPE_SOC && mtk_consys_check_reg_readable()) {
+			STP_DBG_PR_INFO("CONNSYS cpu:0x%x/bus:0x%x/dbg_cr1:0x%x/dbg_cr2:0x%x/EMIaddr:0x%x\n",
+					  stp_dbg_soc_read_debug_crs(CONNSYS_CPU_CLK),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_BUS_CLK),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR1),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_DEBUG_CR2),
+					  stp_dbg_soc_read_debug_crs(CONNSYS_EMI_REMAP));
+		}
+
+		chip_id = mtk_wcn_wmt_chipid_query();
+		if (chip_id == 0x6632) {
+			for (i = 0; i < 8; i++) {
+				i_ret = mtk_wcn_hif_sdio_f0_readb(g_stp_sdio_host_info.sdio_cltctx,
+						CCCR_F8 + i, &cccr_value);
+				if (i_ret)
+					STP_DBG_PR_ERR("read CCCR fail(%d), address(0x%x)\n",
+							i_ret, CCCR_F8 + i);
+				else
+					STP_DBG_PR_INFO("read CCCR value(0x%x), address(0x%x)\n",
+							cccr_value, CCCR_F8 + i);
+				cccr_value = 0x0;
+			}
+		}
+		/* Need in platform code - mtxxxx.c to provide function implementation */
+		mtk_wcn_consys_hang_debug();
+	}
+	if (chip_type == WMT_CHIP_TYPE_COMBO) {
+		STP_DBG_PR_INFO("dump sdio register for debug\n");
+		mtk_stp_dump_sdio_register();
 	}
 	return 0;
 }
 
-VOID stp_dbg_clear_cpupcr_reg_info(VOID)
+INT32 stp_dbg_poll_dmaregs(UINT32 times, UINT32 sleep)
 {
-	if (osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock)) {
-		STP_DBG_PR_DBG("lock failed\n");
-		return;
+#if 0
+	INT32 i = 0;
+
+	if (!g_stp_dbg_dmaregs) {
+		STP_DBG_PR_ERR("NULL reference pointer\n");
+		return -1;
 	}
 
-	g_stp_dbg_cpupcr->count = 0;
-	g_stp_dbg_cpupcr->host_assert_info.reason = 0;
-	g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
-	g_stp_dbg_cpupcr->issue_type = STP_FW_ISSUE_TYPE_INVALID;
-	g_stp_dbg_cpupcr->keyword[0] = '\0';
-	g_stp_dbg_cpupcr->fwRrq = 0;
-	g_stp_dbg_cpupcr->fwIsr = 0;
+	osal_lock_sleepable_lock(&g_stp_dbg_dmaregs->lock);
+
+	if (g_stp_dbg_dmaregs->count + times > STP_DBG_DMAREGS_NUM) {
+		if (g_stp_dbg_dmaregs->count > STP_DBG_DMAREGS_NUM) {
+			STP_DBG_PR_ERR("g_stp_dbg_dmaregs->count:%d must less than STP_DBG_DMAREGS_NUM:%d\n",
+				g_stp_dbg_dmaregs->count, STP_DBG_DMAREGS_NUM);
+			g_stp_dbg_dmaregs->count = 0;
+			STP_DBG_PR_ERR("g_stp_dbg_dmaregs->count be set default value 0\n");
+		}
+		times = STP_DBG_DMAREGS_NUM - g_stp_dbg_dmaregs->count;
+	}
+	if (times > STP_DBG_DMAREGS_NUM) {
+		STP_DBG_PR_ERR("times overflow, set default value:0\n");
+		times = 0;
+	}
+
+	for (i = 0; i < times; i++) {
+		INT32 k = 0;
+
+		for (; k < DMA_REGS_MAX; k++) {
+			STP_DBG_PR_INFO("times:%d,i:%d reg: %s, regs:%08x\n", times, i, dmaRegsStr[k],
+					  wmt_plat_read_dmaregs(k));
+			/* g_stp_dbg_dmaregs->dmaIssue[k][g_stp_dbg_dmaregs->count + i] =
+			 * wmt_plat_read_dmaregs(k);
+			 */
+		}
+		osal_sleep_ms(sleep);
+	}
+
+	g_stp_dbg_dmaregs->count += times;
+
+	osal_unlock_sleepable_lock(&g_stp_dbg_dmaregs->lock);
+#else
+	return 0;
+#endif
+}
+
+INT32 stp_dbg_poll_cpupcr_ctrl(UINT32 en)
+{
+	STP_DBG_PR_INFO("%s polling cpupcr\n", en == 0 ? "start" : "stop");
+
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+	g_stp_dbg_cpupcr->stop_flag = en;
 	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+
+	return 0;
 }
 
 INT32 stp_dbg_set_version_info(UINT32 chipid, PUINT8 pRomVer, PUINT8 pPatchVer, PUINT8 pPatchBrh)
@@ -2155,27 +2277,8 @@ INT32 stp_dbg_set_wifiver(UINT32 wifiver)
 	return 0;
 }
 
-INT32 stp_dbg_get_host_assert_info(PUINT32 drv_type, PUINT32 reason, PUINT32 en)
-{
-	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
-	if (drv_type)
-		*drv_type = g_stp_dbg_cpupcr->host_assert_info.drv_type;
-
-	if (reason)
-		*reason = g_stp_dbg_cpupcr->host_assert_info.reason;
-
-	if (en)
-		*en = g_stp_dbg_cpupcr->host_assert_info.assert_from_host;
-	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
-
-	return 0;
-}
-
 INT32 stp_dbg_set_host_assert_info(UINT32 drv_type, UINT32 reason, UINT32 en)
 {
-	/* clear debug info here because here is the first place to set info */
-	stp_dbg_clear_cpupcr_reg_info();
-
 	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 
 	g_stp_dbg_cpupcr->host_assert_info.assert_from_host = en;
@@ -2196,7 +2299,7 @@ VOID stp_dbg_set_keyword(PINT8 keyword)
 		else if (osal_strchr(keyword, '<') != NULL || osal_strchr(keyword, '>') != NULL)
 			STP_DBG_PR_INFO("Keyword has < or >, keywrod: %s\n", keyword);
 		else
-			osal_strncpy(&g_stp_dbg_cpupcr->keyword[0], keyword, osal_strlen(keyword));
+			osal_strncat(&g_stp_dbg_cpupcr->keyword[0], keyword, STP_DBG_KEYWORD_SIZE);
 	} else {
 		g_stp_dbg_cpupcr->keyword[0] = '\0';
 	}
@@ -2233,7 +2336,7 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 		return -1;
 	}
 
-	if (g_stp_dbg_cpupcr->issue_type != STP_FW_ISSUE_TYPE_INVALID &&
+	if (g_stp_dbg_cpupcr->issue_type &&
 	    g_stp_dbg_cpupcr->issue_type != STP_HOST_TRIGGER_COLLECT_FTRACE) {
 		STP_DBG_PR_ERR("assert information has been set up\n");
 		return -1;
@@ -2250,10 +2353,8 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 	if ((issue_type == STP_FW_ASSERT_ISSUE) ||
 	    (issue_type == STP_HOST_TRIGGER_FW_ASSERT) ||
 	    (issue_type == STP_HOST_TRIGGER_ASSERT_TIMEOUT) ||
-	    (issue_type == STP_HOST_TRIGGER_COLLECT_FTRACE) ||
-	    (issue_type == STP_FW_ABT)) {
-		if ((issue_type == STP_FW_ASSERT_ISSUE) || (issue_type == STP_HOST_TRIGGER_FW_ASSERT)
-			|| (issue_type == STP_FW_ABT)) {
+	    (issue_type == STP_HOST_TRIGGER_COLLECT_FTRACE)) {
+		if ((issue_type == STP_FW_ASSERT_ISSUE) || (issue_type == STP_HOST_TRIGGER_FW_ASSERT)) {
 			tempbuf = osal_malloc(len + 1);
 			if (!tempbuf)
 				return -2;
@@ -2263,21 +2364,16 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 			for (i = 0; i < len; i++) {
 				if (tempbuf[i] == '\0')
 					tempbuf[i] = '?';
-				else if (tempbuf[i] == '<')
-					tempbuf[i] = '{';
-				else if (tempbuf[i] == '>')
-					tempbuf[i] = '}';
 			}
 
 			tempbuf[len] = '\0';
 
 			for (type_index = STP_DBG_ASSERT_INFO; type_index < STP_DBG_PARSER_TYPE_MAX;
-					type_index++) {
-				iRet = stp_dbg_parser_assert_str(&tempbuf[0], type_index);
-				if (iRet)
-					STP_DBG_PR_INFO("fail to parse assert str %s, type = %d, ret = %d\n",
-						&tempbuf[0], type_index, iRet);
-			}
+					type_index++)
+				iRet += stp_dbg_parser_assert_str(&tempbuf[0], type_index);
+
+			if (iRet)
+				STP_DBG_PR_ERR("passert assert infor fail(%d)\n", iRet);
 
 		}
 		if ((issue_type == STP_HOST_TRIGGER_FW_ASSERT) ||
@@ -2303,10 +2399,6 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 				break;
 			case WMTDRV_TYPE_GPS:
 				STP_DBG_PR_INFO("GPS trigger assert\n");
-				g_stp_dbg_cpupcr->fwTaskId = STP_DBG_TASK_DRVGPS;
-				break;
-			case WMTDRV_TYPE_GPSL5:
-				STP_DBG_PR_INFO("GPSL5 trigger assert\n");
 				g_stp_dbg_cpupcr->fwTaskId = STP_DBG_TASK_DRVGPS;
 				break;
 			case WMTDRV_TYPE_WIFI:
@@ -2335,17 +2427,8 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 			g_stp_dbg_cpupcr->host_assert_info.assert_from_host = 0;
 			osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 
-		} else if (issue_type == STP_FW_ABT) {
-			INT32 copyLen = (len < STP_ASSERT_INFO_SIZE ? len : STP_ASSERT_INFO_SIZE - 1);
-
-			osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
-			osal_memcpy(&g_stp_dbg_cpupcr->assert_info[0], tempbuf, copyLen);
-			g_stp_dbg_cpupcr->assert_info[copyLen] = '\0';
-			osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 		}
-
-		if (tempbuf)
-			osal_free(tempbuf);
+		osal_free(tempbuf);
 	} else if (issue_type == STP_FW_NOACK_ISSUE) {
 		osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 		osal_memcpy(&g_stp_dbg_cpupcr->assert_info[0], issue_info, len);
@@ -2367,17 +2450,25 @@ INT32 stp_dbg_set_fw_info(PUINT8 issue_info, UINT32 len, ENUM_STP_FW_ISSUE_TYPE 
 		g_stp_dbg_cpupcr->fwRrq = 0;
 		g_stp_dbg_cpupcr->fwIsr = 0;
 		osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+	} else if (issue_type == STP_FW_ABT) {
+		osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+		osal_memcpy(&g_stp_dbg_cpupcr->assert_info[0], issue_info, len);
+		g_stp_dbg_cpupcr->fwTaskId = STP_DBG_TASK_WMT;
+		g_stp_dbg_cpupcr->fwRrq = 0;
+		g_stp_dbg_cpupcr->fwIsr = 0;
+		osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 	} else {
 		STP_DBG_PR_ERR("invalid issue type(%d)\n", issue_type);
 		return -3;
 	}
 
-	return 0;
+	return iRet;
 }
 
 INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len)
 {
 	UINT32 len = 0;
+	UINT32 i = 0;
 
 	/* never retrun negative value */
 	if (!g_stp_dbg_cpupcr || !buf) {
@@ -2489,14 +2580,30 @@ INT32 stp_dbg_cpupcr_infor_format(PUINT8 buf, UINT32 max_len)
 	}
 
 	len += osal_sprintf(buf + len, "<pctrace>");
-	STP_DBG_PR_INFO("stp-dbg:sub len2 for debug(%d)\n", len);
+	STP_DBG_PR_INFO("stp-dbg:sub len1 for debug(%d)\n", len);
 
+	if (!g_stp_dbg_cpupcr->count)
+		len += osal_sprintf(buf + len, "NULL");
+	else {
+		for (i = 0; i < g_stp_dbg_cpupcr->count; i++)
+			len += osal_sprintf(buf + len, "%08x,", g_stp_dbg_cpupcr->buffer[i]);
+	}
+	STP_DBG_PR_INFO("stp-dbg:sub len2 for debug(%d)\n", len);
 	len += osal_sprintf(buf + len, "</pctrace>\n\t\t\t");
 	len += osal_sprintf(buf + len,
 			"<extension>NULL</extension>\n\t\t</client>\n\t</hint>\n</main>\n");
 
 	STP_DBG_PR_INFO("buffer len[%d]\n", len);
+	/* STP_DBG_PR_INFO("Format infor:\n%s\n",buf); */
 
+	osal_lock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
+	osal_memset(&g_stp_dbg_cpupcr->buffer[0], 0, STP_DBG_CPUPCR_NUM);
+	g_stp_dbg_cpupcr->count = 0;
+	g_stp_dbg_cpupcr->host_assert_info.reason = 0;
+	g_stp_dbg_cpupcr->host_assert_info.drv_type = 0;
+	g_stp_dbg_cpupcr->issue_type = STP_FW_ISSUE_TYPE_INVALID;
+	g_stp_dbg_cpupcr->keyword[0] = '\0';
+	osal_unlock_sleepable_lock(&g_stp_dbg_cpupcr->lock);
 
 	return len;
 }
@@ -2523,6 +2630,16 @@ PUINT8 stp_dbg_id_to_task(UINT32 id)
 
 VOID stp_dbg_reset(VOID)
 {
+	if (g_stp_dbg_cpupcr) {
+		osal_memset(g_stp_dbg_cpupcr->buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->buffer));
+		osal_memset(g_stp_dbg_cpupcr->sec_buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->sec_buffer));
+		osal_memset(g_stp_dbg_cpupcr->nsec_buffer, 0, osal_sizeof(g_stp_dbg_cpupcr->nsec_buffer));
+	}
+
+	if (g_stp_dbg_dmaregs) {
+		g_stp_dbg_dmaregs->count = 0;
+		osal_memset(g_stp_dbg_dmaregs->dmaIssue, 0, osal_sizeof(g_stp_dbg_dmaregs->dmaIssue));
+	}
 }
 
 MTKSTP_DBG_T *stp_dbg_init(PVOID btm_half)
@@ -2566,6 +2683,11 @@ MTKSTP_DBG_T *stp_dbg_init(PVOID btm_half)
 		STP_DBG_PR_ERR("-ENOMEM stp_dbg_cpupcr_init fail!");
 		goto ERR_EXIT2;
 	}
+	g_stp_dbg_dmaregs = stp_dbg_dmaregs_init();
+	if (!g_stp_dbg_dmaregs) {
+		STP_DBG_PR_ERR("-ENOMEM stp_dbg_dmaregs_init fail!");
+		goto ERR_EXIT2;
+	}
 	return stp_dbg;
 
 ERR_EXIT2:
@@ -2582,7 +2704,7 @@ INT32 stp_dbg_deinit(MTKSTP_DBG_T *stp_dbg)
 	stp_dbg_core_dump_deinit(g_core_dump);
 
 	stp_dbg_cpupcr_deinit(g_stp_dbg_cpupcr);
-
+	stp_dbg_dmaregs_deinit(g_stp_dbg_dmaregs);
 	/* unbind with netlink */
 	stp_dbg_nl_deinit();
 
@@ -2615,8 +2737,6 @@ INT32 stp_dbg_start_emi_dump(VOID)
 
 	if (mtk_wcn_wlan_emi_mpu_set_protection)
 		(*mtk_wcn_wlan_emi_mpu_set_protection)(false);
-	/* Disable MCIF EMI protection */
-	mtk_wcn_wmt_set_mcif_mpu_protection(false);
 	stp_dbg_set_coredump_timer_state(CORE_DUMP_DOING);
 	osal_timer_modify(&g_core_dump->dmp_emi_timer, STP_EMI_DUMP_TIMEOUT);
 	ret = stp_dbg_nl_send_data(EMICOREDUMP_CMD, sizeof(EMICOREDUMP_CMD));
@@ -2639,8 +2759,6 @@ INT32 stp_dbg_stop_emi_dump(VOID)
 	}
 
 	mtk_wcn_stp_emi_dump_flag_ctrl(1);
-	/* Enable MCIF EMI protection */
-	mtk_wcn_wmt_set_mcif_mpu_protection(true);
 	if (mtk_wcn_wlan_emi_mpu_set_protection)
 		(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
 	osal_timer_stop(&g_core_dump->dmp_emi_timer);
@@ -2664,38 +2782,3 @@ INT32 stp_dbg_nl_send_data(const PINT8 buf, INT32 len)
 	kfree(pdata);
 	return ret;
 }
-
-INT32 stp_dbg_read_memdump_mode(INT32 read_file)
-{
-	static LONG ret = -1;
-	struct file *fd;
-	UINT8 buffer[2];
-	const char filename[] = "/sys/wifi/memdump";
-
-	if (ret >= 0 && read_file == 0)
-		return (INT32)ret;
-
-	fd = filp_open(filename, O_RDONLY, 0);
-
-	if (IS_ERR(fd)) {
-		/* fail to open file, return default value */
-		pr_info("open memdump fail, %ld\n", PTR_ERR(fd));
-		return 2;
-	}
-
-	ret = osal_file_read(fd, buffer, 1, 0);
-	if (ret != 1) {
-		/* fail to read file, return default value */
-		pr_info("read fail, ret = %ld\n", ret);
-		ret = 2;
-	} else {
-		buffer[1] = '\0';
-		osal_strtol(buffer, 10, &ret);
-	}
-	filp_close(fd, NULL);
-
-	STP_DBG_PR_INFO("memdump mode = %ld\n", ret);
-
-	return (INT32)ret;
-}
-

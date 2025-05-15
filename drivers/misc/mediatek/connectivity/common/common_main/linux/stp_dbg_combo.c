@@ -13,8 +13,6 @@
 
 #include "stp_dbg.h"
 #include "stp_dbg_combo.h"
-#include "stp_sdio.h"
-#include "stp_core.h"
 
 static _osal_inline_ INT32 stp_dbg_combo_put_dump_to_aee(VOID);
 static _osal_inline_ INT32 stp_dbg_combo_put_dump_to_nl(VOID);
@@ -59,8 +57,8 @@ static _osal_inline_ INT32 stp_dbg_combo_put_dump_to_aee(VOID)
 	static UINT8 tmp[2048];
 
 	UINT32 buf_len;
-	STP_PACKET_T *pkt = NULL;
-	STP_DBG_HDR_T *hdr = NULL;
+	STP_PACKET_T *pkt;
+	STP_DBG_HDR_T *hdr;
 	INT32 remain = 0;
 	INT32 retry = 0;
 	INT32 ret = 0;
@@ -74,10 +72,8 @@ static _osal_inline_ INT32 stp_dbg_combo_put_dump_to_aee(VOID)
 				if (pkt->hdr.len <= 1500) {
 					tmp[pkt->hdr.len] = '\n';
 					tmp[pkt->hdr.len + 1] = '\0';
-					if (pkt->hdr.len < STP_DMP_SZ)
-						osal_memcpy(&tmp[0], pkt->raw, pkt->hdr.len);
-					else
-						osal_memcpy(&tmp[0], pkt->raw, STP_DMP_SZ);
+					osal_memcpy(&tmp[0], pkt->raw, pkt->hdr.len);
+
 					ret = stp_dbg_aee_send(tmp, pkt->hdr.len, 0);
 				} else {
 					STP_DBG_PR_INFO("dump entry length is over long\n");
@@ -103,8 +99,8 @@ static _osal_inline_ INT32 stp_dbg_combo_put_dump_to_nl(VOID)
 	static UINT8 tmp[2048];
 
 	UINT32 buf_len;
-	STP_PACKET_T *pkt = NULL;
-	STP_DBG_HDR_T *hdr = NULL;
+	STP_PACKET_T *pkt;
+	STP_DBG_HDR_T *hdr;
 	INT32 remain = 0;
 	INT32 index = 0;
 	INT32 retry = 0;
@@ -195,78 +191,4 @@ PUINT8 stp_dbg_combo_id_to_task(UINT32 id)
 	}
 
 	return combo_task_str[temp_id];
-}
-
-INT32 stp_dbg_combo_poll_cpupcr(UINT32 times, UINT32 sleep, UINT32 cmd)
-{
-	INT32 i = 0;
-	UINT32 value = 0x0;
-	INT32 i_ret = 0;
-	INT32 count = 0;
-	INT32 chip_id = -1;
-	UINT8 cccr_value = 0x0;
-	UINT32 buffer[STP_DBG_CPUPCR_NUM];
-	UINT64 sec_buffer[STP_DBG_CPUPCR_NUM];
-	ULONG nsec_buffer[STP_DBG_CPUPCR_NUM];
-
-	if (times > STP_DBG_CPUPCR_NUM)
-		times = STP_DBG_CPUPCR_NUM;
-
-	for (i = 0; i < times; i++) {
-		stp_sdio_rw_retry(HIF_TYPE_READL, STP_SDIO_RETRY_LIMIT,
-				g_stp_sdio_host_info.sdio_cltctx, SWPCDBGR, &value, 0);
-		buffer[i] = value;
-		osal_get_local_time(&(sec_buffer[i]),
-				&(nsec_buffer[i]));
-		if (sleep > 0)
-			osal_sleep_ms(sleep);
-	}
-
-	if (cmd) {
-		UINT8 str[DBG_LOG_STR_SIZE] = {""};
-		PUINT8 p = str;
-		INT32 str_len = 0;
-
-		for (i = 0; i < STP_DBG_CPUPCR_NUM; i++) {
-			if (sec_buffer[i] == 0 && nsec_buffer[i] == 0)
-				continue;
-
-			count++;
-			if (count % 4 != 0) {
-				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
-						       sec_buffer[i],
-						       nsec_buffer[i],
-						       buffer[i]);
-				p += str_len;
-			} else {
-				str_len = osal_sprintf(p, "%llu.%06lu/0x%08x;",
-						       sec_buffer[i],
-						       nsec_buffer[i],
-						       buffer[i]);
-				STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
-				p = str;
-			}
-		}
-		if (count % 4 != 0)
-			STP_DBG_PR_INFO("TIME/CPUPCR: %s\n", str);
-
-		chip_id = mtk_wcn_wmt_chipid_query();
-		if (chip_id == 0x6632) {
-			for (i = 0; i < 8; i++) {
-				i_ret = mtk_wcn_hif_sdio_f0_readb(g_stp_sdio_host_info.sdio_cltctx,
-						CCCR_F8 + i, &cccr_value);
-				if (i_ret)
-					STP_DBG_PR_ERR("read CCCR fail(%d), address(0x%x)\n",
-							i_ret, CCCR_F8 + i);
-				else
-					STP_DBG_PR_INFO("read CCCR value(0x%x), address(0x%x)\n",
-							cccr_value, CCCR_F8 + i);
-				cccr_value = 0x0;
-			}
-		}
-	}
-	STP_DBG_PR_INFO("dump sdio register for debug\n");
-	mtk_stp_dump_sdio_register();
-
-	return 0;
 }

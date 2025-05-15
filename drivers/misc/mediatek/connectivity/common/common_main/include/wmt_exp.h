@@ -40,14 +40,6 @@
 #define DFT_TAG         "[WMT-DFT]"
 #endif
 
-#ifndef CONFIG_MTK_CONNECTIVITY_LOG
-#define WMT_LOUD_FUNC(fmt, arg...)
-#define WMT_INFO_FUNC(fmt, arg...)
-#define WMT_WARN_FUNC(fmt, arg...)
-#define WMT_ERR_FUNC(fmt, arg...)
-#define WMT_DBG_FUNC(fmt, arg...)
-#define WMT_TRC_FUNC(f)
-#else
 #define WMT_LOUD_FUNC(fmt, arg...) \
 do { \
 	if (gWmtDbgLvl >= WMT_LOG_LOUD) \
@@ -78,7 +70,7 @@ do { \
 	if (gWmtDbgLvl >= WMT_LOG_DBG) \
 		osal_warn_print(DFT_TAG "<%s> <%d>\n", __func__, __LINE__); \
 } while (0)
-#endif
+
 #endif
 
 /*******************************************************************************
@@ -86,7 +78,7 @@ do { \
 ********************************************************************************
 */
 #if 1				/* moved from wmt_lib.h */
-extern INT32 gWmtDbgLvl;
+extern UINT32 gWmtDbgLvl;
 #endif
 extern OSAL_BIT_OP_VAR gBtWifiGpsState;
 extern OSAL_BIT_OP_VAR gGpsFmState;
@@ -124,7 +116,6 @@ typedef enum _ENUM_WMTDRV_TYPE_T {
 	WMTDRV_TYPE_SDIO2 = 8,
 	WMTDRV_TYPE_LPBK = 9,
 	WMTDRV_TYPE_COREDUMP = 10,
-	WMTDRV_TYPE_GPSL5 = 11,
 	WMTDRV_TYPE_MAX
 } ENUM_WMTDRV_TYPE_T, *P_ENUM_WMTDRV_TYPE_T;
 
@@ -195,8 +186,8 @@ typedef enum _ENUM_WMTCHIN_TYPE_T {
 	WMTCHIN_MAPPINGHWVER = WMTCHIN_HWVER + 1,
 	WMTCHIN_FWVER = WMTCHIN_MAPPINGHWVER + 1,
 	WMTCHIN_IPVER = WMTCHIN_FWVER + 1,
-	WMTCHIN_ADIE = WMTCHIN_IPVER + 1,
 	WMTCHIN_MAX,
+
 } ENUM_WMT_CHIPINFO_TYPE_T, *P_ENUM_WMT_CHIPINFO_TYPE_T;
 
 typedef enum _ENUM_WMT_FLASH_PATCH_CTRL_T {
@@ -283,9 +274,6 @@ typedef enum _ENUM_BT_GPS_ONOFF_STATE_T {
 	WMT_GPS_ON = 1,
 	WMT_WIFI_ON = 2,
 	WMT_FM_ON = 3,
-	WMT_GPS_SUSPEND = 4,
-	WMT_GPSL5_ON = 5,
-	WMT_GPSL5_SUSPEND = 6,
 	WMT_BT_GPS_STATE_MAX,
 	WMT_BT_GPS_STATE_INVALID = 0xff
 } ENUM_BT_GPS_ONOFF_STATE_T, *P_ENUM_BT_GPS_ONOFF_STATE_T;
@@ -310,7 +298,6 @@ typedef INT32(*wmt_wlan_remove_cb) (VOID);
 typedef INT32(*wmt_wlan_bus_cnt_get_cb) (VOID);
 typedef INT32(*wmt_wlan_bus_cnt_clr_cb) (VOID);
 typedef INT32(*wmt_wlan_emi_mpu_set_protection_cb) (bool);
-typedef INT32(*wmt_wlan_is_wifi_drv_own_cb) (VOID);
 
 typedef struct _MTK_WCN_WMT_WLAN_CB_INFO {
 	wmt_wlan_probe_cb wlan_probe_cb;
@@ -318,7 +305,6 @@ typedef struct _MTK_WCN_WMT_WLAN_CB_INFO {
 	wmt_wlan_bus_cnt_get_cb wlan_bus_cnt_get_cb;
 	wmt_wlan_bus_cnt_clr_cb wlan_bus_cnt_clr_cb;
 	wmt_wlan_emi_mpu_set_protection_cb wlan_emi_mpu_set_protection_cb;
-	wmt_wlan_is_wifi_drv_own_cb wlan_is_wifi_drv_own_cb;
 } MTK_WCN_WMT_WLAN_CB_INFO, *P_MTK_WCN_WMT_WLAN_CB_INFO;
 
 #ifdef CONFIG_MTK_COMBO_ANT
@@ -357,7 +343,6 @@ extern wmt_wlan_remove_cb mtk_wcn_wlan_remove;
 extern wmt_wlan_bus_cnt_get_cb mtk_wcn_wlan_bus_tx_cnt;
 extern wmt_wlan_bus_cnt_clr_cb mtk_wcn_wlan_bus_tx_cnt_clr;
 extern wmt_wlan_emi_mpu_set_protection_cb mtk_wcn_wlan_emi_mpu_set_protection;
-extern wmt_wlan_is_wifi_drv_own_cb mtk_wcn_wlan_is_wifi_drv_own;
 /*******************************************************************************
 *                           P R I V A T E   D A T A
 ********************************************************************************
@@ -386,8 +371,6 @@ extern MTK_WCN_BOOL mtk_wcn_wmt_assert_keyword(ENUM_WMTDRV_TYPE_T type, PUINT8 k
 
 extern MTK_WCN_BOOL mtk_wcn_wmt_do_reset(ENUM_WMTDRV_TYPE_T type);
 
-extern MTK_WCN_BOOL mtk_wcn_wmt_do_reset_only(ENUM_WMTDRV_TYPE_T type);
-
 extern INT32 mtk_wcn_wmt_msgcb_reg(ENUM_WMTDRV_TYPE_T eType, PF_WMT_CB pCb);
 
 extern INT32 mtk_wcn_wmt_msgcb_unreg(ENUM_WMTDRV_TYPE_T eType);
@@ -406,7 +389,6 @@ extern ENUM_WMTHWVER_TYPE_T mtk_wcn_wmt_hwver_get(VOID);
 
 extern UINT32 mtk_wcn_wmt_ic_info_get(ENUM_WMT_CHIPINFO_TYPE_T type);
 
-extern UINT32 mtk_wcn_wmt_adie_workable(VOID);
 
 extern INT32 mtk_wcn_wmt_chipid_query(VOID);
 
@@ -443,17 +425,6 @@ extern UINT32 mtk_wmt_get_gps_lna_pin_num(VOID);
 extern VOID mtk_wmt_set_ext_ldo(UINT32 flag);
 extern INT32 mtk_wmt_gps_mcu_ctrl(PUINT8 p_tx_data_buf, UINT32 tx_data_len, PUINT8 p_rx_data_buf,
 				  UINT32 rx_data_buf_len, PUINT32 p_rx_data_len);
-extern VOID mtk_wcn_wmt_set_mcif_mpu_protection(MTK_WCN_BOOL enable);
-extern MTK_WCN_BOOL mtk_wmt_gps_suspend_ctrl(MTK_WCN_BOOL suspend);
-extern MTK_WCN_BOOL mtk_wmt_gps_l1_suspend_ctrl(MTK_WCN_BOOL suspend);
-extern MTK_WCN_BOOL mtk_wmt_gps_l5_suspend_ctrl(MTK_WCN_BOOL suspend);
-
-extern INT32 mtk_wcn_wmt_mpu_lock_aquire(VOID);
-extern VOID mtk_wcn_wmt_mpu_lock_release(VOID);
-
-extern INT32 mtk_wcn_get_reset_info(PUINT8 pBuff, INT32 buffLen);
-extern INT32 mtk_wcn_get_host_assert_info(PUINT32 type, PUINT32 reason, PUINT32 en);
-
 /*******************************************************************************
 *                              F U N C T I O N S
 ********************************************************************************

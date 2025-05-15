@@ -1,7 +1,54 @@
-/* SPDX-License-Identifier: GPL-2.0 */
-/*
- * Copyright (c) 2020 MediaTek Inc.
- */
+/******************************************************************************
+ *
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
+ *
+ * GPLv2 License
+ *
+ * Copyright(C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ *
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 
 #ifndef __HOST_CSR_H__
 #define __HOST_CSR_H__
@@ -42,38 +89,5 @@
 
 /* Get mcu_cfg PC programming Counter log info 0x0_2450~0x0_24D0 */
 #define HOST_CSR_MCU_PROG_COUNT				0x2450
-
-#if (CFG_ENABLE_HOST_BUS_TIMEOUT == 1)
-#define HOST_CSR_BUS_TIMOUT_CTRL_ADDR	(HOST_CSR_DRIVER_OWN_INFO + 0x44)
-#define HOST_CSR_AP2CONN_AHB_HADDR	(HOST_CSR_DRIVER_OWN_INFO + 0x4C)
-#endif
-
-/* Modem LP control */
-#define HOST_CSR_CONN_HIF_ON_MD_LPCTL_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x30)
-/* Modem interrupt enable */
-#define HOST_CSR_CONN_HIF_ON_MD_IRQ_STAT_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x34)
-/* Modem interrupt status */
-#define HOST_CSR_CONN_HIF_ON_MD_IRQ_ENA_ADDR (HOST_CSR_DRIVER_OWN_INFO + 0x38)
-
-/*
-* AP2CONN_ADDR_MAP1[31..16]
-* Mapping [0x180A_xxxx] to [ap2conn_addr_map0[15:0], xxxx]
-*
-* AP2CONN_ADDR_MAP0[15..0]
-* Mapping [0x180D_xxxx] to [ap2conn_addr_map1[15:0], xxxx]
-*/
-#define CONN_HIF_ON_ADDR_REMAP1					0x700C
-#define AP2CONN_ADDR_MAP0					0xD0000
-#define AP2CONN_ADDR_MAP1					0xA0000
-/*
-* AP2CONN_ADDR_MAP3[31..16]
-* Mapping [0x180F_xxxx] to [ap2conn_addr_map3[15:0], xxxx]
-*
-* AP2CONN_ADDR_MAP2[15..0]
-* Mapping [0x1804_xxxx] to [ap2conn_addr_map2[15:0], xxxx]
-*/
-#define CONN_HIF_ON_ADDR_REMAP2					0x7010
-#define AP2CONN_ADDR_MAP2					0x40000
-#define AP2CONN_ADDR_MAP3					0xF0000
 
 #endif /* __HOST_CSR_H__ */

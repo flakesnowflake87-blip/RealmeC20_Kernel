@@ -103,7 +103,7 @@ extern const uint8_t *apucNetworkType[NETWORK_TYPE_NUM];
 #define IS_BSS_ALIVE(_prAdapter, _prBssInfo) \
 	(_prBssInfo->fgIsInUse && \
 	_prBssInfo->fgIsNetActive && \
-	(_prBssInfo->eConnectionState == MEDIA_STATE_CONNECTED || \
+	(_prBssInfo->eConnectionState == PARAM_MEDIA_STATE_CONNECTED || \
 	(_prBssInfo->eCurrentOPMode == OP_MODE_ACCESS_POINT && \
 	IS_NET_PWR_STATE_ACTIVE(_prAdapter, \
 	_prBssInfo->ucBssIndex))))
@@ -133,8 +133,7 @@ extern const uint8_t *apucNetworkType[NETWORK_TYPE_NUM];
 #define IS_BSS_INDEX_VALID(_ucBssIndex)     ((_ucBssIndex) <= P2P_DEV_BSS_INDEX)
 
 #define GET_BSS_INFO_BY_INDEX(_prAdapter, _ucBssIndex) \
-	(IS_BSS_INDEX_VALID(_ucBssIndex) ? \
-		(_prAdapter)->aprBssInfo[(_ucBssIndex)] : NULL)
+	((_prAdapter)->aprBssInfo[(_ucBssIndex)])
 
 #define bssAssignAssocID(_prStaRec)         ((_prStaRec)->ucIndex + 1)
 
@@ -175,16 +174,6 @@ void bssDetermineApBssInfoPhyTypeSet(IN struct ADAPTER
 				     *prAdapter, IN u_int8_t fgIsPureAp,
 				     OUT struct BSS_INFO *prBssInfo);
 
-void bssUpdateStaRecFromBssDesc(struct ADAPTER *prAdapter,
-				struct BSS_DESC *prBssDesc,
-				struct STA_RECORD *prStaRec);
-
-int8_t bssGetRxNss(IN struct ADAPTER *prAdapter,
-	IN struct BSS_DESC *prBssDesc);
-#if CFG_SUPPORT_IOT_AP_BLACKLIST
-uint32_t bssGetIotApAction(IN struct ADAPTER *prAdapter,
-	IN struct BSS_DESC *prBssDesc);
-#endif
 /*----------------------------------------------------------------------------*/
 /* Routines for both IBSS(AdHoc) and BSS(AP)                                  */
 /*----------------------------------------------------------------------------*/
@@ -252,20 +241,14 @@ ibssProcessMatchedBeacon(IN struct ADAPTER *prAdapter,
 			 IN struct BSS_INFO *prBssInfo,
 			 IN struct BSS_DESC *prBssDesc, IN uint8_t ucRCPI);
 
-uint32_t ibssCheckCapabilityForAdHocMode(
-		IN struct ADAPTER *prAdapter,
-		IN struct BSS_DESC *prBssDesc,
-		IN uint8_t uBssIndex);
+uint32_t ibssCheckCapabilityForAdHocMode(IN struct ADAPTER
+		*prAdapter, IN struct BSS_DESC *prBssDesc);
 
 void ibssInitForAdHoc(IN struct ADAPTER *prAdapter,
 		      IN struct BSS_INFO *prBssInfo);
 
 uint32_t bssUpdateBeaconContent(IN struct ADAPTER
 				*prAdapter, IN uint8_t uBssIndex);
-
-uint32_t bssUpdateBeaconContentEx(IN struct ADAPTER
-				*prAdapter, IN uint8_t uBssIndex,
-				enum ENUM_IE_UPD_METHOD eMethod);
 
 /*----------------------------------------------------------------------------*/
 /* Routines for BSS(AP) only                                                  */
@@ -296,15 +279,5 @@ enum ENUM_AC_PRIORITY {
 	AC_VI_PRIORITY,
 	AC_VO_PRIORITY
 };
-
-#if (CFG_SUPPORT_HE_ER == 1)
-struct EVENT_ER_TX_MODE {
-	uint8_t ucBssInfoIdx;
-	uint8_t ucErMode;
-};
-
-void bssProcessErTxModeEvent(IN struct ADAPTER *prAdapter,
-	IN struct WIFI_EVENT *prEvent);
-#endif
 
 #endif /* _BSS_H */

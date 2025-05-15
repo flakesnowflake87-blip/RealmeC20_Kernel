@@ -23,8 +23,10 @@
 #include "wmt_detect.h"
 #include "wmt_gpio.h"
 #include "wmt_dev.h"
-#include "conn_drv_init.h"
 
+#if MTK_WCN_REMOVE_KO
+#include "conn_drv_init.h"
+#endif
 #ifdef CONFIG_COMPAT
 #include <linux/compat.h>
 #endif
@@ -38,7 +40,7 @@ struct class *pDetectClass;
 struct device *pDetectDev;
 static int gWmtDetectMajor = WMT_DETECT_MAJOR;
 static struct cdev gWmtDetectCdev;
-int gWmtDetectDbgLvl = WMT_DETECT_LOG_INFO;
+unsigned int gWmtDetectDbgLvl = WMT_DETECT_LOG_INFO;
 static ENUM_WMT_CHIP_TYPE g_chip_type = WMT_CHIP_TYPE_INVALID;
 
 static int wmt_detect_open(struct inode *inode, struct file *file)
@@ -108,17 +110,9 @@ static long wmt_detect_unlocked_ioctl(struct file *filp, unsigned int cmd, unsig
 		retval = sdio_detect_do_autok(arg);
 		break;
 
-	case COMBO_IOCTL_CONNSYS_SOC_HW_INIT:
-		retval = wmt_plat_consys_hw_init();
-		break;
-
 	case COMBO_IOCTL_GET_SOC_CHIP_ID:
 		retval = wmt_plat_get_soc_chipid();
 		/*get soc chipid by HAL interface */
-		break;
-
-	case COMBO_IOCTL_GET_ADIE_CHIP_ID:
-		retval = wmt_plat_get_adie_chipid();
 		break;
 
 	case COMBO_IOCTL_MODULE_CLEANUP:
@@ -126,9 +120,14 @@ static long wmt_detect_unlocked_ioctl(struct file *filp, unsigned int cmd, unsig
 		break;
 
 	case COMBO_IOCTL_DO_MODULE_INIT:
+#if (MTK_WCN_REMOVE_KO)
 		/*deinit SDIO-DETECT module */
 		WMT_DETECT_PR_INFO("built-in mode\n");
 		retval = do_connectivity_driver_init(arg);
+#else
+		WMT_DETECT_PR_INFO("kernel object mode\n");
+		retval = mtk_wcn_common_drv_init();
+#endif
 		break;
 
 	default:

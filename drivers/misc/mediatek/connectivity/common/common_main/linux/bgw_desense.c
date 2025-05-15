@@ -42,8 +42,8 @@ void bgw_destroy_netlink_kernel(void)
 
 void send_command_to_daemon(const int command /*struct sk_buff *skb */)
 {
-	struct nlmsghdr *nlh = NULL;
-	struct sk_buff *nl_skb = NULL;
+	struct nlmsghdr *nlh;
+	struct sk_buff *nl_skb;
 	int res;
 
 	MSG("here we will send command to native daemon\n");
@@ -85,8 +85,8 @@ void send_command_to_daemon(const int command /*struct sk_buff *skb */)
 
 static void nl_data_handler(struct sk_buff *__skb)
 {
-	struct sk_buff *skb = NULL;
-	struct nlmsghdr *nlh = NULL;
+	struct sk_buff *skb;
+	struct nlmsghdr *nlh;
 	int i;
 	int len;
 	char str[128];
@@ -94,10 +94,8 @@ static void nl_data_handler(struct sk_buff *__skb)
 	MSG("we got netlink message\n");
 	len = NLMSG_SPACE(MAX_NL_MSG_LEN);
 	skb = skb_get(__skb);
-	if (skb == NULL) {
+	if (skb == NULL)
 		ERR("skb_get return NULL");
-		return;
-	}
 	if (skb->len >= NLMSG_SPACE(0)) {	/*presume there is 5byte payload at leaset */
 		MSG("length is enough\n");
 		nlh = nlmsg_hdr(skb);	/* point to data which include in skb */

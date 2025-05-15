@@ -68,7 +68,6 @@
 #ifndef _GL_P2P_OS_H
 #define _GL_P2P_OS_H
 
-#define VENDOR_SPECIFIC_IE_LENGTH 400
 /******************************************************************************
  *                         C O M P I L E R   F L A G S
  ******************************************************************************
@@ -101,11 +100,8 @@ extern const struct net_device_ops p2p_netdev_ops;
 #define OID_SET_GET_STRUCT_LENGTH		4096
 
 #define MAX_P2P_IE_SIZE	5
-#if CFG_TC10_FEATURE
-#define P2P_MAXIMUM_CLIENT_COUNT                    10
-#else
+
 #define P2P_MAXIMUM_CLIENT_COUNT                    16
-#endif
 #define P2P_DEFAULT_CLIENT_COUNT 4
 
 /******************************************************************************
@@ -119,7 +115,7 @@ extern const struct net_device_ops p2p_netdev_ops;
  */
 
 extern struct net_device *g_P2pPrDev;
-extern struct wireless_dev *gprP2pWdev[KAL_P2P_NUM];
+extern struct wireless_dev *gprP2pWdev;
 extern struct wireless_dev *gprP2pRoleWdev[KAL_P2P_NUM];
 
 /******************************************************************************
@@ -192,21 +188,19 @@ struct GL_P2P_INFO {
 	/*UINT_8 ucWSCRunning;*//* TH3 multiple P2P */
 
 	/* 0: beacon, 1: probe req, 2:probe response, 3: assoc response */
-	uint8_t aucWSCIE[4][VENDOR_SPECIFIC_IE_LENGTH];
+	uint8_t aucWSCIE[4][400];
 	uint16_t u2WSCIELen[4];
 
-	uint8_t aucP2PIE[MAX_P2P_IE_SIZE][VENDOR_SPECIFIC_IE_LENGTH];
+	uint8_t aucP2PIE[MAX_P2P_IE_SIZE][400];
 	uint16_t u2P2PIELen[MAX_P2P_IE_SIZE];
 
 #if CFG_SUPPORT_WFD
 	/* 0 for beacon, 1 for probe req, 2 for probe response */
-	uint8_t aucWFDIE[VENDOR_SPECIFIC_IE_LENGTH];
+	uint8_t aucWFDIE[400];
 	uint16_t u2WFDIELen;
-	/* Save the other IE for probe resp */
-#endif
-#if CFG_SUPPORT_CUSTOM_VENDOR_IE
-	uint8_t aucVenderIE[1024];
-	uint16_t u2VenderIELen;
+	/* Save the other IE for prove resp */
+	/* UINT_8                      aucVenderIE[1024]; */
+/* UINT_16                     u2VenderIELen; */
 #endif
 
 	/*UINT_8 ucOperatingChnl;*//* TH3 multiple P2P */
@@ -236,14 +230,6 @@ struct GL_P2P_INFO {
 	/*BOOLEAN fgEnableHotspotOptimization;*//* TH3 multiple P2P */
 	/*UINT_32 u4PsLevel;*//* TH3 multiple P2P */
 #endif
-
-	/* indicate caller thread for stop ap complete */
-	struct completion rStopApComp;
-
-	struct LINK rWaitTxDoneLink;
-
-	enum ENUM_CHNL_SWITCH_POLICY eChnlSwitchPolicy;
-	u_int8_t fgChannelSwitchReq;
 };
 
 struct GL_P2P_DEV_INFO {
@@ -333,14 +319,6 @@ struct NL80211_DRIVER_WFD_PARAMS {
 	uint8_t aucReserved4[64];
 };
 #endif
-
-struct NL80211_DRIVER_UPDATE_STA_PMKID_PARAMS {
-	struct NL80211_DRIVER_TEST_PARAMS hdr;
-	uint8_t aucBssid[MAC_ADDR_LEN];
-	uint8_t aucSta[MAC_ADDR_LEN];
-	uint8_t aucPmkid[IW_PMKID_LEN];
-	uint8_t ucAddRemove;	/*1- ADD, 0- Remove*/
-};
 #endif
 
 /******************************************************************************
@@ -371,7 +349,7 @@ u_int8_t glRegisterP2P(struct GLUE_INFO *prGlueInfo,
 int glSetupP2P(struct GLUE_INFO *prGlueInfo,
 		struct wireless_dev *prP2pWdev,
 		struct net_device *prP2pDev,
-		uint8_t u4Idx,
+		int u4Idx,
 		u_int8_t fgIsApMode);
 
 u_int8_t glUnregisterP2P(struct GLUE_INFO *prGlueInfo, uint8_t ucIdx);

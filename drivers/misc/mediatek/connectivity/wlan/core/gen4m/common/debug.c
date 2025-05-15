@@ -1,41 +1,55 @@
+/******************************************************************************
+ *
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
+ *
+ * GPLv2 License
+ *
+ * Copyright(C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ *
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 #include "precomp.h"
-
-
-#if (CFG_SUPPORT_STATISTICS == 1)
-
-#define WAKE_MAX_CMD_EVENT_NUM		20
-#define WAKE_STR_BUFFER_LEN	(60 + 20 * WAKE_MAX_CMD_EVENT_NUM)
-
-struct WAKE_CMD_T {
-	uint8_t ucCmdId;
-	uint8_t ucFlagIsUesd;
-	uint16_t u2Cnt;
-};
-
-struct WAKE_EVENT_T {
-	uint8_t ucEventId;
-	uint8_t ucFlagIsUesd;
-	uint16_t u2Cnt;
-};
-
-struct WAKE_INFO_T {
-	struct WAKE_CMD_T arCmd[WAKE_MAX_CMD_EVENT_NUM];
-	uint8_t ucCmdCnt;
-	uint32_t u4TotalCmd;
-
-	struct WAKE_EVENT_T arEvent[WAKE_MAX_CMD_EVENT_NUM];
-	uint8_t ucEventCnt;
-	uint32_t u4TotalEvent;
-
-	uint32_t au4TxDataCnt[WLAN_WAKE_MAX_NUM];
-	uint32_t u4TxCnt;
-	uint32_t au4RxDataCnt[WLAN_WAKE_MAX_NUM];
-	uint32_t u4RxCnt;
-};
-
-static struct WAKE_INFO_T *gprWakeInfoStatics;
-static uint8_t aucStr[WAKE_STR_BUFFER_LEN];
-#endif
 
 #if (CFG_SUPPORT_TRACE_TC4 == 1)
 struct COMMAND {
@@ -121,8 +135,7 @@ void wlanTraceTxCmd(struct CMD_INFO *prCmd)
 
 		prCurCmd->u.rMgmtFrame.u2FrameCtl = prMgmt->u2FrameCtrl;
 		prCurCmd->u.rMgmtFrame.u2DurationID = prMgmt->u2Duration;
-	} else if (prCmd->eCmdType == COMMAND_TYPE_SECURITY_FRAME ||
-			prCmd->eCmdType == COMMAND_TYPE_DATA_FRAME) {
+	} else if (prCmd->eCmdType == COMMAND_TYPE_SECURITY_FRAME) {
 		uint8_t *pucPkt = (uint8_t *)((struct sk_buff *)
 					      prCmd->prPacket)->data;
 
@@ -202,7 +215,7 @@ void wlanDumpTcResAndTxedCmd(uint8_t *pucBuf,
 		}
 	} else {
 		for (; i < TXED_CMD_TRACE_BUF_MAX_NUM / 4; i++) {
-			LOG_FUNC(
+			LOG_FUNC_LIMITED(
 				 "%d: Time %llu, Type %d, Content %08x; %d: Time %llu, Type %d, Content %08x; ",
 				 i * 4, prCmd[i * 4].u8TxTime,
 				 prCmd[i * 4].eCmdType,
@@ -210,7 +223,7 @@ void wlanDumpTcResAndTxedCmd(uint8_t *pucBuf,
 				 i * 4 + 1, prCmd[i * 4 + 1].u8TxTime,
 				 prCmd[i * 4 + 1].eCmdType,
 				 *(uint32_t *)(&prCmd[i * 4 + 1].u.rCmd.ucCID));
-			LOG_FUNC(
+			LOG_FUNC_LIMITED(
 				 "%d: Time %llu, Type %d, Content %08x; %d: Time %llu, Type %d, Content %08x\n",
 				 i * 4 + 2, prCmd[i * 4 + 2].u8TxTime,
 				 prCmd[i * 4 + 2].eCmdType,
@@ -220,7 +233,7 @@ void wlanDumpTcResAndTxedCmd(uint8_t *pucBuf,
 				 *(uint32_t *)(&prCmd[i * 4 + 3].u.rCmd.ucCID));
 		}
 		for (i = 0; i < TC_RELEASE_TRACE_BUF_MAX_NUM / 4; i++) {
-			LOG_FUNC(
+			LOG_FUNC_LIMITED(
 				"%d: Time %llu, Tc4Cnt %d, Free %d, CID %08x; %d: Time %llu, Tc4Cnt %d, Free %d, CID %08x;",
 				i * 4, prTcRel[i * 4].u8RelaseTime,
 				prTcRel[i * 4].u4Tc4RelCnt,
@@ -230,7 +243,7 @@ void wlanDumpTcResAndTxedCmd(uint8_t *pucBuf,
 				prTcRel[i * 4 + 1].u4Tc4RelCnt,
 				prTcRel[i * 4 + 1].u4AvailableTc4,
 				prTcRel[i * 4 + 1].u4RelCID);
-			LOG_FUNC(
+			LOG_FUNC_LIMITED(
 				"%d: Time %llu, Tc4Cnt %d, Free %d, CID %08x; %d: Time %llu, Tc4Cnt %d, Free %d, CID %08x\n",
 				i * 4 + 2, prTcRel[i * 4 + 2].u8RelaseTime,
 				prTcRel[i * 4 + 2].u4Tc4RelCnt,
@@ -243,325 +256,6 @@ void wlanDumpTcResAndTxedCmd(uint8_t *pucBuf,
 		}
 	}
 }
-#endif
-
-
-#if (CFG_SUPPORT_STATISTICS == 1)
-
-void wlanWakeStaticsInit(void)
-{
-	gprWakeInfoStatics =
-		kalMemAlloc(WAKE_MAX_CMD_EVENT_NUM * sizeof(
-				    struct WAKE_INFO_T), PHY_MEM_TYPE);
-	if (gprWakeInfoStatics != NULL)
-		kalMemZero(gprWakeInfoStatics,
-		   WAKE_MAX_CMD_EVENT_NUM * sizeof(struct
-				   WAKE_INFO_T));
-}
-
-void wlanWakeStaticsUninit(void)
-{
-	if (gprWakeInfoStatics != NULL)
-		kalMemFree(gprWakeInfoStatics, PHY_MEM_TYPE,
-		WAKE_MAX_CMD_EVENT_NUM * sizeof(struct WAKE_INFO_T));
-}
-
-uint32_t wlanWakeLogCmd(uint8_t ucCmdId)
-{
-	int i = 0;
-	int j = 0;
-
-	if ((gprWakeInfoStatics == NULL) || (wlan_fb_power_down != TRUE))
-		return 1;
-
-	for (i = 0; i < WAKE_MAX_CMD_EVENT_NUM; i++) {
-		if ((gprWakeInfoStatics->arCmd[i].ucFlagIsUesd == TRUE)
-			&& (gprWakeInfoStatics->arCmd[i].ucCmdId == ucCmdId)) {
-			/*old item ++*/
-			gprWakeInfoStatics->arCmd[i].u2Cnt++;
-			gprWakeInfoStatics->u4TotalCmd++;
-			break;
-		}
-	}
-
-	if (i >= WAKE_MAX_CMD_EVENT_NUM) {
-		/*add new item*/
-		for (j = 0; j < WAKE_MAX_CMD_EVENT_NUM; j++) {
-			if (gprWakeInfoStatics->arCmd[j].ucFlagIsUesd != TRUE) {
-				gprWakeInfoStatics->ucCmdCnt++;
-				gprWakeInfoStatics->arCmd[j].ucCmdId = ucCmdId;
-				gprWakeInfoStatics->arCmd[j].u2Cnt++;
-				gprWakeInfoStatics->u4TotalCmd++;
-				gprWakeInfoStatics->arCmd[j].ucFlagIsUesd
-					= TRUE;
-				break;
-			}
-		}
-
-		if (j >= WAKE_MAX_CMD_EVENT_NUM) {
-			DBGLOG_LIMITED(OID, WARN,
-			"Wake cmd over flow %d-0x%02x\n",
-			WAKE_MAX_CMD_EVENT_NUM, ucCmdId);
-		}
-	}
-	return 0;
-}
-
-uint32_t wlanWakeLogEvent(uint8_t ucEventId)
-{
-	int i = 0;
-	int j = 0;
-
-	if ((gprWakeInfoStatics == NULL) || (wlan_fb_power_down != TRUE))
-		return 1;
-
-	for (i = 0; i < WAKE_MAX_CMD_EVENT_NUM; i++) {
-		if ((gprWakeInfoStatics->arEvent[i].ucFlagIsUesd == TRUE)
-		&&
-		(gprWakeInfoStatics->arEvent[i].ucEventId == ucEventId)) {
-			/*old item ++*/
-			gprWakeInfoStatics->arEvent[i].u2Cnt++;
-			gprWakeInfoStatics->u4TotalEvent++;
-			break;
-		}
-	}
-
-	if (i >= WAKE_MAX_CMD_EVENT_NUM) {
-		/*add new item*/
-		for (j = 0; j < WAKE_MAX_CMD_EVENT_NUM; j++) {
-			if (gprWakeInfoStatics->arEvent[j].ucFlagIsUesd
-				!= TRUE) {
-				gprWakeInfoStatics->ucEventCnt++;
-				gprWakeInfoStatics->arEvent[j].ucEventId
-					= ucEventId;
-				gprWakeInfoStatics->arEvent[j].u2Cnt++;
-				gprWakeInfoStatics->u4TotalEvent++;
-				gprWakeInfoStatics->arEvent[j].ucFlagIsUesd
-					= TRUE;
-				break;
-			}
-		}
-
-		if (j >= WAKE_MAX_CMD_EVENT_NUM) {
-			DBGLOG(OID, WARN,
-			"Wake event over flow %d-0x%02x\n",
-			WAKE_MAX_CMD_EVENT_NUM, ucEventId);
-		}
-	}
-	return 0;
-}
-
-void wlanLogTxData(enum WAKE_DATA_TYPE dataType)
-{
-	if ((gprWakeInfoStatics != NULL) && (wlan_fb_power_down == TRUE)) {
-		gprWakeInfoStatics->au4TxDataCnt[dataType]++;
-		gprWakeInfoStatics->u4TxCnt++;
-	}
-}
-
-void wlanLogRxData(enum WAKE_DATA_TYPE dataType)
-{
-	if ((gprWakeInfoStatics != NULL) && (wlan_fb_power_down == TRUE)) {
-		gprWakeInfoStatics->au4RxDataCnt[dataType]++;
-		gprWakeInfoStatics->u4RxCnt++;
-	}
-}
-
-static void wlanWakeStaticsClear(void)
-{
-	if (gprWakeInfoStatics != NULL) {
-		kalMemZero(gprWakeInfoStatics,
-			WAKE_MAX_CMD_EVENT_NUM * sizeof(struct
-				   WAKE_INFO_T));
-	}
-}
-
-uint32_t wlanWakeDumpRes(void)
-{
-	uint8_t i = 0;
-	uint8_t flag = 0;
-	char *pos = NULL;
-	char *end = NULL;
-	int ret = 0;
-
-	if ((gprWakeInfoStatics == NULL)
-	|| (wlan_fb_power_down != TRUE)) {
-		wlanWakeStaticsClear();
-		return 1;
-	}
-
-	/*Log Style: one line log or human friendly log.*/
-#if 1
-	kalMemZero(&aucStr[0], sizeof(uint8_t)*WAKE_STR_BUFFER_LEN);
-	pos = &aucStr[0];
-	end = &aucStr[0] + WAKE_STR_BUFFER_LEN - 1;
-
-	if (gprWakeInfoStatics->ucCmdCnt > 0) {
-		flag = 1;
-		ret = snprintf(pos, (end - pos + 1), "CMD(%u:%u)= ",
-			gprWakeInfoStatics->ucCmdCnt,
-			gprWakeInfoStatics->u4TotalCmd);
-		if (ret < 0 || ret >= (end - pos + 1))
-			return 1;
-		pos += ret;
-
-		for (i = 0; i < gprWakeInfoStatics->ucCmdCnt; i++) {
-			ret = snprintf(pos, (end - pos + 1), "0x%02x-%d ",
-				gprWakeInfoStatics->arCmd[i].ucCmdId,
-				gprWakeInfoStatics->arCmd[i].u2Cnt);
-			if (ret < 0 || ret >= (end - pos + 1))
-				return 1;
-			pos += ret;
-		}
-	}
-
-	if (gprWakeInfoStatics->ucEventCnt > 0) {
-		flag = 1;
-		ret = snprintf(pos, (end - pos + 1), "EVENT(%u:%u)= ",
-			gprWakeInfoStatics->ucEventCnt,
-			gprWakeInfoStatics->u4TotalEvent);
-		if (ret < 0 || ret >= (end - pos + 1))
-			return 1;
-		pos += ret;
-
-		for (i = 0; i < gprWakeInfoStatics->ucEventCnt; i++) {
-			ret = snprintf(pos, (end - pos + 1), "0x%02x-%d ",
-				gprWakeInfoStatics->arEvent[i].ucEventId,
-				gprWakeInfoStatics->arEvent[i].u2Cnt);
-			if (ret < 0 || ret >= (end - pos + 1))
-				return 1;
-			pos += ret;
-		}
-	}
-
-	if (gprWakeInfoStatics->u4TxCnt > 0) {
-		flag = 1;
-		ret = snprintf(pos, (end - pos + 1),
-			"TX(%u)=%u-%u-%u-%u-%u-%u ",
-			gprWakeInfoStatics->u4TxCnt,
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_ARP],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_IPV4],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_IPV6],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_1X],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_TDLS],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_OTHER]);
-
-		if (ret < 0 || ret >= (end - pos + 1))
-			return 1;
-		pos += ret;
-	}
-
-	if (gprWakeInfoStatics->u4RxCnt > 0) {
-		flag = 1;
-		ret = snprintf(pos, (end - pos + 1),
-			"RX(%u)=%u-%u-%u-%u-%u-%u ",
-			gprWakeInfoStatics->u4RxCnt,
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_ARP],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_IPV4],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_IPV6],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_1X],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_TDLS],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_OTHER]);
-		if (ret < 0 || ret >= (end - pos + 1))
-			return 1;
-		pos += ret;
-	}
-
-	if (flag != 0)
-		DBGLOG(OID, INFO, "[WLAN-LP] %s\n", (char *)&aucStr[0]);
-#else
-	/*1.dump cmd*/
-	if (gprWakeInfoStatics->ucCmdCnt > 0) {
-		kalMemZero(&aucStr[0], sizeof(uint8_t)*WAKE_STR_BUFFER_LEN);
-		pos = &aucStr[0];
-		end = &aucStr[0] + WAKE_STR_BUFFER_LEN - 1;
-		for (i = 0; i < gprWakeInfoStatics->ucCmdCnt; i++) {
-
-			ret = snprintf(pos, end - pos, " 0x%02x ",
-			gprWakeInfoStatics->arCmd[i].ucCmdId);
-			if (ret < 0 || ret >= end - pos)
-				return 1;
-			pos += ret;
-		}
-		DBGLOG(OID, INFO, "[LP-CMD-ID-%u][%s]\n",
-			gprWakeInfoStatics->ucCmdCnt, (char *)&aucStr[0]);
-
-		kalMemZero(&aucStr[0], sizeof(uint8_t)*WAKE_STR_BUFFER_LEN);
-		pos = &aucStr[0];
-		end = &aucStr[0] + WAKE_STR_BUFFER_LEN - 1;
-		for (i = 0; i < gprWakeInfoStatics->ucCmdCnt; i++) {
-
-			ret = snprintf(pos, end - pos, " %u ",
-				gprWakeInfoStatics->arCmd[i].u2Cnt);
-			if (ret < 0 || ret >= end - pos)
-				return 1;
-			pos += ret;
-		}
-		DBGLOG(OID, INFO, "[LP-CMD-CNT-%u][%s]\n",
-			gprWakeInfoStatics->u4TotalCmd, (char *)&aucStr[0]);
-	}
-
-	/*2.dump event*/
-	if (gprWakeInfoStatics->ucCmdCnt > 0) {
-
-		kalMemZero(&aucStr[0], sizeof(uint8_t)*WAKE_STR_BUFFER_LEN);
-		pos = &aucStr[0];
-		end = &aucStr[0] + WAKE_STR_BUFFER_LEN - 1;
-		for (i = 0; i < gprWakeInfoStatics->ucEventCnt; i++) {
-
-			ret = snprintf(pos, end - pos, " 0x%02x ",
-				gprWakeInfoStatics->arEvent[i].ucEventId);
-			if (ret < 0 || ret >= end - pos)
-				return 1;
-			pos += ret;
-		}
-		DBGLOG(OID, INFO, "[LP-EVENT-ID-%u][%s]\n",
-			gprWakeInfoStatics->ucEventCnt, (char *)&aucStr[0]);
-
-		kalMemZero(&aucStr[0], sizeof(uint8_t)*WAKE_STR_BUFFER_LEN);
-		pos = &aucStr[0];
-		end = &aucStr[0] + WAKE_STR_BUFFER_LEN - 1;
-		for (i = 0; i < gprWakeInfoStatics->ucEventCnt; i++) {
-
-			ret = snprintf(pos, end - pos, " %u ",
-				gprWakeInfoStatics->arEvent[i].u2Cnt);
-			if (ret < 0 || ret >= end - pos) {
-				end[-1] = '\0';
-				return 1;
-			}
-			pos += ret;
-		}
-		DBGLOG(OID, INFO, "[LP-EVENT-CNT-%u][%s]\n",
-			gprWakeInfoStatics->u4TotalEvent, (char *)&aucStr[0]);
-	}
-
-	/*3.dump tx/rx data*/
-	if (gprWakeInfoStatics->u4TxCnt > 0) {
-		DBGLOG(OID, INFO, "[LP-EVENT-TX-%u][%u-%u-%u-%u-%u-%u]\n",
-			gprWakeInfoStatics->u4TxCnt,
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_ARP],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_IPV4],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_IPV6],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_1X],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_TDLS],
-			gprWakeInfoStatics->au4TxDataCnt[WLAN_WAKE_OTHER]);
-	}
-
-	if (gprWakeInfoStatics->u4RxCnt > 0) {
-		DBGLOG(OID, INFO, "[LP-EVENT-RX-%u][%u-%u-%u-%u-%u-%u]\n",
-			gprWakeInfoStatics->u4RxCnt,
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_ARP],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_IPV4],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_IPV6],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_1X],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_TDLS],
-			gprWakeInfoStatics->au4RxDataCnt[WLAN_WAKE_OTHER]);
-	}
-#endif
-	wlanWakeStaticsClear();
-	return 0;
-}
-
 #endif
 
 uint32_t wlanSetDriverDbgLevel(IN uint32_t u4DbgIdx, IN uint32_t u4DbgMask)
@@ -640,16 +334,8 @@ uint32_t wlanDbgGetLogLevelImpl(IN struct ADAPTER *prAdapter,
 void wlanDbgSetLogLevelImpl(IN struct ADAPTER *prAdapter,
 		uint32_t u4Version, uint32_t u4Module, uint32_t u4level)
 {
-	wlanDbgSetLogLevel(prAdapter, u4Version, u4Module, u4level, FALSE);
-}
-
-void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
-		uint32_t u4Version, uint32_t u4Module,
-		uint32_t u4level, u_int8_t fgEarlySet)
-{
 	uint32_t u4DriverLevel = ENUM_WIFI_LOG_LEVEL_DEFAULT;
 	uint32_t u4FwLevel = ENUM_WIFI_LOG_LEVEL_DEFAULT;
-	uint32_t rStatus = WLAN_STATUS_SUCCESS;
 
 	if (u4level >= ENUM_WIFI_LOG_LEVEL_NUM)
 		return;
@@ -676,23 +362,13 @@ void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
 		case ENUM_WIFI_LOG_MODULE_FW:
 		{
 			struct CMD_EVENT_LOG_UI_INFO cmd;
-			prAdapter->fgSetLogLevel = false;
 
 			kalMemZero(&cmd,
 					sizeof(struct CMD_EVENT_LOG_UI_INFO));
-			cmd.ucVersion = u4Version;
-			cmd.ucLogLevel = u4level;
+			cmd.u4Version = u4Version;
+			cmd.u4LogLevel = u4level;
 
-			if (fgEarlySet) {
-				/* Set during wifi on flow */
-				rStatus = wlanSendFwLogControlCmd(prAdapter,
-					CMD_ID_LOG_UI_INFO,
-					nicCmdEventSetCommon,
-					nicOidCmdTimeoutCommon,
-					sizeof(struct CMD_EVENT_LOG_UI_INFO),
-					(uint8_t *)&cmd);
-			} else {
-				rStatus = wlanSendSetQueryCmd(prAdapter,
+			wlanSendSetQueryCmd(prAdapter,
 					CMD_ID_LOG_UI_INFO,
 					TRUE,
 					FALSE,
@@ -703,12 +379,6 @@ void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
 					(uint8_t *)&cmd,
 					NULL,
 					0);
-			}
-
-			if (rStatus != WLAN_STATUS_FAILURE)
-				prAdapter->fgSetLogLevel = true;
-			else
-				DBGLOG(INIT, INFO, "Log level setting fail!\n");
 		}
 			break;
 		default:
@@ -721,6 +391,24 @@ void wlanDbgSetLogLevel(IN struct ADAPTER *prAdapter,
 
 	wlanDbgGetGlobalLogLevel(ENUM_WIFI_LOG_MODULE_DRIVER, &u4DriverLevel);
 	wlanDbgGetGlobalLogLevel(ENUM_WIFI_LOG_MODULE_FW, &u4FwLevel);
+#if (CFG_BUILT_IN_DRIVER == 0) && (CFG_MTK_ANDROID_WMT == 1)
+	/*
+	 * The function definition of get_logtoomuch_enable() and
+	 * set_logtoomuch_enable of Android O0 or lower version are different
+	 * from that of Android O1 or higher version. Wlan driver supports .ko
+	 * module from Android O1. Use CFG_BUILT_IN_DRIVER to distinguish
+	 * Android version higher than O1 instead.
+	 */
+	if ((u4DriverLevel > ENUM_WIFI_LOG_LEVEL_DEFAULT ||
+			u4FwLevel > ENUM_WIFI_LOG_LEVEL_DEFAULT) &&
+			get_logtoomuch_enable()) {
+		DBGLOG(OID, TRACE,
+			"Disable printk to much. driver: %d, fw: %d\n",
+			u4DriverLevel,
+			u4FwLevel);
+		set_logtoomuch_enable(0);
+	}
+#endif
 }
 
 u_int8_t wlanDbgGetGlobalLogLevel(uint32_t u4Module, uint32_t *pu4Level)
@@ -819,7 +507,6 @@ void wlanPrintFwLog(uint8_t *pucLogContent,
 #define DBG_LOG_BUF_SIZE 128
 
 	int8_t aucLogBuffer[DBG_LOG_BUF_SIZE];
-	int32_t err;
 	va_list args;
 
 	if (u2MsgSize > DEBUG_MSG_SIZE_MAX - 1) {
@@ -844,12 +531,11 @@ void wlanPrintFwLog(uint8_t *pucLogContent,
 	case DEBUG_MSG_TYPE_DRIVER:
 		/* Only 128 Bytes is available to print in driver */
 		va_start(args, pucFmt);
-		err = vsnprintf(aucLogBuffer, sizeof(aucLogBuffer) - 1, pucFmt,
+		vsnprintf(aucLogBuffer, sizeof(aucLogBuffer) - 1, pucFmt,
 			  args);
 		va_end(args);
 		aucLogBuffer[DBG_LOG_BUF_SIZE - 1] = '\0';
-		if (err >= 0)
-			LOG_FUNC("%s\n", aucLogBuffer);
+		LOG_FUNC("%s\n", aucLogBuffer);
 		break;
 	case DEBUG_MSG_TYPE_MEM8:
 		firmwareHexDump("fw data:", DUMP_PREFIX_ADDRESS,
@@ -887,7 +573,7 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 	uint8_t *pucEth = NULL;
 	uint32_t u4Length = 0;
 	uint8_t *pucUdp = NULL;
-	struct timespec64 tval;
+	struct timeval tval;
 
 	if (!prAdapter || !prAdapter->rDebugInfo.fgVoE5_7Test || !skb)
 		return;
@@ -902,7 +588,7 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 	pucUdp = &pucEth[ETH_HLEN+28];
 	if (kalStrnCmp(pucUdp, "1345678", 7))
 		return;
-	ktime_get_ts64(&tval);
+	do_gettimeofday(&tval);
 	switch (ucPhase) {
 	case PHASE_XMIT_RCV: /* xmit */
 		pucUdp += 20;
@@ -915,6 +601,6 @@ void wlanFillTimestamp(struct ADAPTER *prAdapter, void *pvPacket,
 		break;
 	}
 	wlanSetBE32(tval.tv_sec, pucUdp);
-	wlanSetBE32(NSEC_TO_USEC(tval.tv_nsec), pucUdp+4);
+	wlanSetBE32(tval.tv_usec, pucUdp+4);
 }
 /* End: Functions used to breakdown packet jitter, for test case VoE 5.7 */

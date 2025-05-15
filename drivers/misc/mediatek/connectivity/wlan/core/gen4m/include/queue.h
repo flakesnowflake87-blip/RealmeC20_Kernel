@@ -209,7 +209,7 @@ struct QUE {
 	{ \
 		ASSERT(prDestQueue); \
 		ASSERT(prSrcQueue); \
-		if ((prSrcQueue)->u4NumElem > 0 && (prSrcQueue)->prTail) { \
+		if ((prSrcQueue)->u4NumElem > 0) { \
 			((prSrcQueue)->prTail)->prNext = \
 				(prDestQueue)->prHead; \
 			(prDestQueue)->prHead = (prSrcQueue)->prHead; \

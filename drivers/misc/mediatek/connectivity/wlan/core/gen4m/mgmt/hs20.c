@@ -111,27 +111,92 @@
  ******************************************************************************
  */
 
-void hs20FillExtCapIE(struct ADAPTER *prAdapter,
-		struct BSS_INFO *prBssInfo, struct MSDU_INFO *prMsduInfo)
+/*---------------------------------------------------------------------------*/
+/*!
+ * \brief    This function is called to generate Interworking IE
+ *             for Probe Rsp, Bcn, Assoc Req/Rsp.
+ *
+ * \param[in] prAdapter  Pointer of ADAPTER_T
+ * \param[out] prMsduInfo  Pointer of the Msdu Info
+ *
+ * \return VOID
+ */
+/*---------------------------------------------------------------------------*/
+void hs20GenerateInterworkingIE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo)
 {
-	struct IE_EXT_CAP *prExtCap;
-	struct HS20_INFO *prHS20Info;
-	uint8_t ucBssIndex = 0;
+}
+
+/*---------------------------------------------------------------------------*/
+/*!
+ * \brief    This function is called to generate Roaming Consortium IE
+ *             for Probe Rsp, Bcn, Assoc Req/Rsp.
+ *
+ * \param[in] prAdapter  Pointer of ADAPTER_T
+ * \param[out] prMsduInfo  Pointer of the Msdu Info
+ *
+ * \return VOID
+ */
+/*---------------------------------------------------------------------------*/
+void hs20GenerateRoamingConsortiumIE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo)
+{
+}
+
+/*---------------------------------------------------------------------------*/
+/*!
+ * \brief    This function is called to generate HS2.0 IE
+ *             for Probe Rsp, Bcn, Assoc Req/Rsp.
+ *
+ * \param[in] prAdapter  Pointer of ADAPTER_T
+ * \param[out] prMsduInfo  Pointer of the Msdu Info
+ *
+ * \return VOID
+ */
+/*---------------------------------------------------------------------------*/
+void hs20GenerateHS20IE(IN struct ADAPTER *prAdapter,
+		OUT struct MSDU_INFO *prMsduInfo)
+{
+	uint8_t *pucBuffer;
 
 	ASSERT(prAdapter);
 	ASSERT(prMsduInfo);
 
-	ucBssIndex = prMsduInfo->ucBssIndex;
-	prHS20Info = aisGetHS20Info(prAdapter, ucBssIndex);
-	if (!prHS20Info)
+	if (prMsduInfo->ucBssIndex != KAL_NETWORK_TYPE_AIS_INDEX) {
+		pr_info("[%s] prMsduInfo->ucBssIndex(%d) is not KAL_NETWORK_TYPE_AIS_INDEX\n",
+			__func__, prMsduInfo->ucBssIndex);
 		return;
+	}
+
+	pucBuffer = (uint8_t *)
+		((unsigned long) prMsduInfo->prPacket +
+		(unsigned long) prMsduInfo->u2FrameLength);
+
+	/* ASSOC INFO IE ID: 221 :0xDD */
+	if (prAdapter->prGlueInfo->u2HS20AssocInfoIELen) {
+		kalMemCopy(pucBuffer,
+			&prAdapter->prGlueInfo->aucHS20AssocInfoIE,
+			prAdapter->prGlueInfo->u2HS20AssocInfoIELen);
+		prMsduInfo->u2FrameLength +=
+			prAdapter->prGlueInfo->u2HS20AssocInfoIELen;
+	}
+
+}
+
+void hs20FillExtCapIE(struct ADAPTER *prAdapter,
+		struct BSS_INFO *prBssInfo, struct MSDU_INFO *prMsduInfo)
+{
+	struct IE_EXT_CAP *prExtCap;
+
+	ASSERT(prAdapter);
+	ASSERT(prMsduInfo);
 
 	/* Add Extended Capabilities IE */
 	prExtCap = (struct IE_EXT_CAP *)
 	    (((uint8_t *) prMsduInfo->prPacket) + prMsduInfo->u2FrameLength);
 
 	prExtCap->ucId = ELEM_ID_EXTENDED_CAP;
-	if (prHS20Info->fgConnectHS20AP == TRUE)
+	if (prAdapter->prGlueInfo->fgConnectHS20AP == TRUE)
 		prExtCap->ucLength = ELEM_MAX_LEN_EXT_CAP;
 	else
 		prExtCap->ucLength = 3 - ELEM_HDR_LEN;
@@ -143,7 +208,7 @@ void hs20FillExtCapIE(struct ADAPTER *prAdapter,
 	if (prBssInfo->eCurrentOPMode != OP_MODE_INFRASTRUCTURE)
 		prExtCap->aucCapabilities[0] &= ~ELEM_EXT_CAP_PSMP_CAP;
 
-	if (prHS20Info->fgConnectHS20AP == TRUE) {
+	if (prAdapter->prGlueInfo->fgConnectHS20AP == TRUE) {
 		SET_EXT_CAP(prExtCap->aucCapabilities,
 			ELEM_MAX_LEN_EXT_CAP, ELEM_EXT_CAP_BSS_TRANSITION_BIT);
 		SET_EXT_CAP(prExtCap->aucCapabilities,
@@ -181,20 +246,14 @@ void hs20FillExtCapIE(struct ADAPTER *prAdapter,
 void hs20FillProreqExtCapIE(IN struct ADAPTER *prAdapter, OUT uint8_t *pucIE)
 {
 	struct IE_EXT_CAP *prExtCap;
-	struct HS20_INFO *prHS20Info;
 
 	ASSERT(prAdapter);
-
-	prHS20Info = aisGetHS20Info(prAdapter,
-		AIS_DEFAULT_INDEX);
-	if (!prHS20Info)
-		return;
 
 	/* Add Extended Capabilities IE */
 	prExtCap = (struct IE_EXT_CAP *) pucIE;
 
 	prExtCap->ucId = ELEM_ID_EXTENDED_CAP;
-	if (prHS20Info->fgConnectHS20AP == TRUE)
+	if (prAdapter->prGlueInfo->fgConnectHS20AP == TRUE)
 		prExtCap->ucLength = ELEM_MAX_LEN_EXT_CAP;
 	else
 		prExtCap->ucLength = 3 - ELEM_HDR_LEN;
@@ -203,7 +262,7 @@ void hs20FillProreqExtCapIE(IN struct ADAPTER *prAdapter, OUT uint8_t *pucIE)
 
 	prExtCap->aucCapabilities[0] = ELEM_EXT_CAP_DEFAULT_VAL;
 
-	if (prHS20Info->fgConnectHS20AP == TRUE) {
+	if (prAdapter->prGlueInfo->fgConnectHS20AP == TRUE) {
 		SET_EXT_CAP(prExtCap->aucCapabilities,
 			ELEM_MAX_LEN_EXT_CAP, ELEM_EXT_CAP_BSS_TRANSITION_BIT);
 		SET_EXT_CAP(prExtCap->aucCapabilities,
@@ -343,7 +402,7 @@ u_int8_t hs20IsGratuitousArp(IN struct ADAPTER *prAdapter,
 		prCurrSwRfb->pvHeader + ETHER_HEADER_LEN + ARP_TARGET_IP_OFFSET;
 	uint8_t *pucSenderMac = ((uint8_t *)
 		prCurrSwRfb->pvHeader +
-		ETHER_HEADER_LEN + ARP_SENDER_MAC_OFFSET);
+		ETHER_HEADER_LEN + ARP_SNEDER_MAC_OFFSET);
 
 #if CFG_HS20_DEBUG && 0
 /* UINT_8  aucIpAllZero[4] = {0,0,0,0}; */
@@ -429,12 +488,12 @@ u_int8_t hs20IsUnsolicitedNeighborAdv(IN struct ADAPTER *prAdapter,
 u_int8_t hs20IsForgedGTKFrame(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prBssInfo, IN struct SW_RFB *prCurrSwRfb)
 {
+	struct CONNECTION_SETTINGS *prConnSettings =
+		&prAdapter->rWifiVar.rConnSettings;
+	uint8_t *pucEthDestAddr = prCurrSwRfb->pvHeader;
+
 	/* 3 TODO: Need to verify this function before enable it */
 	return FALSE;
-#if 0
-	struct CONNECTION_SETTINGS *prConnSettings =
-		aisGetConnSettings(prAdapter, prBssInfo->ucBssIndex);
-	uint8_t *pucEthDestAddr = prCurrSwRfb->pvHeader;
 
 	if ((prConnSettings->eEncStatus != ENUM_ENCRYPTION_DISABLED)
 	    && IS_BMCAST_MAC_ADDR(pucEthDestAddr)) {
@@ -492,7 +551,6 @@ u_int8_t hs20IsForgedGTKFrame(IN struct ADAPTER *prAdapter,
 	}
 
 	return FALSE;
-#endif
 }
 #endif
 
@@ -531,12 +589,7 @@ u_int8_t hs20IsFrameFilterEnabled(IN struct ADAPTER *prAdapter,
 		IN struct BSS_INFO *prBssInfo)
 {
 #if 1
-	struct HS20_INFO *prHS20Info;
-
-	prHS20Info = aisGetHS20Info(prAdapter,
-		prBssInfo->ucBssIndex);
-
-	if (prHS20Info && prHS20Info->fgConnectHS20AP)
+	if (prAdapter->prGlueInfo->fgConnectHS20AP)
 		return TRUE;
 #else
 	struct PARAM_SSID rParamSsid;
@@ -567,14 +620,14 @@ u_int8_t hs20IsFrameFilterEnabled(IN struct ADAPTER *prAdapter,
 
 uint32_t hs20SetBssidPool(IN struct ADAPTER *prAdapter,
 		IN void *pvBuffer,
-		IN uint8_t ucBssIndex)
+		IN enum ENUM_KAL_NETWORK_TYPE_INDEX eNetTypeIdx)
 {
 	struct PARAM_HS20_SET_BSSID_POOL *prParamBssidPool =
 		(struct PARAM_HS20_SET_BSSID_POOL *) pvBuffer;
 	struct HS20_INFO *prHS20Info;
 	uint8_t ucIdx;
 
-	prHS20Info = aisGetHS20Info(prAdapter, ucBssIndex);
+	prHS20Info = &(prAdapter->rWifiVar.rHS20Info);
 
 	pr_info("[%s]Set Bssid Pool! enable[%d] num[%d]\n",
 		__func__, prParamBssidPool->fgIsEnable,

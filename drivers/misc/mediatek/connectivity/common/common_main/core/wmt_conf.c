@@ -173,15 +173,6 @@ static const struct parse_data wmtcfg_fields[] = {
 	CHAR(coex_config_addjust_ble_scan_time_ratio),
 	CHAR(coex_config_addjust_ble_scan_time_ratio_bt_slot),
 	CHAR(coex_config_addjust_ble_scan_time_ratio_wifi_slot),
-
-	CHAR(wifi_ant_swap_mode),
-	CHAR(wifi_main_ant_polarity),
-	CHAR(wifi_ant_swap_ant_sel_gpio),
-
-	/* This is an open config whose actual purpose is decided by WIFI. */
-	BYTE_ARRAY(wifi_config),
-
-	INT(vcn33_1_voltage),
 };
 
 #define NUM_WMTCFG_FIELDS (osal_sizeof(wmtcfg_fields) / osal_sizeof(wmtcfg_fields[0]))
@@ -189,7 +180,7 @@ static const struct parse_data wmtcfg_fields[] = {
 static INT32 wmt_conf_parse_char(P_DEV_WMT pWmtDev, const struct parse_data *data, const PINT8 pos)
 {
 	PUINT8 dst;
-	long res = 0;
+	long res;
 
 	dst = (PINT8)(((PUINT8) pWmtDev) + (long)data->param1);
 
@@ -228,7 +219,7 @@ static PINT8 wmt_conf_write_char(P_DEV_WMT pWmtDev, const struct parse_data *dat
 static INT32 wmt_conf_parse_short(P_DEV_WMT pWmtDev, const struct parse_data *data, const PINT8 pos)
 {
 	PUINT16 dst;
-	long res = 0;
+	long res;
 
 	dst = (PINT16)(((PUINT8) pWmtDev) + (long)data->param1);
 
@@ -271,7 +262,7 @@ static PINT8 wmt_conf_write_short(P_DEV_WMT pWmtDev, const struct parse_data *da
 static INT32 wmt_conf_parse_int(P_DEV_WMT pWmtDev, const struct parse_data *data, const PINT8 pos)
 {
 	PUINT32 dst;
-	long res = 0;
+	long res;
 
 	dst = (PINT32)(((PUINT8) pWmtDev) + (long)data->param1);
 
@@ -312,7 +303,7 @@ static PINT8 wmt_conf_write_int(P_DEV_WMT pWmtDev, const struct parse_data *data
 
 static INT32 wmt_conf_parse_string(P_DEV_WMT pWmtDev, const struct parse_data *data, const PINT8 pos)
 {
-	PUINT8 *dst = NULL;
+	PUINT8 *dst;
 	PUINT8 buffer;
 
 	buffer = osal_malloc(osal_strlen(pos)+1);
@@ -358,8 +349,8 @@ static PINT8 wmt_conf_write_string(P_DEV_WMT pWmtDev, const struct parse_data *d
 static INT32 wmt_conf_parse_byte_array(P_DEV_WMT pWmtDev,
 		const struct parse_data *data, const PINT8 pos)
 {
-	PUINT8 *dst = NULL;
-	struct WMT_BYTE_ARRAY *ba = NULL;
+	PUINT8 *dst;
+	struct WMT_BYTE_ARRAY *ba;
 	PUINT8 buffer;
 	INT32 size = osal_strlen(pos) / 2;
 	UINT8 temp[3];
@@ -370,7 +361,7 @@ static INT32 wmt_conf_parse_byte_array(P_DEV_WMT pWmtDev,
 		WMT_ERR_FUNC("wmtcfg==> %s has no value assigned\n",
 			data->name);
 		return -1;
-	} else if (osal_strlen(pos) & 0x1) {
+	} else if (size & 0x1) {
 		WMT_ERR_FUNC("wmtcfg==> %s, length should be even\n", data->name);
 		return -1;
 	}
@@ -410,9 +401,9 @@ static INT32 wmt_conf_parse_byte_array(P_DEV_WMT pWmtDev,
 
 static PINT8 wmt_conf_write_byte_array(P_DEV_WMT pWmtDev, const struct parse_data *data)
 {
-	PUINT8 *src = NULL;
+	PUINT8 *src;
 	PINT8 value;
-	struct WMT_BYTE_ARRAY *ba = NULL;
+	struct WMT_BYTE_ARRAY *ba;
 	INT32 i;
 
 	src = (PUINT8 *) (((PUINT8) pWmtDev) + (long)data->param1);
@@ -681,15 +672,6 @@ INT32 wmt_conf_deinit(VOID)
 	if (pWmtGenConf->coex_wmt_antsel_invert_support != NULL) {
 		osal_free(pWmtGenConf->coex_wmt_antsel_invert_support);
 		pWmtGenConf->coex_wmt_antsel_invert_support = NULL;
-	}
-
-	if (pWmtGenConf->wifi_config != NULL) {
-		if (pWmtGenConf->wifi_config->data != NULL) {
-			osal_free(pWmtGenConf->wifi_config->data);
-			pWmtGenConf->wifi_config->data = NULL;
-		}
-		osal_free(pWmtGenConf->wifi_config);
-		pWmtGenConf->wifi_config = NULL;
 	}
 
 	return 0;

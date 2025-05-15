@@ -179,7 +179,6 @@ typedef struct mtk_stp_psm {
 	INT32 (*wmt_notify)(MTKSTP_PSM_ACTION_T action);
 	INT32 (*stp_tx_cb)(PUINT8 buffer, UINT32 length, UINT8 type);
 	MTK_WCN_BOOL (*is_wmt_quick_ps_support)(VOID);
-	INT32 (*update_wmt_fw_patch_chip_rst)(VOID);
 	UINT8 out_buf[STP_PSM_TX_SIZE];
 	struct osal_op_history op_history;
 } MTKSTP_PSM_T;
@@ -254,7 +253,7 @@ INT32 stp_psm_disable(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_enable(MTKSTP_PSM_T *stp_psm, INT32 idle_time_to_sleep);
 struct mtk_stp_psm *stp_psm_init(void);
 INT32 stp_psm_deinit(MTKSTP_PSM_T *stp_psm);
-MTK_WCN_BOOL mtk_wcn_stp_psm_dbg_level(INT32 dbglevel);
+MTK_WCN_BOOL mtk_wcn_stp_psm_dbg_level(UINT32 dbglevel);
 INT32 stp_psm_sleep_for_thermal(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_thread_lock_aquire(MTKSTP_PSM_T *stp_psm);
 INT32 stp_psm_thread_lock_release(MTKSTP_PSM_T *stp_psm);

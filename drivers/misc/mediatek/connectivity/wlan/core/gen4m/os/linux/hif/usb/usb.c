@@ -82,7 +82,6 @@
 #endif
 
 #include "mt66xx_reg.h"
-#include "cust_usb_id.h"
 
 /*******************************************************************************
 *                              C O N S T A N T S
@@ -118,16 +117,6 @@ static const struct usb_device_id mtk_usb_ids[] = {
 	{	USB_DEVICE_AND_INTERFACE_INFO(0x0E8D, 0x7663, 0xff, 0xff, 0xff),
 		.driver_info = (kernel_ulong_t)&mt66xx_driver_data_mt7663},
 #endif /* MT7663 */
-#ifdef MT7915
-	{	USB_DEVICE_AND_INTERFACE_INFO(0x0E8D, 0x7915, 0xff, 0xff, 0xff),
-		.driver_info = (kernel_ulong_t)&mt66xx_driver_data_mt7915},
-#endif /* MT7915 */
-#ifdef MT7961
-	{	USB_DEVICE_AND_INTERFACE_INFO(0x0E8D, 0x7961, 0xff, 0xff, 0xff),
-		.driver_info = (kernel_ulong_t)&mt66xx_driver_data_mt7961},
-#endif /* MT7961 */
-	/* If customer usb id is presented, add to the table. */
-	CUST_USB_ID_TABLES
 	{ /* end: all zeroes */ },
 };
 
@@ -172,18 +161,6 @@ static struct usb_driver mtk_usb_driver = {
 *                   F U N C T I O N   D E C L A R A T I O N S
 ********************************************************************************
 */
-static int mtk_usb_probe(struct usb_interface *intf,
-				const struct usb_device_id *id);
-static void mtk_usb_disconnect(struct usb_interface *intf);
-static int mtk_usb_suspend(struct usb_interface *intf, pm_message_t message);
-static int mtk_usb_resume(struct usb_interface *intf);
-static int mtk_usb_reset_resume(struct usb_interface *intf);
-static int mtk_usb_bulk_in_msg(struct GL_HIF_INFO *prHifInfo, uint32_t len,
-				uint8_t *buffer, int InEp);
-static int mtk_usb_intr_in_msg(struct GL_HIF_INFO *prHifInfo, uint32_t len,
-				uint8_t *buffer, int InEp);
-static int mtk_usb_bulk_out_msg(struct GL_HIF_INFO *prHifInfo, uint32_t len,
-				uint8_t *buffer, int OutEp);
 
 /*******************************************************************************
 *                              F U N C T I O N S
@@ -212,12 +189,6 @@ static int mtk_usb_probe(struct usb_interface *intf, const struct usb_device_id 
 
 	dev = interface_to_usbdev(intf);
 	dev = usb_get_dev(dev);
-
-	/* Prevent un-expected usb operation  */
-	if (g_fgDriverProbed) {
-		DBGLOG(HAL, ERROR, "wlan_probe(): Device already probed!!\n");
-		return -EBUSY;
-	}
 
 	DBGLOG(HAL, EVENT, "wlan_probe()\n");
 	if (pfWlanProbe((void *) intf, (void *) id->driver_info) != WLAN_STATUS_SUCCESS) {
@@ -250,7 +221,7 @@ static void mtk_usb_disconnect(struct usb_interface *intf)
 	ASSERT(intf);
 	prGlueInfo  = (struct GLUE_INFO *)usb_get_intfdata(intf);
 
-	glUsbSetState(&prGlueInfo->rHifInfo, USB_STATE_LINK_DOWN);
+	prGlueInfo->rHifInfo.state = USB_STATE_LINK_DOWN;
 
 	if (g_fgDriverProbed)
 		pfWlanRemove();
@@ -263,74 +234,26 @@ static void mtk_usb_disconnect(struct usb_interface *intf)
 	DBGLOG(HAL, STATE, "mtk_usb_disconnect() done\n");
 }
 
-static int mtk_usb_resume(struct usb_interface *intf)
-{
-	int ret = 0;
-	struct GLUE_INFO *prGlueInfo =
-		(struct GLUE_INFO *)usb_get_intfdata(intf);
-	struct BUS_INFO *prBusInfo = NULL;
-
-	DBGLOG(HAL, STATE, "mtk_usb_resume()\n");
-	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
-
-	if (prBusInfo->asicUsbResume) {
-		/* callback func registered for each chip */
-		if (prBusInfo->asicUsbResume(prGlueInfo->prAdapter, prGlueInfo))
-			ret = 0;
-		else
-			ret = -1;
-	} else {
-		/* Do general method if no callback func registered */
-		/* NOTE: USB bus may not really do suspend and resume*/
-		ret = usb_control_msg(prGlueInfo->rHifInfo.udev,
-			      usb_sndctrlpipe(prGlueInfo->rHifInfo.udev, 0),
-			      VND_REQ_FEATURE_SET,
-			      prBusInfo->u4device_vender_request_out,
-			      FEATURE_SET_WVALUE_RESUME, 0, NULL, 0,
-			      VENDOR_TIMEOUT_MS);
-		if (ret)
-			DBGLOG(HAL, ERROR,
-				"VendorRequest FeatureSetResume ERROR: %x\n",
-				(unsigned int)ret);
-
-		glUsbSetState(&prGlueInfo->rHifInfo, USB_STATE_PRE_RESUME);
-		/* To trigger CR4 path */
-		wlanSendDummyCmd(prGlueInfo->prAdapter, FALSE);
-
-		glUsbSetState(&prGlueInfo->rHifInfo, USB_STATE_LINK_UP);
-		halEnableInterrupt(prGlueInfo->prAdapter);
-
-		if (prGlueInfo->prAdapter->rWifiVar.ucWow) {
-			DBGLOG(HAL, EVENT, "leave WOW flow\n");
-			kalWowProcess(prGlueInfo, FALSE);
-		}
-	}
-
-	/* Allow upper layers to call the device hard_start_xmit routine. */
-	netif_tx_start_all_queues(prGlueInfo->prDevHandler);
-
-	DBGLOG(HAL, STATE, "mtk_usb_resume() done ret=%d!\n", ret);
-
-	/* TODO */
-	return ret;
-}
-
-static int mtk_usb_suspend(struct usb_interface *intf, pm_message_t message)
+int mtk_usb_suspend(struct usb_interface *intf, pm_message_t message)
 {
 	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)usb_get_intfdata(intf);
 	uint8_t count = 0;
 	struct BUS_INFO *prBusInfo = NULL;
-	int ret = 0;
 
 	DBGLOG(HAL, STATE, "mtk_usb_suspend()\n");
 
 	/* Stop upper layers calling the device hard_start_xmit routine. */
 	netif_tx_stop_all_queues(prGlueInfo->prDevHandler);
 
-	/* change to non-READY state to block cfg80211 ops */
-	glUsbSetState(&prGlueInfo->rHifInfo, USB_STATE_PRE_SUSPEND_START);
+	/* 1) wifi cfg "Wow" is true, 2) wow is enable 3) WIfI connected => execute WOW flow */
+	if (prGlueInfo->prAdapter->rWifiVar.ucWow && prGlueInfo->prAdapter->rWowCtrl.fgWowEnable) {
+		if (kalGetMediaStateIndicated(prGlueInfo) == PARAM_MEDIA_STATE_CONNECTED) {
+			DBGLOG(HAL, EVENT, "enter WOW flow\n");
+			kalWowProcess(prGlueInfo, TRUE);
+		}
 
-	wlanSuspendPmHandle(prGlueInfo);
+		/* else: do nothing, and FW enter LMAC sleep */
+	}
 
 	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 	if (prBusInfo->asicUsbSuspend) {
@@ -338,33 +261,66 @@ static int mtk_usb_suspend(struct usb_interface *intf, pm_message_t message)
 			return 0;
 		else
 			return -1;
-	}
+	} else {
+		halUSBPreSuspendCmd(prGlueInfo->prAdapter);
 
-	halUSBPreSuspendCmd(prGlueInfo->prAdapter);
-
-	while (prGlueInfo->rHifInfo.state != USB_STATE_PRE_SUSPEND_DONE) {
-		if (count > 25) {
-			DBGLOG(HAL, ERROR, "pre_suspend timeout\n");
-			ret = -EFAULT;
-			break;
+		while (prGlueInfo->rHifInfo.state != USB_STATE_PRE_SUSPEND_DONE) {
+			if (count > 25) {
+				DBGLOG(HAL, ERROR, "pre_suspend timeout\n");
+				break;
+			}
+			msleep(20);
+			count++;
 		}
-		msleep(20);
-		count++;
-	}
 
-	glUsbSetState(&prGlueInfo->rHifInfo, USB_STATE_SUSPEND);
-	halDisableInterrupt(prGlueInfo->prAdapter);
-	halTxCancelAllSending(prGlueInfo->prAdapter);
+		prGlueInfo->rHifInfo.state = USB_STATE_SUSPEND;
+		halDisableInterrupt(prGlueInfo->prAdapter);
+		halTxCancelAllSending(prGlueInfo->prAdapter);
+	}
 
 	DBGLOG(HAL, STATE, "mtk_usb_suspend() done!\n");
 
-	if (ret && PMSG_IS_AUTO(message))
-		mtk_usb_resume(intf);
-
-	return ret;
+	/* TODO */
+	return 0;
 }
 
-static int mtk_usb_reset_resume(struct usb_interface *intf)
+int mtk_usb_resume(struct usb_interface *intf)
+{
+	int ret = 0;
+	struct GLUE_INFO *prGlueInfo = (struct GLUE_INFO *)usb_get_intfdata(intf);
+
+	DBGLOG(HAL, STATE, "mtk_usb_resume()\n");
+
+	/* NOTE: USB bus may not really do suspend and resume*/
+	ret = usb_control_msg(prGlueInfo->rHifInfo.udev,
+			      usb_sndctrlpipe(prGlueInfo->rHifInfo.udev, 0), VND_REQ_FEATURE_SET,
+			      DEVICE_VENDOR_REQUEST_OUT, FEATURE_SET_WVALUE_RESUME, 0, NULL, 0,
+			      VENDOR_TIMEOUT_MS);
+	if (ret)
+		DBGLOG(HAL, ERROR, "VendorRequest FeatureSetResume ERROR: %x\n", (unsigned int)ret);
+
+	prGlueInfo->rHifInfo.state = USB_STATE_PRE_RESUME;
+	/* To trigger CR4 path */
+	wlanSendDummyCmd(prGlueInfo->prAdapter, FALSE);
+
+	prGlueInfo->rHifInfo.state = USB_STATE_LINK_UP;
+	halEnableInterrupt(prGlueInfo->prAdapter);
+
+	if (prGlueInfo->prAdapter->rWifiVar.ucWow) {
+		DBGLOG(HAL, EVENT, "leave WOW flow\n");
+		kalWowProcess(prGlueInfo, FALSE);
+	}
+
+	DBGLOG(HAL, STATE, "mtk_usb_resume() done!\n");
+
+	/* Allow upper layers to call the device hard_start_xmit routine. */
+	netif_tx_start_all_queues(prGlueInfo->prDevHandler);
+
+	/* TODO */
+	return 0;
+}
+
+int mtk_usb_reset_resume(struct usb_interface *intf)
 {
 	DBGLOG(HAL, STATE, "mtk_usb_reset_resume()\n");
 
@@ -393,62 +349,46 @@ static int mtk_usb_reset_resume(struct usb_interface *intf)
 *         non-zero   if fail, the return value of usb_control_msg()
 */
 /*----------------------------------------------------------------------------*/
-int32_t mtk_usb_vendor_request(IN struct GLUE_INFO *prGlueInfo,
-		IN uint8_t uEndpointAddress, IN uint8_t RequestType,
-	    IN uint8_t Request, IN uint16_t Value, IN uint16_t Index,
-	    IN void *TransferBuffer, IN uint32_t TransferBufferLength)
+u_int8_t mtk_usb_vendor_request(IN struct GLUE_INFO *prGlueInfo, IN uint8_t uEndpointAddress, IN uint8_t RequestType,
+			    IN uint8_t Request, IN uint16_t Value, IN uint16_t Index, IN void *TransferBuffer,
+			    IN uint32_t TransferBufferLength)
 {
 	struct GL_HIF_INFO *prHifInfo = &prGlueInfo->rHifInfo;
-	struct BUS_INFO *prBusInfo = NULL;
-	void *xfer_buf;
 
 	/* refer to RTUSB_VendorRequest */
 	int ret = 0;
-	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 
 	/* TODO: semaphore */
 
 	if (in_interrupt()) {
 		DBGLOG(REQ, ERROR, "BUG: mtk_usb_vendor_request is called from invalid context\n");
-		return -EFAULT;
+		return FALSE;
 	}
 
-	if (unlikely(TransferBufferLength > prHifInfo->vendor_req_buf_sz)) {
-		DBGLOG(REQ, ERROR, "len %u exceeds limit %zu\n",
-			TransferBufferLength,
-			prHifInfo->vendor_req_buf_sz);
-		return -E2BIG;
-	}
+	if (prHifInfo->state != USB_STATE_LINK_UP)
+		return FALSE;
 
-	if (unlikely(TransferBuffer && !prHifInfo->vendor_req_buf)) {
-		DBGLOG(REQ, ERROR, "NULL vendor_req_buf\n");
-		return -EFAULT;
-	}
 
-	/* use heap instead of old stack memory */
-	xfer_buf = (TransferBuffer) ? prHifInfo->vendor_req_buf : NULL;
+#if 0
+	if (prGlueInfo->ulFlag & GLUE_FLAG_HALT)
+		return FALSE;
+#endif
 
 	mutex_lock(&prHifInfo->vendor_req_sem);
 
-	if (RequestType == prBusInfo->u4device_vender_request_out) {
-		if (xfer_buf)
-			memcpy(xfer_buf, TransferBuffer, TransferBufferLength);
-		ret = usb_control_msg(prHifInfo->udev,
-				      usb_sndctrlpipe(prHifInfo->udev,
-				      uEndpointAddress),
-				      Request, RequestType, Value, Index,
-				      xfer_buf, TransferBufferLength,
-				      VENDOR_TIMEOUT_MS);
-	} else if (RequestType == prBusInfo->u4device_vender_request_in) {
-		ret = usb_control_msg(prHifInfo->udev,
-				      usb_rcvctrlpipe(prHifInfo->udev,
-				      uEndpointAddress),
-				      Request, RequestType, Value, Index,
-				      xfer_buf, TransferBufferLength,
-				      VENDOR_TIMEOUT_MS);
-		if (xfer_buf && (ret > 0))
-			memcpy(TransferBuffer, xfer_buf, TransferBufferLength);
-	}
+	if (RequestType == DEVICE_VENDOR_REQUEST_OUT)
+		ret =
+		    usb_control_msg(prHifInfo->udev,
+				    usb_sndctrlpipe(prHifInfo->udev, uEndpointAddress), Request,
+				    RequestType, Value, Index, TransferBuffer, TransferBufferLength,
+				    VENDOR_TIMEOUT_MS);
+	else if (RequestType == DEVICE_VENDOR_REQUEST_IN)
+		ret =
+		    usb_control_msg(prHifInfo->udev,
+				    usb_rcvctrlpipe(prHifInfo->udev, uEndpointAddress), Request,
+				    RequestType, Value, Index, TransferBuffer, TransferBufferLength,
+				    VENDOR_TIMEOUT_MS);
+
 	mutex_unlock(&prHifInfo->vendor_req_sem);
 
 	return (ret == TransferBufferLength) ? 0 : ret;
@@ -458,7 +398,7 @@ int32_t mtk_usb_vendor_request(IN struct GLUE_INFO *prGlueInfo,
 /*!
 * \brief USB Bulk IN msg
 *
-* \param[in] prHifInfo  Pointer to the struct GL_HIF_INFO structure
+* \param[in] prGlueInfo Pointer to the GLUE_INFO_T structure.
 * \param[in] len
 * \param[in] buffer
 * \param[in] InEp
@@ -534,7 +474,7 @@ static int mtk_usb_intr_in_msg(IN struct GL_HIF_INFO *prHifInfo, IN uint32_t len
 /*!
 * \brief USB Bulk OUT msg
 *
-* \param[in] prHifInfo  Pointer to the struct GL_HIF_INFO structure
+* \param[in] prGlueInfo Pointer to the GLUE_INFO_T structure.
 * \param[in] len
 * \param[in] buffer
 * \param[in] OutEp
@@ -741,7 +681,7 @@ struct USB_REQ *glUsbDequeueReq(struct GL_HIF_INFO *prHifInfo, struct list_head 
 /*!
 * \brief This function borrow UsbReq from Tx data FFA queue to the spcified TC Tx data free queue
 *
-* \param[in] prHifInfo  Pointer to the struct GL_HIF_INFO structure
+* \param[in] prGlueInfo Pointer to HIF info structure
 * \param[in] ucTc       Specify TC index
 *
 * \retval TRUE          operation success
@@ -765,86 +705,10 @@ u_int8_t glUsbBorrowFfaReq(struct GL_HIF_INFO *prHifInfo, uint8_t ucTc)
 
 /*----------------------------------------------------------------------------*/
 /*!
-* \brief This function set USB state
-*
-* \param[in] prHifInfo  Pointer to the struct GL_HIF_INFO structure
-* \param[in] state      Specify TC index
-*
-* \retval TRUE          operation success
-* \retval FALSE         operation fail
-*/
-/*----------------------------------------------------------------------------*/
-void glUsbSetState(struct GL_HIF_INFO *prHifInfo, enum usb_state state)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&prHifInfo->rStateLock, flags);
-	prHifInfo->state = state;
-	spin_unlock_irqrestore(&prHifInfo->rStateLock, flags);
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
-* \brief This function is a wrapper of submit urb to ensure driver can transmit
-*        WiFi packet when WiFi path of device is allowed.
-*
-* \param[in] prHifInfo  Pointer to the struct GL_HIF_INFO structure
-* \param[in] type       Specify submit type
-*
-* \retval 0             Successful submissions.
-* \retval negative      Error number.
-*/
-/*----------------------------------------------------------------------------*/
-int glUsbSubmitUrb(struct GL_HIF_INFO *prHifInfo, struct urb *urb,
-			enum usb_submit_type type)
-{
-	unsigned long flags;
-	uint32_t ret = 0;
-
-	if (type == SUBMIT_TYPE_RX_EVENT || type == SUBMIT_TYPE_RX_DATA)
-		return usb_submit_urb(urb, GFP_ATOMIC);
-
-	spin_lock_irqsave(&prHifInfo->rStateLock, flags);
-	if (type == SUBMIT_TYPE_TX_CMD) {
-		if (!(prHifInfo->state == USB_STATE_LINK_UP ||
-			prHifInfo->state == USB_STATE_PRE_RESUME ||
-			prHifInfo->state == USB_STATE_PRE_SUSPEND_START ||
-			prHifInfo->state == USB_STATE_READY)) {
-			spin_unlock_irqrestore(&prHifInfo->rStateLock, flags);
-			DBGLOG(HAL, INFO,
-				"not allowed to transmit CMD packet. (%d)\n",
-				prHifInfo->state);
-			return -ESHUTDOWN;
-		}
-	} else if (type == SUBMIT_TYPE_TX_DATA) {
-		if (prHifInfo->state != USB_STATE_LINK_UP ||
-			prHifInfo->state == USB_STATE_READY) {
-			spin_unlock_irqrestore(&prHifInfo->rStateLock, flags);
-			DBGLOG(HAL, INFO,
-				"not allowed to transmit DATA packet. (%d)\n",
-				prHifInfo->state);
-			return -ESHUTDOWN;
-		}
-	}
-
-	if (nicSerIsTxStop(prHifInfo->prGlueInfo->prAdapter)) {
-		DBGLOG(HAL, ERROR, "[SER] BYPASS USB send packet\n");
-		spin_unlock_irqrestore(&prHifInfo->rStateLock, flags);
-		return -EBUSY;
-	}
-
-	ret = usb_submit_urb(urb, GFP_ATOMIC);
-	spin_unlock_irqrestore(&prHifInfo->rStateLock, flags);
-
-	return ret;
-}
-
-/*----------------------------------------------------------------------------*/
-/*!
 * \brief This function stores hif related info, which is initialized before.
 *
 * \param[in] prGlueInfo Pointer to glue info structure
-* \param[in] u4Cookie   Pointer to uint32_t memory base variable for _HIF_HPI
+* \param[in] u4Cookie   Pointer to UINT_32 memory base variable for _HIF_HPI
 *
 * \return (none)
 */
@@ -898,18 +762,11 @@ void glSetHifInfo(struct GLUE_INFO *prGlueInfo, unsigned long ulCookie)
 
 	spin_lock_init(&prHifInfo->rTxCmdQLock);
 	spin_lock_init(&prHifInfo->rTxDataQLock);
+	spin_lock_init(&prHifInfo->rTxDataFreeQLock);
 	spin_lock_init(&prHifInfo->rRxEventQLock);
 	spin_lock_init(&prHifInfo->rRxDataQLock);
-	spin_lock_init(&prHifInfo->rStateLock);
 
 	mutex_init(&prHifInfo->vendor_req_sem);
-	prHifInfo->vendor_req_buf = kzalloc(VND_REQ_BUF_SIZE, GFP_KERNEL);
-	if (!prHifInfo->vendor_req_buf) {
-		DBGLOG(HAL, ERROR, "kzalloc vendor_req_buf %zu error\n",
-			VND_REQ_BUF_SIZE);
-		goto error;
-	}
-	prHifInfo->vendor_req_buf_sz = VND_REQ_BUF_SIZE;
 
 #if CFG_USB_TX_AGG
 	for (ucTc = 0; ucTc < USB_TC_NUM; ++ucTc) {
@@ -1060,9 +917,8 @@ void glSetHifInfo(struct GLUE_INFO *prGlueInfo, unsigned long ulCookie)
 	glUsbInitQ(prHifInfo, &prHifInfo->rRxEventCompleteQ, 0);
 	glUsbInitQ(prHifInfo, &prHifInfo->rRxDataCompleteQ, 0);
 
-	glUsbSetState(prHifInfo, USB_STATE_LINK_UP);
+	prHifInfo->state = USB_STATE_LINK_UP;
 	prGlueInfo->u4InfType = MT_DEV_INF_USB;
-
 	return;
 
 error:
@@ -1081,7 +937,7 @@ error:
 /*----------------------------------------------------------------------------*/
 void glClearHifInfo(struct GLUE_INFO *prGlueInfo)
 {
-	/* struct GL_HIF_INFO *prHifInfo = NULL; */
+	/* P_GL_HIF_INFO_T prHifInfo = NULL; */
 	/* ASSERT(prGlueInfo); */
 	/* prHifInfo = &prGlueInfo->rHifInfo; */
 #if CFG_USB_TX_AGG
@@ -1184,18 +1040,15 @@ void glClearHifInfo(struct GLUE_INFO *prGlueInfo)
 	kfree(prHifInfo->prRxDataReqHead);
 
 	mutex_destroy(&prHifInfo->vendor_req_sem);
-	kfree(prHifInfo->vendor_req_buf);
-	prHifInfo->vendor_req_buf = NULL;
-	prHifInfo->vendor_req_buf_sz = 0;
-} /* end of glClearHifInfo() */
+}				/* end of glClearHifInfo() */
 
 /*----------------------------------------------------------------------------*/
 /*!
 * \brief Initialize bus operation and hif related information, request resources.
 *
 * \param[out] pvData    A pointer to HIF-specific data type buffer.
-*                       For eHPI, pvData is a pointer to uint32_t type and
-*                       stores a mapped base address.
+*                       For eHPI, pvData is a pointer to UINT_32 type and stores a
+*                       mapped base address.
 *
 * \return (none)
 */
@@ -1347,29 +1200,21 @@ int32_t glGetUsbDeviceSerialNumber(struct usb_device *dev, uint8_t *buffer, uint
 /*----------------------------------------------------------------------------*/
 u_int8_t kalDevRegRead(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Register, OUT uint32_t *pu4Value)
 {
-	struct BUS_INFO *prBusInfo = NULL;
 	int ret = 0;
 	uint8_t ucRetryCount = 0;
 
 	ASSERT(prGlueInfo);
 	ASSERT(pu4Value);
 
-	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
 	*pu4Value = 0xFFFFFFFF;
 
 	do {
-		ret = mtk_usb_vendor_request(prGlueInfo,
-			0,
-			prBusInfo->u4device_vender_request_in,
-			VND_REQ_REG_READ,
-			(u4Register & 0xffff0000) >> 16,
-			(u4Register & 0x0000ffff), pu4Value,
+		ret = mtk_usb_vendor_request(prGlueInfo, 0, DEVICE_VENDOR_REQUEST_IN, VND_REQ_REG_READ,
+				       (u4Register & 0xffff0000) >> 16, (u4Register & 0x0000ffff), pu4Value,
 				       sizeof(*pu4Value));
 
 		if (ret || ucRetryCount)
-			DBGLOG(HAL, ERROR,
-				"usb_control_msg() status: %d retry: %u\n",
-				ret, ucRetryCount);
+			DBGLOG(HAL, ERROR, "usb_control_msg() status: %x retry: %u\n", (unsigned int)ret, ucRetryCount);
 
 
 		ucRetryCount++;
@@ -1382,8 +1227,7 @@ u_int8_t kalDevRegRead(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Register, 
 				  HIF_USB_ERR_DESC_STR "USB() reports error: %x retry: %u", ret, ucRetryCount);
 		DBGLOG(HAL, ERROR, "usb_readl() reports error: %x retry: %u\n", ret, ucRetryCount);
 	} else {
-		DBGLOG(HAL, TRACE, "Get CR[0x%08x] value[0x%08x]\n",
-			u4Register, *pu4Value);
+		DBGLOG(HAL, INFO, "Get CR[0x%08x] value[0x%08x]\n", u4Register, *pu4Value);
 	}
 
 	return (ret) ? FALSE : TRUE;
@@ -1405,24 +1249,16 @@ u_int8_t kalDevRegWrite(IN struct GLUE_INFO *prGlueInfo, IN uint32_t u4Register,
 {
 	int ret = 0;
 	uint8_t ucRetryCount = 0;
-	struct BUS_INFO *prBusInfo = NULL;
 
 	ASSERT(prGlueInfo);
-	prBusInfo = prGlueInfo->prAdapter->chip_info->bus_info;
+
 	do {
-		ret = mtk_usb_vendor_request(prGlueInfo,
-			0,
-			prBusInfo->u4device_vender_request_out,
-			VND_REQ_REG_WRITE,
-			(u4Register & 0xffff0000) >> 16,
-			(u4Register & 0x0000ffff),
-			&u4Value,
+		ret = mtk_usb_vendor_request(prGlueInfo, 0, DEVICE_VENDOR_REQUEST_OUT, VND_REQ_REG_WRITE,
+				       (u4Register & 0xffff0000) >> 16, (u4Register & 0x0000ffff), &u4Value,
 				       sizeof(u4Value));
 
 		if (ret || ucRetryCount)
-			DBGLOG(HAL, ERROR,
-				"usb_control_msg() status: %d retry: %u\n",
-				ret, ucRetryCount);
+			DBGLOG(HAL, ERROR, "usb_control_msg() status: %x retry: %u\n", (unsigned int)ret, ucRetryCount);
 
 		ucRetryCount++;
 		if (ucRetryCount > HIF_USB_ACCESS_RETRY_LIMIT)
@@ -1629,11 +1465,10 @@ u_int8_t kalDevKickData(IN struct GLUE_INFO *prGlueInfo)
 * \retval FALSE         operation fail
 */
 /*----------------------------------------------------------------------------*/
-enum ENUM_CMD_TX_RESULT kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo,
-		IN struct CMD_INFO *prCmdInfo, IN uint8_t ucTC)
+u_int8_t kalDevWriteCmd(IN struct GLUE_INFO *prGlueInfo, IN struct CMD_INFO *prCmdInfo, IN uint8_t ucTC)
 {
 	halTxUSBSendCmd(prGlueInfo, ucTC, prCmdInfo);
-	return CMD_TX_RESULT_SUCCESS;
+	return TRUE;
 }
 
 void glGetDev(void *ctx, struct device **dev)
@@ -1648,11 +1483,3 @@ void glGetHifDev(struct GL_HIF_INFO *prHif, struct device **dev)
 {
 	*dev = &(prHif->udev->dev);
 }
-
-#if CFG_CHIP_RESET_SUPPORT
-void kalRemoveProbe(IN struct GLUE_INFO *prGlueInfo)
-{
-	DBGLOG(INIT, WARN, "[SER][L0] not support..\n");
-}
-#endif
-

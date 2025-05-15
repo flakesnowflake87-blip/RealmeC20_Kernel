@@ -90,12 +90,6 @@
 /* #define MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT (0) */
 
 #define CFG_WMT_POWER_ON_DLM  (1)
-
-/* Define local option for debug purpose */
-#define CFG_CALIBRATION_BACKUP_RESTORE (1)
-#define CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE (640)
-
-#define PATCH_BUILD_TIME_SIZE (16)
 /*******************************************************************************
 *                             D A T A   T Y P E S
 ********************************************************************************
@@ -110,15 +104,6 @@ static UINT8 gFullPatchName[NAME_MAX + 1];
 static const WMT_IC_INFO_S *gp_soc_info;
 static WMT_PATCH gp_soc_patch_info;
 static WMT_CO_CLOCK gCoClockEn = WMT_CO_CLOCK_DIS;
-
-#if CFG_CALIBRATION_BACKUP_RESTORE
-static PUINT8 gBTCalResult;
-static UINT16 gBTCalResultSize;
-static UINT32 gWiFiCalAddrOffset;
-static UINT32 gWiFiCalSize;
-static PUINT8 gWiFiCalResult;
-#endif
-
 #if 0
 static UINT8 WMT_WAKEUP_DIS_GATE_CMD[] = { 0x1, 0x3, 0x01, 0x00, 0x04 };
 static UINT8 WMT_WAKEUP_DIS_GATE_EVT[] = { 0x2, 0x3, 0x02, 0x0, 0x0, 0x04 };
@@ -276,14 +261,6 @@ static UINT8 WMT_CORE_CO_CLOCK_EVT[] = { 0x2, 0x0A, 0x01, 0x00, 0x00 };
 
 static UINT8 WMT_CORE_START_RF_CALIBRATION_CMD[] = { 0x1, 0x14, 0x1, 0x00, 0x01 };
 static UINT8 WMT_CORE_START_RF_CALIBRATION_EVT[] = { 0x2, 0x14, 0x02, 0x00, 0x00, 0x01 };
-
-#if CFG_CALIBRATION_BACKUP_RESTORE
-static UINT8 WMT_CORE_GET_RF_CALIBRATION_CMD[] = { 0x1, 0x14, 0x01, 0x00, 0x03 };
-/* byte[2] & byte[3] is left for length */
-static UINT8 WMT_CORE_SEND_RF_CALIBRATION_CMD[] = { 0x1, 0x14, 0x00, 0x00, 0x02, 0x00, 0x00 };
-static UINT8 WMT_CORE_SEND_RF_CALIBRATION_EVT_OK[] = { 0x2, 0x14, 0x02, 0x00, 0x00, 0x02 };
-static UINT8 WMT_CORE_SEND_RF_CALIBRATION_EVT_RECAL[] = { 0x2, 0x14, 0x02, 0x00, 0x01, 0x02 };
-#endif
 
 #if (MTK_WCN_CMB_MERGE_INTERFACE_SUPPORT)
 static UINT8 WMT_SET_I2S_SLAVE_REG_CMD[] = { 0x01, 0x08, 0x10, 0x00	/*length */
@@ -771,11 +748,6 @@ static UINT8 WMT_POWER_CTRL_DLM_CMD3[] = {
 static UINT8 WMT_POWER_CTRL_DLM_EVT[] = { 0x02, 0x08, 0x04, 0x00, 0x00, 0x00, 0x00, 0x01 };
 #endif
 
-static UINT8 WMT_WIFI_ANT_SWAP_CMD[] = { 0x01, 0x14, 0x04, 0x00, 0x07, 0x02, 0x00, 0x00 };
-static UINT8 WMT_WIFI_ANT_SWAP_EVT[] = { 0x02, 0x14, 0x02, 0x00, 0x00, 0x07 };
-
-static UINT8 WMT_WIFI_CONFIG_EVT[] = { 0x02, 0x02, 0x01, 0x00, 0x00 };
-
 #if (!CFG_IC_SOC)
 
 /* stp sdio init scripts */
@@ -990,11 +962,6 @@ static struct init_script wmt_power_on_dlm_table[] = {
 };
 #endif
 
-
-static struct init_script wifi_ant_swap_table[] = {
-	INIT_CMD(WMT_WIFI_ANT_SWAP_CMD, WMT_WIFI_ANT_SWAP_EVT, "ant swap"),
-};
-
 /* SOC Chip Version and Info Table */
 static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	{
@@ -1002,6 +969,8 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	 .cChipName = WMT_IC_NAME_DEFAULT,
 	 .cChipVersion = WMT_IC_VER_E1,
 	 .cPatchNameExt = WMT_IC_PATCH_E1_EXT,
+	 /* need to refine? */
+	 .eWmtHwVer = WMTHWVER_E1,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -1010,6 +979,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	 .cChipName = WMT_IC_NAME_DEFAULT,
 	 .cChipVersion = WMT_IC_VER_E2,
 	 .cPatchNameExt = WMT_IC_PATCH_E1_EXT,
+	 .eWmtHwVer = WMTHWVER_E2,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -1018,6 +988,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	 .cChipName = WMT_IC_NAME_DEFAULT,
 	 .cChipVersion = WMT_IC_VER_E2,
 	 .cPatchNameExt = WMT_IC_PATCH_E1_EXT,
+	 .eWmtHwVer = WMTHWVER_E2,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -1026,6 +997,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	 .cChipName = WMT_IC_NAME_DEFAULT,
 	 .cChipVersion = WMT_IC_VER_E3,
 	 .cPatchNameExt = WMT_IC_PATCH_E1_EXT,
+	 .eWmtHwVer = WMTHWVER_E3,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 },
@@ -1034,6 +1006,7 @@ static const WMT_IC_INFO_S mtk_wcn_soc_info_table[] = {
 	 .cChipName = WMT_IC_NAME_DEFAULT,
 	 .cChipVersion = WMT_IC_VER_E2,
 	 .cPatchNameExt = WMT_IC_PATCH_E1_EXT,
+	 .eWmtHwVer = WMTHWVER_E2,
 	 .bWorkWithoutPatch = MTK_WCN_BOOL_FALSE,
 	 .bPsmSupport = MTK_WCN_BOOL_TRUE,
 	 }
@@ -1065,8 +1038,6 @@ static INT32 wmt_stp_init_epa_elna(VOID);
 
 static INT32 wmt_stp_init_epa_elna_invert_cr(VOID);
 
-static INT32 wmt_init_wifi_config(VOID);
-
 #if CFG_WMT_FILTER_MODE_SETTING
 static INT32 wmt_stp_wifi_lte_coex(VOID);
 #endif
@@ -1094,17 +1065,6 @@ static MTK_WCN_BOOL mtk_wcn_soc_aee_dump_flag_get(VOID);
 #if CFG_WMT_SDIO_DRIVING_SET
 static INT32 mtk_wcn_soc_set_sdio_driving(void);
 #endif
-static UINT32 mtk_wcn_soc_update_patch_version(VOID);
-
-static INT32 mtk_wcn_soc_calibration(void);
-static INT32 mtk_wcn_soc_do_calibration(void);
-#if CFG_CALIBRATION_BACKUP_RESTORE
-static INT32 mtk_wcn_soc_calibration_backup(void);
-static INT32 mtk_wcn_soc_calibration_restore(void);
-#endif
-
-static INT32 wmt_stp_init_wifi_ant_swap(VOID);
-
 /*******************************************************************************
 *                            P U B L I C   D A T A
 ********************************************************************************
@@ -1113,7 +1073,6 @@ static INT32 wmt_stp_init_wifi_ant_swap(VOID);
 /* SOC Operation Function Table */
 WMT_IC_OPS wmt_ic_ops_soc = {
 	.icId = 0x0000,		/* soc may have mt6572/82/71/83,but they have the same sw init flow */
-	.options = 0,
 	.sw_init = mtk_wcn_soc_sw_init,
 	.sw_deinit = mtk_wcn_soc_sw_deinit,
 	.ic_pin_ctrl = mtk_wcn_soc_pin_ctrl,
@@ -1184,7 +1143,6 @@ static INT32 _wmt_soc_mode_ctrl(UINT32 mode)
 static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 {
 	INT32 iRet = -1;
-	INT32 retry = 3;
 	unsigned long ctrlPa1;
 	unsigned long ctrlPa2;
 	UINT32 hw_ver;
@@ -1214,7 +1172,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	    || (pWmtHifConf == NULL)
 	    ) {
 		WMT_ERR_FUNC("null pointers: gp_soc_info(0x%p), pWmtHifConf(0x%p)\n", gp_soc_info, pWmtHifConf);
-		return -WMT_ERRCODE_NULL_FUNC_POINTER;
+		return -1;
 	}
 
 	hw_ver = gp_soc_info->u4HwVer;
@@ -1225,72 +1183,58 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 		emiInfo = mtk_wcn_consys_soc_get_emi_phy_add();
 		if (!emiInfo) {
 			WMT_ERR_FUNC("get emi info fail!\n");
-			return -WMT_ERRCODE_EMI_NOT_READY;
+			return -1;
 		}
 		/* non-PDA mode, enable full mode before patch download */
 		if (!emiInfo->pda_dl_patch_flag) {
 			iRet = _wmt_soc_mode_ctrl(MTKSTP_BTIF_FULL_MODE);
-			if (iRet) {
-				WMT_ERR_FUNC("config btif full mode fail!\n");
-				return -WMT_ERRCODE_STP_CONFIG_FAIL;
-			}
+			if (iRet)
+				return iRet;
 		}
-	}
-
-	/* Check whether need to update property of patch version.
-	 * If yes, notify stp_launcher to update.
-	 */
-	if (wmt_lib_get_need_update_patch_version()) {
-		wmt_lib_set_need_update_patch_version(0);
-		mtk_wcn_soc_update_patch_version();
-		WMT_INFO_FUNC("wmt update patch version\n");
 	}
 
 #if CFG_WMT_POWER_ON_DLM
-	if (wmt_ic_ops_soc.options & OPT_POWER_ON_DLM_TABLE) {
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
 		iRet = wmt_core_init_script(wmt_power_on_dlm_table,
 				osal_array_size(wmt_power_on_dlm_table));
-		if (iRet) {
+		if (iRet)
 			WMT_ERR_FUNC("wmt_power_on_dlm_table fail(%d)\n", iRet);
-			return -WMT_ERRCODE_INIT_DLM_TABLE_FAIL;
-		}
 		WMT_DBG_FUNC("wmt_power_on_dlm_table ok\n");
 	}
 #endif
+
 	/* 6. download patch */
 #if CFG_WMT_MULTI_PATCH
 	/* 6.1 Let launcher to search patch info */
 	/* 6.2 Read patch number */
 	/* If patch number is 0, it's first time connys power on */
-	if ((wmt_ic_ops_soc.options & OPT_DISABLE_ROM_PATCH_DWN) == 0) {
-		patch_num = mtk_wcn_soc_get_patch_num();
-		while (patch_num == 0 || wmt_lib_get_patch_info() == NULL) {
-			if (retry-- <= 0) {
-				WMT_ERR_FUNC("patch info retry fail, patch num = %d\n", patch_num);
-				return -WMT_ERRCODE_PATCH_INFO_FAIL;
-			}
-			iRet = mtk_wcn_soc_patch_info_prepare();
-			if (iRet)
-				WMT_ERR_FUNC("patch info perpare fail(%d)\n", iRet);
-			patch_num = mtk_wcn_soc_get_patch_num();
+	patch_num = mtk_wcn_soc_get_patch_num();
+	if (patch_num == 0) {
+		iRet = mtk_wcn_soc_patch_info_prepare();
+		if (iRet) {
+			WMT_ERR_FUNC("patch info perpare fail(%d)\n", iRet);
+			return -6;
 		}
-		WMT_INFO_FUNC("patch total num = [%d]\n", patch_num);
-	} else
-		patch_num = 0;
+		patch_num = mtk_wcn_soc_get_patch_num();
+	}
 #if CFG_WMT_PATCH_DL_OPTM
-	if (patch_num != 0) {
-		if (wmt_ic_ops_soc.options & OPT_SET_MCUCLK_TABLE_1_2) {
-			iRet = wmt_core_init_script(set_mcuclk_table_1, osal_array_size(set_mcuclk_table_1));
-			if (iRet) {
-				WMT_ERR_FUNC("set_mcuclk_table_1 fail(%d)\n", iRet);
-				return -WMT_ERRCODE_INIT_MCUCLK_TABLE_FAIL;
-			}
-		} else if (wmt_ic_ops_soc.options & OPT_SET_MCUCLK_TABLE_3_4) {
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
+		if (wmt_ic_ops_soc.icId == 0x0279 ||
+		    wmt_ic_ops_soc.icId == 0x0507 ||
+		    wmt_ic_ops_soc.icId == 0x0713 ||
+		    wmt_ic_ops_soc.icId == 0x0788 ||
+		    wmt_ic_ops_soc.icId == 0x0688) {
 			iRet = wmt_core_init_script(set_mcuclk_table_3, osal_array_size(set_mcuclk_table_3));
-			if (iRet) {
+			if (iRet)
 				WMT_ERR_FUNC("set_mcuclk_table_3 fail(%d)\n", iRet);
-				return -WMT_ERRCODE_INIT_MCUCLK_TABLE_FAIL;
-			}
+		} else {
+			iRet = wmt_core_init_script(set_mcuclk_table_1, osal_array_size(set_mcuclk_table_1));
+			if (iRet)
+				WMT_ERR_FUNC("set_mcuclk_table_1 fail(%d)\n", iRet);
 		}
 	}
 #endif
@@ -1300,7 +1244,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 		iRet = mtk_wcn_soc_patch_dwn(patch_index);
 		if (iRet) {
 			WMT_ERR_FUNC("patch dwn fail (%d),patch_index(%d)\n", iRet, patch_index);
-			return -WMT_ERRCODE_PATCH_DWN_FAIL;
+			return -7;
 		}
 		if (patch_index == (patch_num - 1))
 			WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_CONNSYS_RESET);
@@ -1308,44 +1252,44 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 		iRet = wmt_core_init_script(init_table_3, osal_array_size(init_table_3));
 		if (iRet) {
 			WMT_ERR_FUNC("init_table_3 fail(%d)\n", iRet);
-			return -WMT_ERRCODE_PATCH_DWN_FAIL;
+			return -8;
 		}
 	}
 
 #if CFG_WMT_PATCH_DL_OPTM
-	if (patch_num != 0) {
-		if (wmt_ic_ops_soc.options & OPT_SET_MCUCLK_TABLE_1_2) {
-			iRet = wmt_core_init_script(set_mcuclk_table_2, osal_array_size(set_mcuclk_table_2));
-			if (iRet) {
-				WMT_ERR_FUNC("set_mcuclk_table_2 fail(%d)\n", iRet);
-				return -WMT_ERRCODE_INIT_MCUCLK_TABLE_FAIL;
-			}
-		} else if (wmt_ic_ops_soc.options & OPT_SET_MCUCLK_TABLE_3_4) {
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
+		if (wmt_ic_ops_soc.icId == 0x0279 ||
+		    wmt_ic_ops_soc.icId == 0x0507 ||
+		    wmt_ic_ops_soc.icId == 0x0713 ||
+		    wmt_ic_ops_soc.icId == 0x0788 ||
+		    wmt_ic_ops_soc.icId == 0x0688) {
 			iRet = wmt_core_init_script(set_mcuclk_table_4, osal_array_size(set_mcuclk_table_4));
-			if (iRet) {
+			if (iRet)
 				WMT_ERR_FUNC("set_mcuclk_table_4 fail(%d)\n", iRet);
-				return -WMT_ERRCODE_INIT_MCUCLK_TABLE_FAIL;
-			}
+		} else {
+			iRet = wmt_core_init_script(set_mcuclk_table_2, osal_array_size(set_mcuclk_table_2));
+			if (iRet)
+				WMT_ERR_FUNC("set_mcuclk_table_2 fail(%d)\n", iRet);
 		}
 	}
 #endif
 
 #else
 	/* 6.3 Patch download */
-	if ((wmt_ic_ops_soc.options & OPT_DISABLE_ROM_PATCH_DWN) == 0) {
-		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_SEND_DOWNLOAD_PATCH);
-		iRet = mtk_wcn_soc_patch_dwn();
-		/* If patch download fail, we just ignore this error and let chip init process goes on */
-		if (iRet)
-			WMT_ERR_FUNC("patch dwn fail (%d), just omit\n", iRet);
+	WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_SEND_DOWNLOAD_PATCH);
+	iRet = mtk_wcn_soc_patch_dwn();
+	/* If patch download fail, we just ignore this error and let chip init process goes on */
+	if (iRet)
+		WMT_ERR_FUNC("patch dwn fail (%d), just omit\n", iRet);
 
-		/* 6.4. WMT Reset command */
-		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_CONNSYS_RESET);
-		iRet = wmt_core_init_script(init_table_3, osal_array_size(init_table_3));
-		if (iRet) {
-			WMT_ERR_FUNC("init_table_3 fail(%d)\n", iRet);
-			return -WMT_ERRCODE_INIT_RESET_CMD_FAIL;
-		}
+	/* 6.4. WMT Reset command */
+	WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_CONNSYS_RESET);
+	iRet = wmt_core_init_script(init_table_3, osal_array_size(init_table_3));
+	if (iRet) {
+		WMT_ERR_FUNC("init_table_3 fail(%d)\n", iRet);
+		return -8;
 	}
 #endif
 
@@ -1353,10 +1297,8 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	if (pWmtHifConf->hifType == WMT_HIF_BTIF &&
 	    emiInfo->pda_dl_patch_flag) {
 		iRet = _wmt_soc_mode_ctrl(MTKSTP_BTIF_FULL_MODE);
-		if (iRet) {
-			WMT_ERR_FUNC("config btif full mode fail!\n");
-			return -WMT_ERRCODE_STP_CONFIG_FAIL;
-		}
+		if (iRet)
+			return iRet;
 	}
 
 	chipid = wmt_plat_get_soc_chipid();
@@ -1366,24 +1308,15 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	if (iRet)
 		WMT_ERR_FUNC("wmt_core:set_chipid_script %s(%d)\n", iRet ? "fail" : "ok", iRet);
 
-	if (wmt_ic_ops_soc.options & OPT_QUERY_ADIE) {
+	if (wmt_ic_ops_soc.icId == 0x6765 || wmt_ic_ops_soc.icId == 0x3967) {
 		iRet = wmt_core_init_script_retry(get_a_die_script, osal_array_size(get_a_die_script), 1, 0);
 		if (iRet) {
 			WMT_ERR_FUNC("get_a_die_script fail(%d)\n", iRet);
-#ifdef CFG_WMT_EVB
-			/* prevent printing too much log */
-			osal_sleep_ms(1000);
-#else
+#ifndef CFG_WMT_EVB
 			osal_dbg_assert_aee("Connsys A-die is not exist", "Please check Connsys A-die\0");
 #endif
-			return -WMT_ERRCODE_ADIE_NOT_EXIST;
+			return -21;
 		}
-	}
-
-	iRet = wmt_init_wifi_config();
-	if (iRet) {
-		WMT_ERR_FUNC("init_wifi_config fail(%d)\n", iRet);
-		return -WMT_ERRCODE_INIT_WIFI_CONFIG_FAIL;
 	}
 
 #ifdef CFG_WMT_READ_EFUSE_VCN33
@@ -1407,7 +1340,11 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	wmt_set_pmic_voltage(efuse_d3_vcn33);
 #endif
 	pWmtGenConf = wmt_get_gen_conf_pointer();
-	if (wmt_ic_ops_soc.options & OPT_SET_WIFI_EXT_COMPONENT) {
+	if (wmt_ic_ops_soc.icId == 0x0279 ||
+		wmt_ic_ops_soc.icId == 0x0507 ||
+		wmt_ic_ops_soc.icId == 0x0713 ||
+		wmt_ic_ops_soc.icId == 0x0788 ||
+		wmt_ic_ops_soc.icId == 0x0688) {
 		/* add WMT_COXE_CONFIG_EXT_COMPONENT_OPCODE command for 2G4 eLNA demand*/
 		if (pWmtGenConf->coex_wmt_ext_component) {
 			WMT_INFO_FUNC("coex_wmt_ext_component:0x%x\n", pWmtGenConf->coex_wmt_ext_component);
@@ -1421,16 +1358,35 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	}
 
 #if CFG_WMT_FILTER_MODE_SETTING
-	if (wmt_ic_ops_soc.options & OPT_WIFI_LTE_COEX) {
+	if ((wmt_ic_ops_soc.icId == 0x6580) ||
+		(wmt_ic_ops_soc.icId == 0x8163) ||
+		(wmt_ic_ops_soc.icId == 0x6752) ||
+		(wmt_ic_ops_soc.icId == 0x6582) ||
+		(wmt_ic_ops_soc.icId == 0x6592) ||
+		(wmt_ic_ops_soc.icId == 0x0279) ||
+		(wmt_ic_ops_soc.icId == 0x0507) ||
+		(wmt_ic_ops_soc.icId == 0x0326) ||
+		(wmt_ic_ops_soc.icId == 0x0551) ||
+		(wmt_ic_ops_soc.icId == 0x0321) ||
+		(wmt_ic_ops_soc.icId == 0x0335) ||
+		(wmt_ic_ops_soc.icId == 0x0688) ||
+		(wmt_ic_ops_soc.icId == 0x0713) ||
+		(wmt_ic_ops_soc.icId == 0x0788) ||
+		(wmt_ic_ops_soc.icId == 0x0699) ||
+		(wmt_ic_ops_soc.icId == 0x0337) ||
+		(wmt_ic_ops_soc.icId == 0x6765) ||
+		(wmt_ic_ops_soc.icId == 0x3967) ||
+		(wmt_ic_ops_soc.icId == 0x6761) ||
+		(wmt_ic_ops_soc.icId == 0x0633)) {
 		wmt_stp_wifi_lte_coex();
 		WMT_DBG_FUNC("wmt_stp_wifi_lte_coex done!\n");
 	}
-	if (wmt_ic_ops_soc.options & OPT_COEX_TDM_REQ_ANTSEL_NUM) {
+	if ((wmt_ic_ops_soc.icId == 0x6582) || (wmt_ic_ops_soc.icId == 0x6592)) {
 		/*get gpio tdm req antsel number */
 		ctrlPa1 = 0;
 		ctrlPa2 = 0;
 		wmt_core_ctrl(WMT_CTRL_GET_TDM_REQ_ANTSEL, &ctrlPa1, &ctrlPa2);
-		WMT_INFO_FUNC("get GPIO TDM REQ ANTSEL number(%lu)\n", ctrlPa1);
+		WMT_INFO_FUNC("get GPIO TDM REQ ANTSEL number(%d)\n", ctrlPa1);
 		/*set gpio tdm req antsel number to firmware */
 		WMT_COEX_TDM_REQ_ANTSEL_NUM_CMD[5] = ctrlPa1;
 		iRet = wmt_core_init_script(get_tdm_req_antsel_num_table,
@@ -1442,7 +1398,11 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	WMT_INFO_FUNC("bt_tssi_from_wifi=%d, bt_tssi_target=%d\n",
 		      pWmtGenConf->bt_tssi_from_wifi, pWmtGenConf->bt_tssi_target);
 	if (pWmtGenConf->bt_tssi_from_wifi) {
-		if (wmt_ic_ops_soc.options & OPT_BT_TSSI_FROM_WIFI_CONFIG_NEW_OPID)
+		if (wmt_ic_ops_soc.icId == 0x0713 ||
+		    wmt_ic_ops_soc.icId == 0x6765 ||
+		    wmt_ic_ops_soc.icId == 0x3967 ||
+		    wmt_ic_ops_soc.icId == 0x6761 ||
+		    wmt_ic_ops_soc.icId == 0x0788)
 			WMT_BT_TSSI_FROM_WIFI_CONFIG_CMD[4] = 0x10;
 
 		WMT_BT_TSSI_FROM_WIFI_CONFIG_CMD[5] = pWmtGenConf->bt_tssi_from_wifi;
@@ -1459,7 +1419,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 
 	if (iRet) {
 		WMT_ERR_FUNC("init_epa fail(%d)\n", iRet);
-		return -WMT_ERRCODE_INIT_EPA_FAIL;
+		return -20;
 	}
 
 	/* for chip 0x6779 */
@@ -1467,54 +1427,73 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 
 	if (iRet) {
 		WMT_ERR_FUNC("init_epa_elna fail(%d)\n", iRet);
-		return -WMT_ERRCODE_INIT_EPA_ELNA_FAIL;
+		return -22;
 	}
 
 	iRet = wmt_stp_init_epa_elna_invert_cr();
+
 	if (iRet) {
 		WMT_ERR_FUNC("init_invert_cr fail(%d)\n", iRet);
-		return -WMT_ERRCODE_INIT_EPA_ELNA_INVERT_CR_FAIL;
+		return -23;
 	}
 
 	/* init coex before start RF calibration */
-	if (wmt_ic_ops_soc.options & OPT_INIT_COEX_BEFORE_RF_CALIBRATION) {
+	if (wmt_ic_ops_soc.icId == 0x6765 ||
+		wmt_ic_ops_soc.icId == 0x6761 ||
+		wmt_ic_ops_soc.icId == 0x6768 ||
+		wmt_ic_ops_soc.icId == 0x6785) {
 		iRet = wmt_stp_init_coex();
 		if (iRet) {
 			WMT_ERR_FUNC("init_coex fail(%d)\n", iRet);
-			return -WMT_ERRCODE_INIT_COEX_FAIL;
+			return -10;
 		}
 		WMT_DBG_FUNC("init_coex ok\n");
 	}
 
-	iRet = wmt_stp_init_wifi_ant_swap();
-
-	if (iRet) {
-		WMT_ERR_FUNC("init_wifi_ant_swap fail(%d)\n", iRet);
-		WMT_INFO_FUNC("A-DIE chip id=0x%x", mtk_wcn_consys_get_adie_chipid());
-	}
-
 	/* 7. start RF calibration data */
-	iRet = mtk_wcn_soc_calibration();
+	ctrlPa1 = BT_PALDO;
+	ctrlPa2 = PALDO_ON;
+	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
+	ctrlPa1 = WIFI_PALDO;
+	ctrlPa2 = PALDO_ON;
+	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
+
+	WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_BT_WIFI_CALIBRATION);
+	iRet = wmt_core_init_script(calibration_table, osal_array_size(calibration_table));
 	if (iRet) {
-		WMT_ERR_FUNC("calibration failed\n");
-		return -WMT_ERRCODE_CALIBRATION_FAIL;
+		/* pwrap_read(0x0210,&ctrlPa1); */
+		/* pwrap_read(0x0212,&ctrlPa2); */
+		/* WMT_ERR_FUNC("power status: 210:(%d),212:(%d)!\n", ctrlPa1, ctrlPa2); */
+		WMT_ERR_FUNC("calibration_table fail(%d)\n", iRet);
+		return -9;
 	}
+
+	ctrlPa1 = BT_PALDO;
+	ctrlPa2 = PALDO_OFF;
+	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
+	ctrlPa1 = WIFI_PALDO;
+	ctrlPa2 = PALDO_OFF;
+	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
 
 	/* turn off VCN28 after reading efuse */
 	ctrlPa1 = EFUSE_PALDO;
 	ctrlPa2 = PALDO_OFF;
 	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
 
-	if (wmt_ic_ops_soc.options & OPT_INIT_COEX_AFTER_RF_CALIBRATION) {
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6768 &&
+	    wmt_ic_ops_soc.icId != 0x6785 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
 		iRet = wmt_stp_init_coex();
 		if (iRet) {
 			WMT_ERR_FUNC("init_coex fail(%d)\n", iRet);
-			return -WMT_ERRCODE_INIT_COEX_FAIL;
+			return -10;
 		}
 		WMT_DBG_FUNC("init_coex ok\n");
 	}
 
-	if (wmt_ic_ops_soc.options & OPT_COEX_CONFIG_ADJUST) {
+	if (wmt_ic_ops_soc.icId == 0x0788) {
 		WMT_INFO_FUNC("coex_config_bt_ctrl:0x%x\n", pWmtGenConf->coex_config_bt_ctrl);
 		coex_config_addjust_table[0].cmd[5] = pWmtGenConf->coex_config_bt_ctrl;
 		WMT_INFO_FUNC("coex_config_bt_ctrl_mode:0x%x\n", pWmtGenConf->coex_config_bt_ctrl_mode);
@@ -1547,13 +1526,6 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 		coex_config_addjust_table[2].cmd[7] =
 			pWmtGenConf->coex_config_addjust_ble_scan_time_ratio_wifi_slot;
 
-		/* COEX flag is different in these project. */
-		if (wmt_ic_ops_soc.options & OPT_COEX_CONFIG_ADJUST_NEW_FLAG) {
-			coex_config_addjust_table[0].cmd[4] = 0x1e;
-			coex_config_addjust_table[1].cmd[4] = 0x1f;
-			coex_config_addjust_table[2].cmd[4] = 0x20;
-		}
-
 		iRet = wmt_core_init_script(coex_config_addjust_table,
 				osal_array_size(coex_config_addjust_table));
 		if (iRet)
@@ -1569,14 +1541,16 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	mtk_wcn_soc_set_sdio_driving();
 #endif
 
-	if (wmt_ic_ops_soc.options & OPT_SET_OSC_TYPE) {
-		if (wmt_plat_soc_co_clock_flag_get() == WMT_CO_CLOCK_EN) {
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
+		if (mtk_wcn_soc_co_clock_get() == WMT_CO_CLOCK_EN) {
 			WMT_INFO_FUNC("co-clock enabled.\n");
 
 			iRet = wmt_core_init_script(osc_type_table, osal_array_size(osc_type_table));
 			if (iRet) {
 				WMT_ERR_FUNC("osc_type_table fail(%d), goes on\n", iRet);
-				return -WMT_ERRCODE_INIT_COCLOCK_TYPE_FAIL;
+				return -11;
 			}
 		} else {
 			WMT_WARN_FUNC("co-clock disabled.\n");
@@ -1586,7 +1560,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	iRet = wmt_core_init_script(merge_pcm_table, osal_array_size(merge_pcm_table));
 	if (iRet) {
 		WMT_ERR_FUNC("merge_pcm_table fail(%d), goes on\n", iRet);
-		return -WMT_ERRCODE_INIT_MERGE_PCM_TABLE_FAIL;
+		return -12;
 	}
 #endif
 
@@ -1596,7 +1570,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	iRet = wmt_core_init_script(init_table_5_1, osal_array_size(init_table_5_1));
 	if (iRet) {
 		WMT_ERR_FUNC("init_table_5_1 fm mode(%d) fail(%d)\n", pWmtHifConf->au4StrapConf[0], iRet);
-		return -WMT_ERRCODE_INIT_FM_MODE_FAIL;
+		return -13;
 	}
 	WMT_DBG_FUNC("set fm mode (%d) ok\n", pWmtHifConf->au4StrapConf[0]);
 
@@ -1604,16 +1578,22 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	iRet = wmt_core_init_script(set_registers, osal_array_size(set_registers));
 	if (iRet) {
 		WMT_ERR_FUNC("set_registers fail(%d)", iRet);
-		return -WMT_ERRCODE_INIT_SET_REGISTER_FAIL;
+		return -14;
 	}
 #endif
 
-	if (wmt_ic_ops_soc.options & OPT_SET_COREDUMP_LEVEL) {
+#if CFG_WMT_COREDUMP_ENABLE
+	/*Open Core Dump Function @QC begin */
+	mtk_wcn_stp_coredump_flag_ctrl(1);
+#endif
+	if (wmt_ic_ops_soc.icId != 0x6765 &&
+	    wmt_ic_ops_soc.icId != 0x3967 &&
+	    wmt_ic_ops_soc.icId != 0x6761) {
 		if (mtk_wcn_stp_coredump_flag_get() != 0) {
 			iRet = wmt_core_init_script(init_table_6, osal_array_size(init_table_6));
 			if (iRet) {
 				WMT_ERR_FUNC("init_table_6 core dump setting fail(%d)\n", iRet);
-				return -WMT_ERRCODE_INIT_SET_COREDUMP_FAIL;
+				return -15;
 			}
 			WMT_DBG_FUNC("enable soc_consys firmware coredump\n");
 		} else {
@@ -1624,14 +1604,14 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 #if CFG_WMT_WIFI_5G_SUPPORT
 	dDieChipid = wmt_ic_ops_soc.icId;
 	WMT_DBG_FUNC("current SOC chipid is 0x%x\n", dDieChipid);
-	if (wmt_ic_ops_soc.options & OPT_WIFI_5G_PALDO) {
+	if (dDieChipid == 0X6592) {
 		/* read A die chipid by wmt cmd */
 		iRet =
 		    wmt_core_tx((PUINT8) &WMT_GET_SOC_ADIE_CHIPID_CMD[0], sizeof(WMT_GET_SOC_ADIE_CHIPID_CMD), &u4Res,
 				MTK_WCN_BOOL_FALSE);
 		if (iRet || (u4Res != sizeof(WMT_GET_SOC_ADIE_CHIPID_CMD))) {
 			WMT_ERR_FUNC("wmt_core:read A die chipid CMD fail(%d),size(%d)\n", iRet, u4Res);
-			return -WMT_ERRCODE_READ_ADIE_TX_CMD_FAIL;
+			return -16;
 		}
 		osal_memset(evtbuf, 0, sizeof(evtbuf));
 		iRet = wmt_core_rx(evtbuf, sizeof(WMT_GET_SOC_ADIE_CHIPID_EVT), &u4Res);
@@ -1645,7 +1625,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 					WMT_GET_SOC_ADIE_CHIPID_EVT[3],
 					WMT_GET_SOC_ADIE_CHIPID_EVT[4]);
 			mtk_wcn_stp_dbg_dump_package();
-			return -WMT_ERRCODE_READ_ADIE_RX_EVT_FAIL;
+			return -17;
 		}
 
 		osal_memcpy(&aDieChipid, &evtbuf[u4Res - 2], 2);
@@ -1681,7 +1661,7 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 		iRet = wmt_ctrl(&ctrlData);
 		if (iRet < 0) {
 			WMT_ERR_FUNC("wmt_core: read PMIC chipid fail(%d)\n", iRet);
-			return -WMT_ERRCODE_READ_PMIC_CHIPID_FAIL;
+			return -18;
 		}
 		pmicChipid = ctrlData.au4CtrlData[2];
 		WMT_INFO_FUNC("current PMIC chipid(0x%x)\n", pmicChipid);
@@ -1727,8 +1707,8 @@ static INT32 mtk_wcn_soc_sw_init(P_WMT_HIF_CONF pWmtHifConf)
 	ctrlData.au4CtrlData[2] = (SIZE_T) &gp_soc_patch_info;
 	iRet = wmt_ctrl(&ctrlData);
 	if (iRet) {
-		WMT_ERR_FUNC("set stp dbg info fail(%d)\n", iRet);
-		return -WMT_ERRCODE_SET_STP_DBG_INFO_FAIL;
+		WMT_ERR_FUNC("set dump info fail(%d)\n", iRet);
+		return -19;
 	}
 #endif
 
@@ -1890,7 +1870,14 @@ static INT32 mtk_wcn_soc_gps_sync_ctrl(WMT_IC_PIN_STATE state, UINT32 flag)
 	/* gen3(6631) CONSYS can not access reg:0x80050078 and no need to do GPS SYNC
 	 * may cause bus hang
 	 */
-	if (wmt_ic_ops_soc.options & OPT_GPS_SYNC) {
+	if (wmt_ic_ops_soc.icId != 0x0279 &&
+		wmt_ic_ops_soc.icId != 0x0507 &&
+		wmt_ic_ops_soc.icId != 0x0713 &&
+		wmt_ic_ops_soc.icId != 0x0788 &&
+		wmt_ic_ops_soc.icId != 0x6765 &&
+		wmt_ic_ops_soc.icId != 0x3967 &&
+		wmt_ic_ops_soc.icId != 0x6761 &&
+		wmt_ic_ops_soc.icId != 0x0688) {
 		if (state == WMT_IC_PIN_MUX)
 			uVal = 0x1 << 28;
 		else
@@ -1990,12 +1977,17 @@ static MTK_WCN_BOOL mtk_wcn_soc_trigger_assert(VOID)
 	return (ret == 0);
 }
 
+WMT_CO_CLOCK mtk_wcn_soc_co_clock_get(VOID)
+{
+	return gCoClockEn;
+}
+
 static INT32 mtk_wcn_soc_ver_check(VOID)
 {
-	UINT32 hw_ver = 0;
-	UINT32 fw_ver = 0;
+	UINT32 hw_ver;
+	UINT32 fw_ver;
 	INT32 iret;
-	const WMT_IC_INFO_S *p_info = NULL;
+	const WMT_IC_INFO_S *p_info;
 	unsigned long ctrlPa1;
 	unsigned long ctrlPa2;
 
@@ -2018,17 +2010,17 @@ static INT32 mtk_wcn_soc_ver_check(VOID)
 
 	p_info = mtk_wcn_soc_find_wmt_ic_info(hw_ver);
 	if (p_info == NULL) {
-		WMT_ERR_FUNC("0x%x: hw_ver(0x%x) find wmt ic info fail\n", wmt_ic_ops_soc.icId, hw_ver);
+		WMT_ERR_FUNC("0x%x: hw_ver(0x%x) find wmt ic info fail\n", wmt_ic_ops_soc.icId);
 		return -3;
 	}
-	WMT_WARN_FUNC("0x%x: ic info: %s.%s (0x%x/0x%x, HWVER:0x%04x, patch_ext:%s)\n",
+	WMT_WARN_FUNC("0x%x: ic info: %s.%s (0x%x/0x%x, WMTHWVER:%d, patch_ext:%s)\n",
 		      wmt_ic_ops_soc.icId, p_info->cChipName, p_info->cChipVersion,
-		      hw_ver, fw_ver, p_info->u4HwVer, p_info->cPatchNameExt);
+		      hw_ver, fw_ver, p_info->eWmtHwVer, p_info->cPatchNameExt);
 
 	/* hw id & version */
-	ctrlPa1 = ((UINT32)(wmt_ic_ops_soc.icId << 16)) | (hw_ver & 0x0000FFFF);
-	/* translated fw rom version */
-	ctrlPa2 = (fw_ver & 0x0000FFFF);
+	ctrlPa1 = (wmt_ic_ops_soc.icId << 16) | (hw_ver & 0x0000FFFF);
+	/* translated hw version & fw rom version */
+	ctrlPa2 = ((UINT32) (p_info->eWmtHwVer) << 16) | (fw_ver & 0x0000FFFF);
 
 	iret = wmt_core_ctrl(WMT_CTRL_HWIDVER_SET, &ctrlPa1, &ctrlPa2);
 	if (iret)
@@ -2088,8 +2080,8 @@ static const WMT_IC_INFO_S *mtk_wcn_soc_find_wmt_ic_info(const UINT32 hw_ver)
 static INT32 wmt_stp_wifi_lte_coex(VOID)
 {
 	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 
 	/*Get wmt config */
 	iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
@@ -2112,11 +2104,24 @@ static INT32 wmt_stp_wifi_lte_coex(VOID)
 
 	if (pWmtGenConf->coex_wmt_filter_mode == 0) {
 		WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_POWER_ON_BEFORE_SET_WIFI_LTE_COEX);
-		if (wmt_ic_ops_soc.options & OPT_WIFI_LTE_COEX_TABLE_1) {
+		if ((wmt_ic_ops_soc.icId == 0x6752) ||
+		    (wmt_ic_ops_soc.icId == 0x6580) ||
+		    (wmt_ic_ops_soc.icId == 0x8163) ||
+		    (wmt_ic_ops_soc.icId == 0x0326) ||
+		    (wmt_ic_ops_soc.icId == 0x0551) ||
+		    (wmt_ic_ops_soc.icId == 0x0699) ||
+		    (wmt_ic_ops_soc.icId == 0x0321) ||
+		    (wmt_ic_ops_soc.icId == 0x0335) ||
+		    (wmt_ic_ops_soc.icId == 0x0337) ||
+		    (wmt_ic_ops_soc.icId == 0x0633)) {
 			iRet =
 			    wmt_core_init_script(set_wifi_lte_coex_table_1, osal_array_size(set_wifi_lte_coex_table_1));
 			WMT_DBG_FUNC("wmt_core:set_wifi_lte_coex_table_1 %s(%d)\n", iRet ? "fail" : "ok", iRet);
-		} else if (wmt_ic_ops_soc.options & OPT_WIFI_LTE_COEX_TABLE_2) {
+		} else if (wmt_ic_ops_soc.icId == 0x0279 ||
+				wmt_ic_ops_soc.icId == 0x0507 ||
+				wmt_ic_ops_soc.icId == 0x0713 ||
+				wmt_ic_ops_soc.icId == 0x0788 ||
+				wmt_ic_ops_soc.icId == 0x0688) {
 			/* add WMT_COXE_CONFIG_EXT_COMPONENT_OPCODE command for 2G4 eLNA demand*/
 			if (pWmtGenConf->coex_wmt_ext_component) {
 				WMT_INFO_FUNC("coex_wmt_ext_component:0x%x\n", pWmtGenConf->coex_wmt_ext_component);
@@ -2125,7 +2130,9 @@ static INT32 wmt_stp_wifi_lte_coex(VOID)
 			iRet =
 			    wmt_core_init_script(set_wifi_lte_coex_table_2, osal_array_size(set_wifi_lte_coex_table_2));
 			WMT_DBG_FUNC("wmt_core:set_wifi_lte_coex_table_2 %s(%d)\n", iRet ? "fail" : "ok", iRet);
-		} else if (wmt_ic_ops_soc.options & OPT_WIFI_LTE_COEX_TABLE_3) {
+		} else if (wmt_ic_ops_soc.icId == 0x6765 ||
+			   wmt_ic_ops_soc.icId == 0x3967 ||
+			   wmt_ic_ops_soc.icId == 0x6761) {
 			iRet =
 			    wmt_core_init_script(set_wifi_lte_coex_table_3,
 					    osal_array_size(set_wifi_lte_coex_table_3));
@@ -2145,8 +2152,8 @@ static INT32 wmt_stp_wifi_lte_coex(VOID)
 static INT32 wmt_stp_init_coex(VOID)
 {
 	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 
 #define COEX_WMT  0
 
@@ -2180,7 +2187,10 @@ static INT32 wmt_stp_init_coex(VOID)
 		return 0;
 	}
 
-	if (wmt_ic_ops_soc.options & OPT_COEX_EXT_ELNA_GAIN_P1_SUPPORT) {
+	if (wmt_ic_ops_soc.icId == 0x6765 ||
+		wmt_ic_ops_soc.icId == 0x6761 ||
+		wmt_ic_ops_soc.icId == 0x6768 ||
+		wmt_ic_ops_soc.icId == 0x6785) {
 		WMT_INFO_FUNC("elna_gain_p1_support:0x%x\n", pWmtGenConf->coex_wmt_ext_elna_gain_p1_support);
 		if (pWmtGenConf->coex_wmt_ext_elna_gain_p1_support != 1)
 			return 0;
@@ -2321,8 +2331,8 @@ static INT32 wmt_stp_init_coex(VOID)
 static INT32 wmt_stp_init_epa(VOID)
 {
 	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 
 	/*Get wmt config */
 	iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
@@ -2357,10 +2367,10 @@ static INT32 wmt_stp_init_epa(VOID)
 static INT32 wmt_stp_init_epa_elna(VOID)
 {
 	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 	struct init_script script[1];
-	struct WMT_BYTE_ARRAY *ba = NULL;
+	struct WMT_BYTE_ARRAY *ba;
 	INT32 cmd_size;
 	INT32 data_size;
 	PUINT8 cmd;
@@ -2431,18 +2441,17 @@ static INT32 wmt_stp_init_epa_elna_invert_cr(VOID)
 {
 	INT32 iRet;
 	UINT32 uVal = 0;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 	UINT32 default_invert_cr[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 	UINT32 default_invert_bit[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
 	PINT8 pbuf;
-	long res = 0;
+	long res;
 	PINT8 tok1, tok2;
 	UINT32 item1, item2, item_index;
 	UINT32 invert_cr, invert_bit;
 
 	mtk_wcn_consys_ic_get_ant_sel_cr_addr(default_invert_cr, default_invert_bit);
-	pWmtGenConf = (P_WMT_GEN_CONF) addr;
 
 	/*Get wmt config */
 	iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
@@ -2556,145 +2565,13 @@ static INT32 wmt_stp_init_epa_elna_invert_cr(VOID)
 	return 0;
 }
 
-static INT32 wmt_stp_init_wifi_ant_swap(VOID)
-{
-	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
-	UINT8 ant_swap_mode, polarity, ant_sel;
-
-	/*Get wmt config */
-	iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
-	if (iRet) {
-		WMT_ERR_FUNC("ctrl GET_WMT_CONF fail(%d)\n", iRet);
-		return -2;
-	}
-	WMT_DBG_FUNC("ctrl GET_WMT_CONF ok(0x%08lx)\n", addr);
-
-	pWmtGenConf = (P_WMT_GEN_CONF) addr;
-
-	/*Check if WMT.cfg exists */
-	if (pWmtGenConf->cfgExist == 0) {
-		WMT_DBG_FUNC("cfgExist == 0, skip config chip\n");
-		/*if WMT.cfg not existed, still return success and adopt the default value */
-		return 0;
-	}
-
-	ant_swap_mode = pWmtGenConf->wifi_ant_swap_mode;
-	polarity = pWmtGenConf->wifi_main_ant_polarity;
-	ant_sel = pWmtGenConf->wifi_ant_swap_ant_sel_gpio;
-
-	WMT_INFO_FUNC("ant swap mode = %d, main_polarity = %d, ant_sel = %d\n",
-		ant_swap_mode, polarity, ant_sel);
-
-	if (ant_swap_mode <= 0 || ant_swap_mode > 2)
-		return 0;
-
-	if (ant_swap_mode == 2 &&
-		mtk_consys_is_ant_swap_enable_by_hwid() == 0)
-		return 0;
-
-	wifi_ant_swap_table[0].cmd[6] = polarity;
-
-	if (ant_sel > 0)
-		wifi_ant_swap_table[0].cmd[7] = ant_sel;
-	else {
-		/* backward compatible */
-		wifi_ant_swap_table[0].cmdSz = sizeof(WMT_WIFI_ANT_SWAP_CMD) - 1;
-		wifi_ant_swap_table[0].cmd[2] = 3; /* length */
-		wifi_ant_swap_table[0].cmd[4] = 6; /* op id */
-		wifi_ant_swap_table[0].evt[5] = 6; /* op id */
-	}
-
-	iRet = wmt_core_init_script(wifi_ant_swap_table, ARRAY_SIZE(wifi_ant_swap_table));
-
-	return iRet;
-}
-
-static INT32 wmt_init_wifi_config(VOID)
-{
-	INT32 iRet;
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
-	struct init_script script[1];
-	struct WMT_BYTE_ARRAY *ba = NULL;
-	INT32 cmd_size;
-	INT32 data_size;
-	PUINT8 cmd;
-	UINT16 index = 0;
-
-	/*Get wmt config */
-	iRet = wmt_core_ctrl(WMT_CTRL_GET_WMT_CONF, &addr, 0);
-	if (iRet) {
-		WMT_ERR_FUNC("ctrl GET_WMT_CONF fail(%d)\n", iRet);
-		return -2;
-	}
-	WMT_DBG_FUNC("ctrl GET_WMT_CONF ok(0x%08lx)\n", addr);
-
-	pWmtGenConf = (P_WMT_GEN_CONF) addr;
-
-	/*Check if WMT.cfg exists */
-	if (pWmtGenConf->cfgExist == 0) {
-		WMT_DBG_FUNC("cfgExist == 0, skip config chip\n");
-		/*if WMT.cfg not existed, still return success and adopt the default value */
-		return 0;
-	}
-
-	if (pWmtGenConf->wifi_config == NULL)
-		return 0;
-
-	ba = pWmtGenConf->wifi_config;
-
-	/* cmd_size = direction(1) + op(1) + length(2) + sub op(1) + data_len(1) + data */
-	cmd_size = ba->size + 6;
-	cmd = (PUINT8)osal_malloc(cmd_size);
-
-	if (cmd == NULL) {
-		WMT_ERR_FUNC("failed to malloc when init wifi config\n");
-		return -1;
-	}
-
-	/* 0x1: direction, 0x2: op code */
-	cmd[index++] = 0x1;
-	cmd[index++] = 0x2;
-
-	/* add 2 for test op id and data length */
-	data_size = ba->size + 2;
-	/* assign data length */
-	cmd[index++] = (data_size & 0x00FF) >> 0;
-	cmd[index++] = (data_size & 0xFF00) >> 8;
-	/* assign op id: 0x14 */
-	cmd[index++] = 0x14;
-	/* assign data length */
-	/* A byte to store data length is because firmware test op handler cannot see data length*/
-	cmd[index++] = (UINT8)ba->size;
-
-	osal_memcpy(&cmd[index], ba->data, ba->size);
-
-	script[0].cmd = cmd;
-	script[0].cmdSz = cmd_size;
-	script[0].evt = WMT_WIFI_CONFIG_EVT;
-	script[0].evtSz = sizeof(WMT_WIFI_CONFIG_EVT);
-	script[0].str = "wifi_config";
-
-	if (gWmtDbgLvl >= WMT_LOG_DBG)
-		wmt_core_dump_data(&(script[0].cmd[0]), script[0].str,
-			script[0].cmdSz);
-
-	iRet = wmt_core_init_script(script, ARRAY_SIZE(script));
-
-	osal_free(cmd);
-
-	return iRet;
-}
-
 #if CFG_WMT_SDIO_DRIVING_SET
 static INT32 mtk_wcn_soc_set_sdio_driving(void)
 {
 	INT32 ret = 0;
 
-	unsigned long addr = 0;
-	WMT_GEN_CONF *pWmtGenConf = NULL;
+	unsigned long addr;
+	WMT_GEN_CONF *pWmtGenConf;
 	UINT32 drv_val = 0;
 
 	/*Get wmt config */
@@ -2869,13 +2746,8 @@ static UINT32 mtk_wcn_soc_get_patch_num(VOID)
 	ULONG ctrlPa2 = 0;
 
 	wmt_core_ctrl(WMT_CTRL_GET_PATCH_NUM, &ctrlPa1, &ctrlPa2);
-	WMT_DBG_FUNC("patch total num = [%lu]\n", ctrlPa1);
+	WMT_DBG_FUNC("patch total num = [%d]\n", ctrlPa1);
 	return ctrlPa1;
-}
-
-static UINT32 mtk_wcn_soc_update_patch_version(VOID)
-{
-	return wmt_core_ctrl(WMT_CTRL_UPDATE_PATCH_VERSION, NULL, NULL);
 }
 
 static INT32 mtk_wcn_soc_normal_patch_dwn(PUINT8 pPatchBuf, UINT32 patchSize, PUINT8 addressByte)
@@ -2903,13 +2775,27 @@ static INT32 mtk_wcn_soc_normal_patch_dwn(PUINT8 pPatchBuf, UINT32 patchSize, PU
 	WMT_INFO_FUNC("normal patch download patch size(%d) fragNum(%d)\n", patchSize, fragNum);
 
 	/*send wmt part patch address command */
-	if (wmt_ic_ops_soc.options & OPT_NORMAL_PATCH_DWN_0) {
+	if (wmt_ic_ops_soc.icId == 0x6752 ||
+		wmt_ic_ops_soc.icId == 0x8127 ||
+		wmt_ic_ops_soc.icId == 0x7623 ||
+		wmt_ic_ops_soc.icId == 0x6571 ||
+		wmt_ic_ops_soc.icId == 0x0326 ||
+		wmt_ic_ops_soc.icId == 0x0551 ||
+		wmt_ic_ops_soc.icId == 0x0690 ||
+		wmt_ic_ops_soc.icId == 0x0699 ||
+		wmt_ic_ops_soc.icId == 0x0321 ||
+		wmt_ic_ops_soc.icId == 0x0335 ||
+		wmt_ic_ops_soc.icId == 0x0337 ||
+		wmt_ic_ops_soc.icId == 0x8163 ||
+		wmt_ic_ops_soc.icId == 0x6580 ||
+		wmt_ic_ops_soc.icId == 0x8167 ||
+		wmt_ic_ops_soc.icId == 0x0633) {
 		/* ROMv2 patch RAM base */
 		WMT_PATCH_ADDRESS_CMD[8] = 0x40;
 		WMT_PATCH_P_ADDRESS_CMD[8] = 0xc8;
 	}
 	/*send wmt part patch address command */
-	if (wmt_ic_ops_soc.options & OPT_NORMAL_PATCH_DWN_1) {
+	if (wmt_ic_ops_soc.icId == 0x0279) {
 		/* ROMv3 patch RAM base */
 		WMT_PATCH_ADDRESS_CMD[8] = 0x08;
 		WMT_PATCH_ADDRESS_CMD[9] = 0x05;
@@ -2917,7 +2803,10 @@ static INT32 mtk_wcn_soc_normal_patch_dwn(PUINT8 pPatchBuf, UINT32 patchSize, PU
 		WMT_PATCH_P_ADDRESS_CMD[9] = 0x0b;
 	}
 
-	if (wmt_ic_ops_soc.options & OPT_NORMAL_PATCH_DWN_2) {
+	if (wmt_ic_ops_soc.icId == 0x0507 ||
+		wmt_ic_ops_soc.icId == 0x0713 ||
+		wmt_ic_ops_soc.icId == 0x0788 ||
+		wmt_ic_ops_soc.icId == 0x0688) {
 		/* ROMv4 patch RAM base */
 		WMT_PATCH_ADDRESS_CMD[8] = 0x18;
 		WMT_PATCH_ADDRESS_CMD[9] = 0x05;
@@ -2925,7 +2814,9 @@ static INT32 mtk_wcn_soc_normal_patch_dwn(PUINT8 pPatchBuf, UINT32 patchSize, PU
 		WMT_PATCH_P_ADDRESS_CMD[9] = 0x0b;
 	}
 
-	if (wmt_ic_ops_soc.options & OPT_NORMAL_PATCH_DWN_3) {
+	if (wmt_ic_ops_soc.icId == 0x6765 ||
+	    wmt_ic_ops_soc.icId == 0x3967 ||
+	    wmt_ic_ops_soc.icId == 0x6761) {
 		/*send part patch address command */
 		WMT_PATCH_ADDRESS_CMD_NEW[5] = addressByte[0];
 		WMT_PATCH_ADDRESS_CMD_NEW[6] = addressByte[1];
@@ -3036,19 +2927,19 @@ patch_download:
 			wmt_core_tx(pPatchBuf + offset - sizeof(WMT_PATCH_CMD), fragSize + sizeof(WMT_PATCH_CMD),
 				&u4Res, MTK_WCN_BOOL_FALSE);
 		if (iRet || (u4Res != fragSize + sizeof(WMT_PATCH_CMD))) {
-			WMT_ERR_FUNC("wmt_core: write fragSeq(%d) size(%lu, %d) fail(%d)\n", fragSeq,
+			WMT_ERR_FUNC("wmt_core: write fragSeq(%d) size(%d, %d) fail(%d)\n", fragSeq,
 				     fragSize + sizeof(WMT_PATCH_CMD), u4Res, iRet);
 			iRet = -1;
 			break;
 		}
-		WMT_DBG_FUNC("wmt_core: write fragSeq(%d) size(%lu, %d) ok\n",
+		WMT_DBG_FUNC("wmt_core: write fragSeq(%d) size(%d, %d) ok\n",
 			     fragSeq, fragSize + sizeof(WMT_PATCH_CMD), u4Res);
 
 		osal_memset(evtBuf, 0, sizeof(evtBuf));
 		/* iRet = (*kal_stp_rx)(evtBuf, sizeof(WMT_PATCH_EVT), &u4Res); */
 		iRet = wmt_core_rx(evtBuf, sizeof(WMT_PATCH_EVT), &u4Res);
 		if (iRet || (u4Res != sizeof(WMT_PATCH_EVT))) {
-			WMT_ERR_FUNC("wmt_core: read WMT_PATCH_EVT length(%lu, %d) fail(%d)\n", sizeof(WMT_PATCH_EVT),
+			WMT_ERR_FUNC("wmt_core: read WMT_PATCH_EVT length(%d, %d) fail(%d)\n", sizeof(WMT_PATCH_EVT),
 				     u4Res, iRet);
 			mtk_wcn_stp_dbg_dump_package();
 			iRet = -1;
@@ -3063,7 +2954,7 @@ patch_download:
 				evtBuf[2],
 				evtBuf[3],
 				evtBuf[4]);
-			WMT_ERR_FUNC("wmt_core: exp(%lu):[%02X,%02X,%02X,%02X,%02X]\n",
+			WMT_ERR_FUNC("wmt_core: exp(%d):[%02X,%02X,%02X,%02X,%02X]\n",
 				sizeof(WMT_PATCH_EVT),
 				WMT_PATCH_EVT[0],
 				WMT_PATCH_EVT[1],
@@ -3074,7 +2965,7 @@ patch_download:
 			break;
 		}
 #endif
-		WMT_DBG_FUNC("wmt_core: read WMT_PATCH_EVT length(%lu, %d) ok\n", sizeof(WMT_PATCH_EVT), u4Res);
+		WMT_DBG_FUNC("wmt_core: read WMT_PATCH_EVT length(%d, %d) ok\n", sizeof(WMT_PATCH_EVT), u4Res);
 		offset += patchSizePerFrag;
 		++fragSeq;
 	}
@@ -3190,7 +3081,6 @@ static INT32 mtk_wcn_soc_patch_dwn(UINT32 index)
 	P_WMT_PATCH patchHdr = NULL;
 	PUINT8 pBuf = NULL;
 	PUINT8 pPatchBuf = NULL;
-	PUINT8 patchBuildTimeAddr;
 	UINT32 patchSize;
 	PINT8 cDataTime = NULL;
 	UINT16 u2HwVer = 0;
@@ -3214,11 +3104,6 @@ static INT32 mtk_wcn_soc_patch_dwn(UINT32 index)
 	ctrlData.au4CtrlData[2] = (SIZE_T)&addressByte;
 	iRet = wmt_ctrl(&ctrlData);
 	WMT_DBG_FUNC("the %d time valid patch found: (%s)\n", index + 1, gFullPatchName);
-
-	if (iRet) {
-		WMT_ERR_FUNC("wmt_core: WMT_CTRL_GET_PATCH_INFO fail:%d\n", iRet);
-		goto done;
-	}
 
 	/* <2.2> read patch content */
 	ctrlData.ctrlId = WMT_CTRL_GET_PATCH;
@@ -3270,10 +3155,12 @@ static INT32 mtk_wcn_soc_patch_dwn(UINT32 index)
 		iRet = -1;
 		goto done;
 	}
-	patchSize -= (UINT32)sizeof(WMT_PATCH);
+	patchSize -= sizeof(WMT_PATCH);
 	pPatchBuf += sizeof(WMT_PATCH);
 
-	if (wmt_ic_ops_soc.options & OPT_PATCH_CHECKSUM) {
+	if (wmt_ic_ops_soc.icId == 0x6765 ||
+	    wmt_ic_ops_soc.icId == 0x3967 ||
+	    wmt_ic_ops_soc.icId == 0x6761) {
 		/* remove patch checksum:
 		 * |<-patch checksum: 2Bytes->|<-patch body: X Bytes (X=patchSize)--->|
 		 */
@@ -3293,16 +3180,6 @@ static INT32 mtk_wcn_soc_patch_dwn(UINT32 index)
 	else
 		iRet = mtk_wcn_soc_normal_patch_dwn(pPatchBuf, patchSize, addressByte);
 
-	/* Set FW patch buildtime into EMI for debugging */
-	if (emiInfo->emi_patch_mcu_buildtime_offset) {
-		patchBuildTimeAddr = ioremap(emiInfo->emi_ap_phy_addr +
-				emiInfo->emi_patch_mcu_buildtime_offset, PATCH_BUILD_TIME_SIZE);
-		if (patchBuildTimeAddr) {
-			osal_memcpy_toio(patchBuildTimeAddr, cDataTime, PATCH_BUILD_TIME_SIZE);
-			iounmap(patchBuildTimeAddr);
-		} else
-			WMT_ERR_FUNC("ioremap fail\n");
-	}
 done:
 	if (patchHdr != NULL) {
 		osal_free(patchHdr);
@@ -3507,7 +3384,7 @@ done:
 
 #endif
 
-INT32 mtk_wcn_soc_rom_patch_dwn(UINT32 ip_ver, UINT32 fw_ver)
+INT32 mtk_wcn_soc_rom_patch_dwn(UINT32 ip_ver)
 {
 	INT32 iRet = -1;
 	struct wmt_rom_patch *patchHdr = NULL;
@@ -3522,8 +3399,6 @@ INT32 mtk_wcn_soc_rom_patch_dwn(UINT32 ip_ver, UINT32 fw_ver)
 	UINT32 type;
 	UINT32 patchEmiOffset;
 	PUINT8 patchAddr;
-	UINT32 patchBuildTimeOffset = 0;
-	PUINT8 patchBuildTimeAddr;
 	WMT_CTRL_DATA ctrlData;
 	P_CONSYS_EMI_ADDR_INFO emiInfo;
 
@@ -3535,7 +3410,6 @@ INT32 mtk_wcn_soc_rom_patch_dwn(UINT32 ip_ver, UINT32 fw_ver)
 		ctrlData.au4CtrlData[1] = (SIZE_T)&gFullPatchName;
 		ctrlData.au4CtrlData[2] = (SIZE_T)&addressByte;
 		ctrlData.au4CtrlData[3] = ip_ver;
-		ctrlData.au4CtrlData[4] = fw_ver;
 		iRet = wmt_ctrl(&ctrlData);
 		if (iRet > 0) {
 			WMT_INFO_FUNC("There is no need to download (%d) type patch!\n", type);
@@ -3607,49 +3481,15 @@ INT32 mtk_wcn_soc_rom_patch_dwn(UINT32 ip_ver, UINT32 fw_ver)
 		}
 
 		if (patchEmiOffset + patchSize < emiInfo->emi_size) {
-			WMT_INFO_FUNC("[Rom Patch] emiInfo: emi_ap_phy_addr=0x%x emi_size=%d emi_phy_addr=0x%x\n",
-				emiInfo->emi_ap_phy_addr, emiInfo->emi_size, emiInfo->emi_phy_addr);
 			WMT_INFO_FUNC("[Rom Patch]Name=%s,EmiOffset=0x%x,Size=0x%x\n",
 					gFullPatchName, patchEmiOffset, patchSize);
 
-			if (type == WMTDRV_TYPE_WIFI) {
-				wmt_lib_mpu_lock_aquire();
-				if (mtk_wcn_wlan_emi_mpu_set_protection)
-					(*mtk_wcn_wlan_emi_mpu_set_protection)(false);
-			}
-
-			patchAddr = ioremap(emiInfo->emi_ap_phy_addr + patchEmiOffset, patchSize);
-			WMT_INFO_FUNC("physAddr=0x%x, size=%d virAddr=0x%p\n",
-				emiInfo->emi_ap_phy_addr + patchEmiOffset, patchSize, patchAddr);
+			patchAddr = ioremap_nocache(emiInfo->emi_ap_phy_addr + patchEmiOffset, patchSize);
 			if (patchAddr) {
 				osal_memcpy_toio(patchAddr, pPatchBuf, patchSize);
 				iounmap(patchAddr);
 			} else
-				WMT_ERR_FUNC("ioremap fail\n");
-
-			if (type == WMTDRV_TYPE_BT)
-				patchBuildTimeOffset = emiInfo->emi_ram_bt_buildtime_offset;
-			else if (type == WMTDRV_TYPE_WIFI)
-				patchBuildTimeOffset = emiInfo->emi_ram_wifi_buildtime_offset;
-			else if (type == WMTDRV_TYPE_WMT)
-				patchBuildTimeOffset = emiInfo->emi_ram_mcu_buildtime_offset;
-			/* Set ROM patch buildtime into EMI for debugging */
-			if (patchBuildTimeOffset) {
-				patchBuildTimeAddr = ioremap(emiInfo->emi_ap_phy_addr +
-						patchBuildTimeOffset, PATCH_BUILD_TIME_SIZE);
-				if (patchBuildTimeAddr) {
-					osal_memcpy_toio(patchBuildTimeAddr, cDataTime,
-							PATCH_BUILD_TIME_SIZE);
-					iounmap(patchBuildTimeAddr);
-				} else
-					WMT_ERR_FUNC("ioremap fail\n");
-			}
-
-			if (type == WMTDRV_TYPE_WIFI) {
-				if (mtk_wcn_wlan_emi_mpu_set_protection)
-					(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
-				wmt_lib_mpu_lock_release();
-			}
+				WMT_ERR_FUNC("ioremap_nocache fail\n");
 		} else
 			WMT_ERR_FUNC("The rom patch is too big to overflow on EMI\n");
 
@@ -3669,406 +3509,4 @@ done:
 	}
 
 	return iRet;
-}
-
-
-VOID mtk_wcn_soc_restore_wifi_cal_result(VOID)
-{
-#if CFG_CALIBRATION_BACKUP_RESTORE
-	P_CONSYS_EMI_ADDR_INFO emiInfo = mtk_wcn_consys_soc_get_emi_phy_add();
-	PUINT8 wifiCalAddr = NULL;
-
-	if (!emiInfo) {
-		WMT_ERR_FUNC("Get EMI info failed.\n");
-		return;
-	}
-
-	if (mtk_consys_is_calibration_backup_restore_support() == 0 ||
-	    mtk_wcn_stp_assert_flow_get() == 0) {
-		WMT_INFO_FUNC(
-			"Skip restore, chip id=%x mtk_wcn_stp_assert_flow_get()=%d\n",
-			wmt_ic_ops_soc.icId, mtk_wcn_stp_assert_flow_get());
-		return;
-	}
-	/* Disable Wi-Fi MPU to touch Wi-Fi calibration data */
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(false);
-	WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_BEFORE_RESTORE_CAL_RESULT);
-	/* Write Wi-Fi data to EMI */
-	if (gWiFiCalAddrOffset + gWiFiCalSize < emiInfo->emi_size) {
-		wifiCalAddr = ioremap(emiInfo->emi_ap_phy_addr + gWiFiCalAddrOffset,
-				gWiFiCalSize);
-		if (wifiCalAddr) {
-			osal_memcpy_toio(wifiCalAddr, gWiFiCalResult, gWiFiCalSize);
-			iounmap(wifiCalAddr);
-			WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_AFTER_RESTORE_CAL_RESULT);
-		} else {
-			WMT_ERR_FUNC("ioremap fail\n");
-		}
-	}
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
-#else
-	WMT_INFO_FUNC("Skip restore because it is not supported.\n");
-#endif
-}
-
-#if CFG_CALIBRATION_BACKUP_RESTORE
-/*
- * To restore calibration data
- * For BT, send by STP command.
- * For Wi-Fi write to EMI directly.
- *
- * Return value:
- *	0: restore success
- *	1: recalibration happened. Caller need to re-get calibration data
- *	< 0: fail. Caller need to re-send calibration command.
- */
-static INT32 mtk_wcn_soc_calibration_restore(void)
-{
-	INT32 iRet = 0;
-	PUINT8 evtBuf = NULL;
-	UINT32 u4Res;
-	UINT16 len = 0;
-
-	/* Allocate event buffer */
-	evtBuf = osal_malloc(CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE);
-	if (evtBuf == NULL) {
-		WMT_ERR_FUNC("allocate event buffer failed\n");
-		return -1;
-	}
-
-	if ((gBTCalResultSize != 0 && gBTCalResult != NULL &&
-	    (gBTCalResultSize + sizeof(WMT_CORE_SEND_RF_CALIBRATION_CMD)) < CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE) &&
-	    (gWiFiCalResult != NULL && gWiFiCalSize != 0 && gWiFiCalAddrOffset != 0)) {
-		WMT_INFO_FUNC("Send calibration data size=%d\n", gBTCalResultSize);
-		WMT_INFO_FUNC("Send calibration data start\n");
-		/* Construct send calibration cmd for BT
-		 * Format: 0x01 0x14 [ X+3 (2 bytes)] 0x02
-		 *         [BT data len (2 bytes)] [BT data (X bytes)]
-		 */
-		/* clear buffer */
-		osal_memset(&evtBuf[0], 0, CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE);
-		/* copy cmd template */
-		osal_memcpy(
-			&evtBuf[0],
-			WMT_CORE_SEND_RF_CALIBRATION_CMD,
-			sizeof(WMT_CORE_SEND_RF_CALIBRATION_CMD));
-		/* Setup length to byte 2&3 */
-		len = gBTCalResultSize + 3;
-		osal_memcpy(&evtBuf[2], &len, 2);
-		osal_memcpy(&evtBuf[5], &gBTCalResultSize, 2);
-		osal_memcpy(&evtBuf[7], gBTCalResult, gBTCalResultSize);
-		len = sizeof(WMT_CORE_SEND_RF_CALIBRATION_CMD) + gBTCalResultSize;
-		iRet = wmt_core_tx(evtBuf, len, &u4Res, MTK_WCN_BOOL_FALSE);
-		if (iRet || u4Res != len) {
-			WMT_ERR_FUNC("Send calibration data TX failed (%d), %d bytes writes, expect %d\n",
-				iRet, u4Res, len);
-			iRet = -4;
-			goto restore_end;
-		}
-		/* RX: 02 14 02 00 XX 02
-		 * XX means status
-		 *    0: OK
-		 *    1: recalibration happened
-		 */
-		iRet = wmt_core_rx(evtBuf, CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE, &u4Res);
-		WMT_INFO_FUNC("Send calibration data end\n");
-		if (iRet || u4Res != sizeof(WMT_CORE_SEND_RF_CALIBRATION_EVT_OK)) {
-			WMT_ERR_FUNC("Send calibration data event failed(%d), %d bytes get, expect %lu\n",
-				iRet, u4Res, sizeof(WMT_CORE_SEND_RF_CALIBRATION_EVT_OK));
-			iRet = -5;
-			goto restore_end;
-		}
-		/* Check return */
-		if (osal_memcmp(&evtBuf[0], WMT_CORE_SEND_RF_CALIBRATION_EVT_OK,
-				sizeof(WMT_CORE_SEND_RF_CALIBRATION_EVT_OK)) == 0) {
-			WMT_INFO_FUNC("Send calibration data OK.\n");
-			iRet = 0;
-		} else if (osal_memcmp(&evtBuf[0], WMT_CORE_SEND_RF_CALIBRATION_EVT_RECAL,
-				       sizeof(WMT_CORE_SEND_RF_CALIBRATION_EVT_RECAL)) == 0) {
-			WMT_INFO_FUNC("Recalibration happened. Re-get calibration data\n");
-			iRet = 1;
-			goto restore_end;
-		} else {
-			/* Do calibration */
-			WMT_ERR_FUNC("Send calibration event error. 0x%2x 0x%2x 0x%2x 0x%2x 0x%2x 0x%2x\n",
-				      evtBuf[0], evtBuf[1], evtBuf[2], evtBuf[3], evtBuf[4], evtBuf[5]);
-			iRet = -5;
-			goto restore_end;
-		}
-	} else {
-		WMT_ERR_FUNC("Did not restore calibration data. Buf=0x%p, size=%d\n",
-			gBTCalResult, gBTCalResultSize);
-		iRet = -6;
-		goto restore_end;
-	}
-
-restore_end:
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(false);
-	WMT_STEP_DO_ACTIONS_FUNC(STEP_TRIGGER_POINT_AFTER_RESTORE_CAL_CMD);
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
-	osal_free(evtBuf);
-	return iRet;
-}
-
-/*
- * To backup calibration data
- * For BT, get data by STP command.
- * For Wi-Fi, get EMI offset and length from STP command and then
- * backup data from EMI
- *
- * Return value:
- *      0: backup success
- *      < 0: fail
- */
-static INT32 mtk_wcn_soc_calibration_backup(void)
-{
-	INT32 iRet = 0;
-	PUINT8 evtBuf;
-	UINT32 u4Res;
-	UINT16 len = 0;
-	P_CONSYS_EMI_ADDR_INFO emiInfo = mtk_wcn_consys_soc_get_emi_phy_add();
-	UINT32 wifiOffset = 0;
-	UINT32 wifiLen = 0;
-	void __iomem *virWiFiAddrBase;
-
-	/* Allocate RX event buffer */
-	evtBuf = osal_malloc(CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE);
-	if (evtBuf == NULL) {
-		WMT_ERR_FUNC("Allocate event buffer failed\n");
-		return -1;
-	}
-	/* Get calibration data TX */
-	iRet = wmt_core_tx(WMT_CORE_GET_RF_CALIBRATION_CMD,
-			sizeof(WMT_CORE_GET_RF_CALIBRATION_CMD),
-			&u4Res, MTK_WCN_BOOL_FALSE);
-	if (iRet || u4Res != sizeof(WMT_CORE_GET_RF_CALIBRATION_CMD)) {
-		WMT_ERR_FUNC("Write get calibration cmd failed(%d), exp: %lu but write %d\n",
-			iRet, sizeof(WMT_CORE_GET_RF_CALIBRATION_CMD), u4Res);
-		goto get_calibration_fail;
-	}
-	osal_memset(&evtBuf[0], 0, CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE);
-	iRet = wmt_core_rx(evtBuf, CALIBRATION_BACKUP_RESTORE_BUFFER_SIZE, &u4Res);
-	/* RX expected format:
-	 *   02 14 [X+14 (2 bytes)] 00 03
-	 *   [BT size = X (2 bytes)] [BT Cal. Data (X bytes)]
-	 *   [WiFi Size = 8 (2 bytes)] [WiFi Offset (4 bytes)] [WiFi len(4 bytes)]
-	 */
-	if (iRet || u4Res < 8) {
-		WMT_ERR_FUNC("Get calibration event failed(%d), get %d bytes\n", iRet, u4Res);
-		goto get_calibration_fail;
-	}
-	/* Check data validaness */
-	if (evtBuf[0] != 0x02 || evtBuf[1] != 0x14 ||
-	    evtBuf[4] != 0x00 || evtBuf[5] != 0x03) {
-		WMT_ERR_FUNC("Get calibration event error. 0x%2x 0x%2x 0x%2x 0x%2x 0x%2x 0x%2x\n",
-			evtBuf[0], evtBuf[1], evtBuf[2], evtBuf[3], evtBuf[4], evtBuf[5]);
-		goto get_calibration_fail;
-	}
-	/* Get data success, backup it.
-	 * Data size is not the same as previous, realloc memory
-	 */
-	osal_memcpy(&len, &evtBuf[6], 2);
-	if (len != gBTCalResultSize) {
-		gBTCalResultSize = len;
-		if (gBTCalResult != NULL) {
-			osal_free(gBTCalResult);
-			gBTCalResult = NULL;
-		}
-	}
-	if (gBTCalResult == NULL)
-		gBTCalResult = osal_malloc(gBTCalResultSize);
-	if (gBTCalResult == NULL) {
-		WMT_ERR_FUNC("Allocate BT calibration buffer failed.\n");
-		goto get_calibration_fail;
-	}
-	osal_memcpy(gBTCalResult, &evtBuf[8], gBTCalResultSize);
-	/* Get Wi-Fi info */
-	osal_memcpy(&wifiOffset, &evtBuf[10 + gBTCalResultSize], 4);
-	osal_memcpy(&wifiLen, &evtBuf[14 + gBTCalResultSize], 4);
-	if (wifiLen != gWiFiCalSize) {
-		gWiFiCalSize = wifiLen;
-		if (gWiFiCalResult != NULL) {
-			osal_free(gWiFiCalResult);
-			gWiFiCalResult = NULL;
-		}
-	}
-	if (gWiFiCalResult == NULL)
-		gWiFiCalResult = osal_malloc(gWiFiCalSize);
-	if (gWiFiCalResult == NULL) {
-		WMT_ERR_FUNC("Allocate Wi-Fi calibration buffer failed.\n");
-		goto get_calibration_fail;
-	}
-	/* Start to backup Wi-Fi data */
-	if (!emiInfo) {
-		WMT_ERR_FUNC("get emi info fail!\n");
-		goto get_calibration_fail;
-	}
-	/* Before copy, disable Wi-Fi MPU to access EMI */
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(false);
-	WMT_STEP_DO_ACTIONS_FUNC(
-		STEP_TRIGGER_POINT_POWER_ON_AFTER_BT_WIFI_CALIBRATION);
-	gWiFiCalAddrOffset = wifiOffset;
-	virWiFiAddrBase = ioremap(
-				emiInfo->emi_ap_phy_addr + gWiFiCalAddrOffset,
-				gWiFiCalSize);
-	if (virWiFiAddrBase) {
-		osal_memcpy_fromio(gWiFiCalResult, virWiFiAddrBase, gWiFiCalSize);
-		iounmap(virWiFiAddrBase);
-	} else {
-		WMT_ERR_FUNC("Remap Wi-Fi EMI fail: offset=%d size=%d\n",
-			     gWiFiCalAddrOffset, gWiFiCalSize);
-		goto get_calibration_fail;
-	}
-	/* Enable Wi-Fi MPU after finished. */
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
-	WMT_INFO_FUNC("gBTCalResultSize=%d gWiFiCalResult=0x%p gWiFiCalSize=%d gWiFiCalAddrOffset=0x%x\n",
-		gBTCalResultSize,
-		gWiFiCalResult,
-		gWiFiCalSize,
-		gWiFiCalAddrOffset);
-	osal_free(evtBuf);
-	return 0;
-get_calibration_fail:
-	WMT_ERR_FUNC("Get calibration failed.\n");
-	if (emiInfo) {
-		WMT_ERR_FUNC("emiInfo: emi_ap_phy_addr=0x%x emi_size=%d emi_phy_addr=0x%x\n",
-			emiInfo->emi_ap_phy_addr,
-			emiInfo->emi_size,
-			emiInfo->emi_phy_addr);
-	}
-	WMT_ERR_FUNC("gBTCalResultSize=%d gWiFiCalResult=0x%p gWiFiCalSize=%d gWiFiCalAddrOffset=0x%x\n",
-		gBTCalResultSize, gWiFiCalResult,
-		gWiFiCalSize, gWiFiCalAddrOffset);
-	if (gBTCalResult != NULL) {
-		osal_free(gBTCalResult);
-		gBTCalResult = NULL;
-	}
-	gBTCalResultSize = 0;
-	if (gWiFiCalResult != NULL) {
-		osal_free(gWiFiCalResult);
-		gWiFiCalResult = NULL;
-	}
-	gWiFiCalSize = 0;
-	gWiFiCalAddrOffset = 0;
-	/* Enable Wi-Fi MPU after finished. */
-	if (mtk_wcn_wlan_emi_mpu_set_protection)
-		(*mtk_wcn_wlan_emi_mpu_set_protection)(true);
-	osal_free(evtBuf);
-	return -1;
-}
-#endif
-
-static INT32 mtk_wcn_soc_do_calibration(void)
-{
-	INT32 iRet = 0;
-
-#if CFG_CALIBRATION_BACKUP_RESTORE
-	/* When chip reset is caused by assert, skip calibration.
-	 * Restore old data.
-	 */
-	if (mtk_consys_is_calibration_backup_restore_support() == 0 ||
-	    mtk_wcn_stp_assert_flow_get() == 0) {
-		WMT_INFO_FUNC(
-			"Skip restore, chip id=%x mtk_wcn_stp_assert_flow_get()=%d\n",
-			wmt_ic_ops_soc.icId, mtk_wcn_stp_assert_flow_get());
-		goto do_calibration;
-	}
-
-	iRet = mtk_wcn_soc_calibration_restore();
-	if (iRet == 0) {
-		WMT_INFO_FUNC("Restore success\n");
-		return 0;
-	} else if (iRet == 1) {
-		WMT_INFO_FUNC("Recal happened. Re-get calibration data.\n");
-		goto get_calibration;
-	} else
-		/* For all other case, re-cali. */
-		WMT_ERR_FUNC("Re-cal because restore fail(%d)\n", iRet);
-
-do_calibration:
-#endif /* CFG_CALIBRATION_BACKUP_RESTORE */
-	/* Do calibration */
-	WMT_INFO_FUNC("Calibration start\n");
-	iRet = wmt_core_init_script(
-		calibration_table,
-		osal_array_size(calibration_table));
-	WMT_INFO_FUNC("Calibration end\n");
-	if (iRet) {
-	#if CFG_CALIBRATION_BACKUP_RESTORE
-		/* Calibration failed. Clear backup data. */
-		if (gBTCalResult != NULL) {
-			osal_free(gBTCalResult);
-			gBTCalResult = NULL;
-		}
-		gBTCalResultSize = 0;
-		if (gWiFiCalResult != NULL) {
-			osal_free(gWiFiCalResult);
-			gWiFiCalResult = NULL;
-		}
-		gWiFiCalSize = 0;
-		gWiFiCalAddrOffset = 0;
-	#endif
-		WMT_ERR_FUNC("do calibration failed (%d)\n", iRet);
-		return -1;
-	}
-
-#if CFG_CALIBRATION_BACKUP_RESTORE
-	if (mtk_consys_is_calibration_backup_restore_support() == 0)
-		return 0;
-
-get_calibration:
-	iRet = mtk_wcn_soc_calibration_backup();
-	/* Backup process should not influence power on sequence.
-	 * Hence, even it return error, just record it and
-	 * report calibration success.
-	 */
-	if (iRet == 0)
-		WMT_INFO_FUNC("Backup success\n");
-	else
-		WMT_ERR_FUNC("Backup failed(%d)\n", iRet);
-#endif
-	return 0;
-}
-
-static INT32 mtk_wcn_soc_calibration(void)
-{
-	INT32 iRet = -1;
-	INT32 iCalRet = -1;
-	unsigned long ctrlPa1;
-	unsigned long ctrlPa2;
-
-	/* Turn on BT/Wi-Fi */
-	ctrlPa1 = BT_PALDO;
-	ctrlPa2 = PALDO_ON;
-	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
-	ctrlPa1 = WIFI_PALDO;
-	ctrlPa2 = PALDO_ON;
-	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
-
-	WMT_INFO_FUNC("mtk_wcn_soc_do_calibration start\n");
-	iCalRet = mtk_wcn_soc_do_calibration();
-	WMT_INFO_FUNC("mtk_wcn_soc_do_calibration end\n");
-
-	/* Turn off BT/Wi-Fi */
-	ctrlPa1 = BT_PALDO;
-	ctrlPa2 = PALDO_OFF;
-	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
-	ctrlPa1 = WIFI_PALDO;
-	ctrlPa2 = PALDO_OFF;
-	iRet = wmt_core_ctrl(WMT_CTRL_SOC_PALDO_CTRL, &ctrlPa1, &ctrlPa2);
-
-	if (iCalRet) {
-		/* pwrap_read(0x0210,&ctrlPa1); */
-		/* pwrap_read(0x0212,&ctrlPa2); */
-		/* WMT_ERR_FUNC("power status: 210:(%d),212:(%d)!\n", ctrlPa1, ctrlPa2); */
-		WMT_ERR_FUNC("calibration_table fail(%d)\n", iCalRet);
-		return -1;
-	}
-	return 0;
 }

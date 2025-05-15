@@ -16,7 +16,6 @@
 
 #include <linux/cdev.h>
 #include <linux/workqueue.h>
-#include <linux/platform_device.h>
 
 #include "fm_typedef.h"
 #include "fm_rds.h"
@@ -158,7 +157,6 @@ struct fm {
 	struct fm_work *rds_wk;
 	struct fm_work *rst_wk;	/* work for subsystem reset */
 	struct fm_work *pwroff_wk;
-	struct fm_work *ch_valid_check_wk;
 	/* Tx */
 	struct fm_work *fm_tx_desense_wifi_work;
 	struct fm_work *fm_tx_power_ctrl_work;
@@ -236,8 +234,6 @@ struct fm_basic_interface {
 							unsigned short scandir, unsigned short space);
 	signed int (*rds_tx_adapter)(unsigned short pi, unsigned short *ps, unsigned short *other_rds,
 							unsigned char other_rds_cnt);
-	bool (*is_valid_freq)(unsigned short freq);
-	signed int (*atj_set)(signed int freq, unsigned short value);
 };
 
 struct fm_rds_interface {
@@ -272,10 +268,6 @@ extern signed int fm_low_ops_register(struct fm_callback *cb, struct fm_basic_in
 extern signed int fm_low_ops_unregister(struct fm_basic_interface *bi);
 extern signed int fm_rds_ops_register(struct fm_basic_interface *bi, struct fm_rds_interface *ri);
 extern signed int fm_rds_ops_unregister(struct fm_rds_interface *ri);
-extern signed int fm_wcn_ops_register(void);
-extern signed int fm_wcn_ops_unregister(void);
-extern int fm_register_irq(struct platform_driver *drv, unsigned int irq_num);
-extern int fm_register_plat(unsigned int family_id, unsigned int conn_id);
 
 /*
  * fm_get_channel_space - get the spcace of gived channel

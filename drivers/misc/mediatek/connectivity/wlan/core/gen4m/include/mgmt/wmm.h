@@ -1,21 +1,54 @@
-/*
- * Copyright (C) 2016 MediaTek Inc.
+/******************************************************************************
  *
- * This program is free software: you can redistribute it and/or modify it under
- * the terms of the
- * GNU General Public License version 2 as published by the Free Software
- * Foundation.
+ * This file is provided under a dual license.  When you use or
+ * distribute this software, you may choose to be licensed under
+ * version 2 of the GNU General Public License ("GPLv2 License")
+ * or BSD License.
  *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY;
- * without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
- * PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
+ * GPLv2 License
  *
- * You should have received a copy of the GNU General Public License along with
- * this program.
- * If not, see <http://www.gnu.org/licenses/>.
- */
+ * Copyright(C) 2016 MediaTek Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of version 2 of the GNU General Public License as
+ * published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+ * See http://www.gnu.org/licenses/gpl-2.0.html for more details.
+ *
+ * BSD LICENSE
+ *
+ * Copyright(C) 2016 MediaTek Inc. All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions
+ * are met:
+ *
+ *  * Redistributions of source code must retain the above copyright
+ *    notice, this list of conditions and the following disclaimer.
+ *  * Redistributions in binary form must reproduce the above copyright
+ *    notice, this list of conditions and the following disclaimer in
+ *    the documentation and/or other materials provided with the
+ *    distribution.
+ *  * Neither the name of the copyright holder nor the names of its
+ *    contributors may be used to endorse or promote products derived
+ *    from this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ *
+ *****************************************************************************/
 
 #ifndef WMM_HDR_H
 #define WMM_HDR_H
@@ -87,7 +120,6 @@ struct TSPEC_INFO {
 	/* debug information */
 	uint16_t u2MediumTime;
 	uint32_t u4PhyRate;
-	uint8_t ucTid;
 };
 
 struct TSM_TRIGGER_COND {
@@ -114,7 +146,6 @@ struct ACTIVE_RM_TSM_REQ {
 	struct LINK_ENTRY rLinkEntry;
 	struct RM_TSM_REQ *prTsmReq;
 	struct TIMER rTsmTimer;
-	uint8_t ucBssIdx;
 };
 
 #if CFG_SUPPORT_SOFT_ACM
@@ -156,7 +187,6 @@ struct MSG_TS_OPERATE {
 	enum TSPEC_OP_CODE eOpCode;
 	uint8_t ucTid;
 	struct PARAM_QOS_TSPEC rTspecParam;
-	uint8_t ucBssIdx;
 };
 
 #define WMM_TSINFO_TRAFFIC_TYPE(tsinfo) (tsinfo & BIT(0))
@@ -174,31 +204,29 @@ struct MSG_TS_OPERATE {
 extern uint8_t const aucUp2ACIMap[8];
 void wmmFillTsinfo(struct PARAM_QOS_TSINFO *prTsInfo, uint8_t *pucTsInfo);
 void wmmSetupTspecTimeOut(struct ADAPTER *prAdapter, unsigned long ulParam);
-void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam,
-	uint8_t ucBssIndex);
+void wmmStartTsmMeasurement(struct ADAPTER *prAdapter, unsigned long ulParam);
 void wmmRunEventTSOperate(struct ADAPTER *prAdapter, struct MSG_HDR *prMsgHdr);
 u_int8_t wmmParseQosAction(struct ADAPTER *prAdapter, struct SW_RFB *prSwRfb);
 u_int8_t wmmParseTspecIE(struct ADAPTER *prAdapter, uint8_t *pucIE,
 			 struct PARAM_QOS_TSPEC *prTspec);
 void wmmTspecSteps(struct ADAPTER *prAdapter, uint8_t ucTid,
-	enum TSPEC_OP_CODE eOpCode, void *prStepParams, uint8_t ucBssIndex);
+		   enum TSPEC_OP_CODE eOpCode, void *prStepParams);
 uint8_t wmmHasActiveTspec(struct WMM_INFO *prWmmInfo);
-void wmmNotifyDisconnected(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
-void wmmReSyncPsParamWithFw(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
+void wmmNotifyDisconnected(struct ADAPTER *prAdapter);
 void wmmComposeTsmRpt(struct ADAPTER *prAdapter, struct CMD_INFO *prCmdInfo,
 		      uint8_t *pucEventBuf);
 void wmmInit(IN struct ADAPTER *prAdapter);
 void wmmUnInit(IN struct ADAPTER *prAdapter);
-u_int8_t wmmTsmIsOngoing(struct ADAPTER *prAdapter, uint8_t ucBssIndex);
+u_int8_t wmmTsmIsOngoing(struct ADAPTER *prAdapter);
+void wmmNotifyDisconnected(struct ADAPTER *prAdapter);
 void wmmRemoveAllTsmMeasurement(struct ADAPTER *prAdapter,
-	u_int8_t fgOnlyTriggered, uint8_t ucBssIndex);
-uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter,
-	uint8_t ucBssIndex);
+				u_int8_t fgOnlyTriggered);
+uint8_t wmmCalculateUapsdSetting(struct ADAPTER *prAdapter);
 uint32_t wmmDumpActiveTspecs(struct ADAPTER *prAdapter, uint8_t *pucBuffer,
-	uint16_t u2BufferLenu, uint8_t ucBssIndex);
+			     uint16_t u2BufferLen);
 #if CFG_SUPPORT_SOFT_ACM
 u_int8_t wmmAcmCanDequeue(struct ADAPTER *prAdapter, uint8_t ucAc,
-	uint32_t u4PktTxTime, uint8_t ucBssIndex);
+			  uint32_t u4PktTxTime);
 void wmmAcmTxStatistic(struct ADAPTER *prAdapter, uint8_t ucAc,
 		       uint32_t u4Remain, uint16_t u2DeqNum);
 
