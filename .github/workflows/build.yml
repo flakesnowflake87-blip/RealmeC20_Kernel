@@ -3,7 +3,7 @@ name: Kernel Build
 on:
   push:
     branches:
-      - base-next  # Change this to your desired branch if it's not 'main'
+      - base-next  
 
 jobs:
   build:
