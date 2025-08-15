@@ -55,11 +55,11 @@ export KBUILD_BUILD_HOST="nefertari"
 
 if [[ -d "gcc64" ]]; then
     echo "Using custom GCC toolchain for 64-bit..."
-    make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
+    make -j$(nproc --all) O=out ARCH=arm64 test_defconfig
     make -j$(nproc --all) ARCH=arm64 O=out CC="clang" CROSS_COMPILE="${PWD}/gcc64/bin/aarch64-linux-gnu-" CROSS_COMPILE_ARM32="${PWD}/gcc32/bin/arm-linux-gnueabi-"
 else
     echo "Using default GCC toolchain..."
-    make -j$(nproc --all) O=out ARCH=arm64 oppo6765_defconfig
+    make -j$(nproc --all) O=out ARCH=arm64 test_defconfig
     make -j$(nproc --all) ARCH=arm64 O=out CC="clang" CROSS_COMPILE=aarch64-linux-gnu- CROSS_COMPILE_ARM32=arm-linux-gnueabi-
 fi
 
